@@ -506,8 +506,13 @@ function updateRadarFrame() {
     const chartDiv = document.getElementById('radar-chart');
     // Poiché abbiamo pulito innerHTML in runRadarScan, newPlot è più sicuro per il primo frame.
     // Ma updateRadarFrame sarà chiamata ripetutamente.
-    // Plotly.react gestisce entrambi i casi se il div ID esiste.
-    Plotly.react('radar-chart', dataToPlot, layout, { responsive: true });
+    // Plotly.react gestisce entrambi    // Debug visuale se non ci sono punti
+    if (xHead.length === 0) {
+        layout.title.text += " [NESSUN DATO VISIBILE]";
+    }
+
+    // Usa newPlot per garantire il rendering corretto anche la prima volta
+    Plotly.newPlot('radar-chart', dataToPlot, layout, { responsive: true });
 
     // Re-bind Click
     document.getElementById('radar-chart').on('plotly_click', function (data) {
