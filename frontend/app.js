@@ -327,13 +327,17 @@ async function runRadarScan() {
 
         // Setup Slider
         if (RADAR_RESULTS_CACHE.length > 0) { // Safety
+            // Explicitly fetch elements
+            const slider = document.getElementById('radar-slider');
+            const trailsCheck = document.getElementById('radar-trails');
+
             const maxIdx = RADAR_RESULTS_CACHE[0].history.dates.length - 1;
-            radarSlider.max = maxIdx;
-            radarSlider.value = maxIdx;
+            slider.max = maxIdx;
+            slider.value = maxIdx;
 
             // Attiva Listener
-            radarSlider.oninput = updateRadarFrame;
-            radarTrailsCheck.onchange = updateRadarFrame;
+            slider.oninput = updateRadarFrame;
+            trailsCheck.onchange = updateRadarFrame;
 
             // Render Iniziale
             updateRadarFrame();
@@ -348,12 +352,19 @@ async function runRadarScan() {
 function updateRadarFrame() {
     if (!RADAR_RESULTS_CACHE) return;
 
-    const dayIdx = parseInt(radarSlider.value);
-    const showTrails = radarTrailsCheck.checked;
+    const slider = document.getElementById('radar-slider');
+    const trailsCheck = document.getElementById('radar-trails');
+    const dateLabel = document.getElementById('radar-date');
+
+    const dayIdx = parseInt(slider.value);
+    const showTrails = trailsCheck.checked;
 
     // Recupera data corrente
+    // Safety check: ensure dayIdx is valid
+    if (!RADAR_RESULTS_CACHE[0].history.dates[dayIdx]) return;
+
     const currentDate = RADAR_RESULTS_CACHE[0].history.dates[dayIdx];
-    radarDateLabel.innerText = currentDate;
+    dateLabel.innerText = currentDate;
 
     // 1. Dati Punti (Teste)
     const xHead = [];
@@ -363,13 +374,19 @@ function updateRadarFrame() {
     const tickers = [];
 
     RADAR_RESULTS_CACHE.forEach(r => {
-        // Safety check index
-        if (dayIdx < r.history.z_kin.length) {
-            xHead.push(r.history.z_kin[dayIdx]);
-            yHead.push(r.history.z_pot[dayIdx]);
-            texts.push(r.ticker);
-            colors.push(r.history.z_pot[dayIdx]);
-            tickers.push(r.ticker);
+        // Safety check index (some histories might be shorter/padded differently if bugged, but logic used padding)
+        if (r.history && r.history.z_kin && dayIdx < r.history.z_kin.length) {
+            const valX = r.history.z_kin[dayIdx];
+            const valY = r.history.z_pot[dayIdx];
+
+            // Only plot if values are not null (padding)
+            if (valX !== null && valY !== null) {
+                xHead.push(valX);
+                yHead.push(valY);
+                texts.push(r.ticker);
+                colors.push(valY);
+                tickers.push(r.ticker);
+            }
         }
     });
 
@@ -379,17 +396,21 @@ function updateRadarFrame() {
     const yTail = [];
 
     if (showTrails) {
-        const TAIL_LEN = 10; // Lunghezza scia
+        const TAIL_LEN = 50; // Increased to 50 as per session summary
         const startIdx = Math.max(0, dayIdx - TAIL_LEN);
 
         RADAR_RESULTS_CACHE.forEach(r => {
-            for (let i = startIdx; i <= dayIdx; i++) {
-                xTail.push(r.history.z_kin[i]);
-                yTail.push(r.history.z_pot[i]);
+            if (r.history && r.history.z_kin) {
+                for (let i = startIdx; i <= dayIdx; i++) {
+                    const tX = r.history.z_kin[i];
+                    const tY = r.history.z_pot[i];
+                    xTail.push(tX);
+                    yTail.push(tY);
+                }
+                // Interruzione linea (Gap) tra un ticker e l'altro
+                xTail.push(null);
+                yTail.push(null);
             }
-            // Interruzione linea (Gap) tra un ticker e l'altro
-            xTail.push(null);
-            yTail.push(null);
         });
     }
 
