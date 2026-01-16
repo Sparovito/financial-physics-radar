@@ -1,4 +1,4 @@
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = ""; // Relative path for production (same origin)
 
 async function runAnalysis() {
     const btn = document.querySelector('.btn-analyze');

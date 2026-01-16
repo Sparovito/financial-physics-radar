@@ -7,9 +7,13 @@ import numpy as np
 import pandas as pd
 from logic import MarketData, ActionPath, FourierEngine, MarketScanner
 
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
+
 app = FastAPI(title="Financial Physics API")
 
-# Abilita CORS per permettere al frontend (file locale) di chiamare l'API
+# Abilita CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,6 +21,39 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 1. Mount Static Files (JS/CSS)
+# Montiamo la cartella frontend su /static o root?
+# Strategia Migliore: Mount /frontend su path root o specifico per asset.
+# Qui serviamo tutto ciò che è nella cartella frontend come statico.
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
+# 2. Serve Index at Root
+@app.get("/")
+async def read_index():
+    return FileResponse('frontend/index.html')
+
+# Assicura che index.html cerchi i file css/js correttamente
+# Nel frontend/index.html i link sono relativi "style.css".
+# Dobbiamo montare la root "/" direttamente su frontend? No, conflitto con API.
+# Soluzione: Mountare i file specifici o servire statici su root DOPO le api.
+# Ma FastAPI valuta in ordine. 
+
+# SOLUZIONE SEMPLICE:
+# Montiamo "frontend" su / (root) come fallback per static files?
+# No, meglio servire index.html su / e gli altri asset (app.js, style.css) devono essere raggiungibili.
+# Se index.html chiede "app.js", browser chiama /app.js.
+# Quindi dobbiamo servire /app.js -> frontend/app.js
+
+@app.get("/{filename}")
+async def serve_frontend_file(filename: str):
+    file_path = f"frontend/{filename}"
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        return FileResponse(file_path)
+    # Se non trova file, 404
+    raise HTTPException(status_code=404, detail="File not found")
+
+# --- FINE AGGIUNTA STATIC ---
 
 from typing import List
 
