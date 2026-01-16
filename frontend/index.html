@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Physics Terminal</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Plotly.js (CDN or local if downloaded) -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+
+    <!-- Sidebar Controls -->
+    <div class="sidebar">
+        <div class="logo">
+            <span>⚡</span> Financial Physics
+        </div>
+
+        <div class="control-group">
+            <label>Ticker</label>
+            <div class="input-with-btn">
+                <input type="text" id="ticker" value="SPY" placeholder="e.g. BTC-USD">
+                <button id="btn-open-modal" title="Cerca Titolo">🔍</button>
+            </div>
+            <small>Simbolo Yahoo Finance</small>
+        </div>
+
+        <div class="control-group">
+            <label>Inerzia (Alpha)</label>
+            <input type="number" id="alpha" value="200" step="10">
+            <small>Resistenza al movimento (Massa)</small>
+        </div>
+
+        <div class="control-group">
+            <label>Fedeltà (Beta)</label>
+            <input type="number" id="beta" value="1.0" step="0.1">
+            <small>Attrazione verso i Fondamentali</small>
+        </div>
+
+        <div class="control-group">
+            <label>Orizzonte Previsione</label>
+            <input type="number" id="forecast" value="60" step="10">
+            <small>Giorni di proiezione futura</small>
+        </div>
+
+        <button class="btn-analyze" onclick="runAnalysis()">
+            ANALIZZA
+        </button>
+
+        <button class="btn-radar" onclick="openRadar()"
+            style="margin-top:10px; background:#2d3342; border:1px solid #eba834; color:#eba834; width:100%; padding:10px; border-radius:6px; cursor:pointer; font-weight:bold;">
+            📡 MARKET RADAR
+        </button>
+
+        <div id="fourier-stats" style="margin-top: 20px; font-size: 0.8rem; color: #888;">
+            <!-- Tabella cicli verrà inserita qui -->
+        </div>
+    </div>
+
+    <!-- Main Charts Area -->
+    <div class="main-content">
+        <div class="chart-container" id="chart-combined">
+            <!-- Combined Plotly graph (Price + Energy) -->
+        </div>
+    </div>
+
+    <!-- Status Toast -->
+    <div class="status-bar" id="status-bar">
+        <div class="spinner"></div>
+        <span id="status-text">Elaborazione in corso...</span>
+    </div>
+
+    <!-- TICKER SELECTION MODAL -->
+    <div id="ticker-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Seleziona Asset</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+
+            <div class="modal-search">
+                <input type="text" id="modal-search-input" placeholder="Cerca nome o simbolo (es. Apple, BTC)...">
+            </div>
+
+            <div class="modal-body">
+                <div class="categories-list" id="categories-list">
+                    <!-- JS Injects Categories Here -->
+                </div>
+                <div class="tickers-grid" id="tickers-grid">
+                    <!-- JS Injects Tickers Here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RADAR MODAL -->
+    <div id="radar-modal" class="modal">
+        <div class="modal-content" style="width: 90%; height: 90vh; max-width: 1200px;">
+            <div class="modal-header">
+                <h3>📡 Market Radar (Z-Score Energetici)</h3>
+                <span class="close-modal" onclick="closeRadar()">&times;</span>
+            </div>
+            <div class="radar-controls"
+                style="padding: 15px; border-bottom: 1px solid #333; display: flex; gap: 20px; align-items: center;">
+                <div style="display:flex; gap:10px;">
+                    <select id="radar-category"
+                        style="padding: 8px; background: #0f111a; color: white; border: 1px solid #333; border-radius: 4px;">
+                        <option value="ALL">Tutto il Mercato</option>
+                        <option value="Tech">US Tech</option>
+                        <option value="Crypto">Crypto</option>
+                        <option value="Europe">Europa</option>
+                    </select>
+                    <button onclick="runRadarScan()"
+                        style="padding: 8px 15px; background: #eba834; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">
+                        SCANSIONA
+                    </button>
+                </div>
+
+                <!-- TIMELINE CONTROLS -->
+                <div class="timeline-group"
+                    style="display:flex; gap:10px; align-items:center; border-left:1px solid #444; padding-left:20px; flex:1;">
+                    <label style="color:#aaa; font-size:0.9rem;">⏳ Timeline:</label>
+                    <input type="range" id="radar-slider" min="0" max="29" value="29" style="flex:1; cursor:pointer;">
+                    <span id="radar-date" style="color: #eba834; font-family: monospace; width: 100px;">Today</span>
+
+                    <label
+                        style="color:#aaa; font-size:0.9rem; margin-left:15px; cursor:pointer; display:flex; align-items:center; gap:5px;">
+                        <input type="checkbox" id="radar-trails"> 🌠 Scia
+                    </label>
+                </div>
+            </div>
+            <div id="radar-chart" style="flex: 1; background: #0f111a;"></div>
+        </div>
+    </div>
+
+    <script src="tickers.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
