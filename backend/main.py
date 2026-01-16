@@ -128,20 +128,23 @@ def health_check():
 
 # --- STATIC FILES SERVING (Fallback) ---
 
+# Construct absolute path to frontend directory to avoid CWD issues
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_DIR = os.path.join(BASE_DIR, "..", "frontend")
+
 # 1. Mount Static Files (JS/CSS)
-# Useful if you have explicitly /static/... urls
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 # 2. Serve Index at Root
 @app.get("/")
 async def read_index():
-    return FileResponse('frontend/index.html')
+    return FileResponse(os.path.join(FRONTEND_DIR, 'index.html'))
 
 # 3. Serve other files from frontend root (app.js, style.css)
 # MUST BE LAST to avoid shadowing API routes
 @app.get("/{filename}")
 async def serve_frontend_file(filename: str):
-    file_path = f"frontend/{filename}"
+    file_path = os.path.join(FRONTEND_DIR, filename)
     if os.path.exists(file_path) and os.path.isfile(file_path):
         return FileResponse(file_path)
     raise HTTPException(status_code=404, detail="File not found")
