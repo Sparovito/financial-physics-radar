@@ -1,17 +1,25 @@
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import numpy as np
 import pandas as pd
+import os
 from logic import MarketData, ActionPath, FourierEngine, MarketScanner
 
+app = FastAPI(title="Financial Physics API")
 
-
-# --- FINE AGGIUNTA STATIC ---
-
-from typing import List
+# Abilita CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Modelli Dati (Pydantic)
 class AnalysisRequest(BaseModel):
@@ -24,8 +32,6 @@ class AnalysisRequest(BaseModel):
 
 class ScanRequest(BaseModel):
     tickers: List[str]
-
-from logic import MarketData, ActionPath, FourierEngine, MarketScanner
 
 @app.post("/scan")
 async def scan_market(req: ScanRequest):
@@ -121,9 +127,6 @@ def health_check():
     return {"status": "running"}
 
 # --- STATIC FILES SERVING (Fallback) ---
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import os
 
 # 1. Mount Static Files (JS/CSS)
 # Useful if you have explicitly /static/... urls
