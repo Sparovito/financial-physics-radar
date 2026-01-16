@@ -269,16 +269,18 @@ window.onclick = (event) => {
 
 // --- LOGICA RADAR SCANNER ---
 const radarModal = document.getElementById('radar-modal');
-const radarSlider = document.getElementById('radar-slider');
-const radarDateLabel = document.getElementById('radar-date');
-const radarTrailsCheck = document.getElementById('radar-trails');
+// Removed global const radarSlider = ... to invoke explicitly
+// const radarDateLabel = ...
+// const radarTrailsCheck = ...
 
 // Global Cache per Timeline
 let RADAR_RESULTS_CACHE = null;
 
 function openRadar() {
     radarModal.style.display = 'flex';
-    if (document.getElementById('radar-chart').innerHTML === "") {
+    // Se è vuoto o c'è "Scansione Temporale" (loading), avvia
+    const chartDiv = document.getElementById('radar-chart');
+    if (chartDiv.innerHTML === "" || chartDiv.innerHTML.includes("Scansione")) {
         document.getElementById('radar-category').value = "Tech";
         runRadarScan();
     }
@@ -325,32 +327,46 @@ async function runRadarScan() {
         // SALVA CACHE
         RADAR_RESULTS_CACHE = data.results;
 
-        // Setup Slider
-        if (RADAR_RESULTS_CACHE.length > 0) { // Safety
-            // Explicitly fetch elements
-            const slider = document.getElementById('radar-slider');
-            const trailsCheck = document.getElementById('radar-trails');
-
-            const maxIdx = RADAR_RESULTS_CACHE[0].history.dates.length - 1;
-            slider.max = maxIdx;
-            slider.value = maxIdx;
-
-            // Attiva Listener
-            slider.oninput = updateRadarFrame;
-            trailsCheck.onchange = updateRadarFrame;
-
-            // Render Iniziale
-            updateRadarFrame();
+        if (!RADAR_RESULTS_CACHE || RADAR_RESULTS_CACHE.length === 0) {
+            chartDiv.innerHTML = `<div style="display:flex; justify-content:center; align-items:center; height:100%; color:orange;"><h3>Nessun dato trovato per questa categoria.</h3></div>`;
+            return;
         }
+
+        // Setup Slider
+        const slider = document.getElementById('radar-slider');
+        const trailsCheck = document.getElementById('radar-trails');
+
+        // Trova una history valida per settare il max
+        let maxIdx = 0;
+        for (let r of RADAR_RESULTS_CACHE) {
+            if (r.history && r.history.dates) {
+                maxIdx = r.history.dates.length - 1;
+                break;
+            }
+        }
+
+        slider.max = maxIdx;
+        slider.value = maxIdx;
+
+        // Attiva Listener
+        slider.oninput = updateRadarFrame;
+        trailsCheck.onchange = updateRadarFrame;
+
+        // CRITICAL FOR LOADING FIX: CLEAR THE LOADING MESSAGE!
+        chartDiv.innerHTML = "";
+
+        // Render Iniziale
+        updateRadarFrame();
 
     } catch (e) {
         chartDiv.innerHTML = `<h3 style="color:red">Errore: ${e.message}</h3>`;
+        console.error(e);
     }
 }
 
 // Funzione Core per il "Time Travel"
 function updateRadarFrame() {
-    if (!RADAR_RESULTS_CACHE) return;
+    if (!RADAR_RESULTS_CACHE || RADAR_RESULTS_CACHE.length === 0) return;
 
     const slider = document.getElementById('radar-slider');
     const trailsCheck = document.getElementById('radar-trails');
@@ -359,11 +375,14 @@ function updateRadarFrame() {
     const dayIdx = parseInt(slider.value);
     const showTrails = trailsCheck.checked;
 
-    // Recupera data corrente
-    // Safety check: ensure dayIdx is valid
-    if (!RADAR_RESULTS_CACHE[0].history.dates[dayIdx]) return;
-
-    const currentDate = RADAR_RESULTS_CACHE[0].history.dates[dayIdx];
+    // Recupera data corrente (Cerca la prima valida)
+    let currentDate = "N/A";
+    for (let r of RADAR_RESULTS_CACHE) {
+        if (r.history && r.history.dates && r.history.dates[dayIdx]) {
+            currentDate = r.history.dates[dayIdx];
+            break;
+        }
+    }
     dateLabel.innerText = currentDate;
 
     // 1. Dati Punti (Teste)
@@ -401,15 +420,24 @@ function updateRadarFrame() {
 
         RADAR_RESULTS_CACHE.forEach(r => {
             if (r.history && r.history.z_kin) {
-                for (let i = startIdx; i <= dayIdx; i++) {
-                    const tX = r.history.z_kin[i];
-                    const tY = r.history.z_pot[i];
-                    xTail.push(tX);
-                    yTail.push(tY);
+                // Check bounds
+                if (dayIdx < r.history.z_kin.length) {
+                    for (let i = startIdx; i <= dayIdx; i++) {
+                        // Check if data exists at i
+                        if (i < r.history.z_kin.length) {
+                            const tX = r.history.z_kin[i];
+                            const tY = r.history.z_pot[i];
+                            // Only add if not null
+                            if (tX !== null && tY !== null) {
+                                xTail.push(tX);
+                                yTail.push(tY);
+                            }
+                        }
+                    }
+                    // Interruzione linea (Gap) tra un ticker e l'altro
+                    xTail.push(null);
+                    yTail.push(null);
                 }
-                // Interruzione linea (Gap) tra un ticker e l'altro
-                xTail.push(null);
-                yTail.push(null);
             }
         });
     }
@@ -474,7 +502,11 @@ function updateRadarFrame() {
         transition: { duration: 0 } // Disabilita animazione nativa plotly per performance
     };
 
-    // Usa react per performance (aggiorna solo dati)
+    // Usa newPlot se l'elemento è vuoto (prima volta), altrimenti react
+    const chartDiv = document.getElementById('radar-chart');
+    // Poiché abbiamo pulito innerHTML in runRadarScan, newPlot è più sicuro per il primo frame.
+    // Ma updateRadarFrame sarà chiamata ripetutamente.
+    // Plotly.react gestisce entrambi i casi se il div ID esiste.
     Plotly.react('radar-chart', dataToPlot, layout, { responsive: true });
 
     // Re-bind Click
