@@ -49,15 +49,9 @@ cd ..
 echo "   -> API attiva su http://localhost:8000"
 echo "   -> PID Backend: $BACKEND_PID"
 
-# 3. Avvia Frontend (Sito Web) su porta 3000
-echo "🌍 Avvio Frontend Server (Web)..."
-cd frontend
-# Usa python per servire i file statici
-python -m http.server 3000 > /dev/null 2>&1 &
-FRONTEND_PID=$!
-cd ..
-echo "   -> Sito attivo su http://localhost:3000"
-echo "   -> PID Frontend: $FRONTEND_PID"
+# 3. Avvia Frontend (Sito Web)
+# ORA GESTITO DAL BACKEND su 8000! 
+# Non avviamo un server separato ma usiamo FastAPI per tutto.
 
 echo "----------------------------------------"
 echo "⏳ Attendo avvio servizi (5s)..."
@@ -66,7 +60,7 @@ sleep 5
 # 4. Apri il browser
 echo "🟢 Apertura Dashboard..."
 # Su Mac 'open' apre il browser di default
-open http://localhost:3000
+open http://localhost:8000
 
 echo "✅ TUTTO PRONTO!"
 echo "Lascia questa finestra aperta."
