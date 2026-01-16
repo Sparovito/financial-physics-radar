@@ -8,6 +8,12 @@ from typing import Optional, List
 import numpy as np
 import pandas as pd
 import os
+import sys
+
+# Ensure the directory containing this file is in the Python path
+# This fixes "ModuleNotFoundError: No module named 'logic'" on Railway
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from logic import MarketData, ActionPath, FourierEngine, MarketScanner
 
 app = FastAPI(title="Financial Physics API")
