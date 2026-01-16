@@ -104,31 +104,26 @@
                 <h3>📡 Market Radar (Z-Score Energetici)</h3>
                 <span class="close-modal" onclick="closeRadar()">&times;</span>
             </div>
-            <div class="radar-controls"
-                style="padding: 15px; border-bottom: 1px solid #333; display: flex; gap: 20px; align-items: center;">
-                <div style="display:flex; gap:10px;">
-                    <select id="radar-category"
-                        style="padding: 8px; background: #0f111a; color: white; border: 1px solid #333; border-radius: 4px;">
+            <div class="radar-controls">
+                <div class="radar-inputs">
+                    <select id="radar-category" class="radar-select">
                         <option value="ALL">Tutto il Mercato</option>
                         <option value="Tech">US Tech</option>
                         <option value="Crypto">Crypto</option>
                         <option value="Europe">Europa</option>
                     </select>
-                    <button onclick="runRadarScan()"
-                        style="padding: 8px 15px; background: #eba834; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">
+                    <button onclick="runRadarScan()" class="btn-scan">
                         SCANSIONA
                     </button>
                 </div>
 
                 <!-- TIMELINE CONTROLS -->
-                <div class="timeline-group"
-                    style="display:flex; gap:10px; align-items:center; border-left:1px solid #444; padding-left:20px; flex:1;">
-                    <label style="color:#aaa; font-size:0.9rem;">⏳ Timeline:</label>
-                    <input type="range" id="radar-slider" min="0" max="29" value="29" style="flex:1; cursor:pointer;">
-                    <span id="radar-date" style="color: #eba834; font-family: monospace; width: 100px;">Today</span>
+                <div class="timeline-group">
+                    <label class="label-timeline">⏳ Timeline:</label>
+                    <input type="range" id="radar-slider" min="0" max="29" value="29">
+                    <span id="radar-date">Today</span>
 
-                    <label
-                        style="color:#aaa; font-size:0.9rem; margin-left:15px; cursor:pointer; display:flex; align-items:center; gap:5px;">
+                    <label class="label-trails">
                         <input type="checkbox" id="radar-trails"> 🌠 Scia
                     </label>
                 </div>

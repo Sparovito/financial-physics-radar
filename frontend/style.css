@@ -34,6 +34,8 @@ body {
     flex-direction: column;
     gap: 20px;
     overflow-y: auto;
+    flex-shrink: 0;
+    /* Prevent shrinking */
 }
 
 .logo {
@@ -103,6 +105,24 @@ body {
     cursor: not-allowed;
 }
 
+.btn-radar {
+    margin-top: 10px;
+    background: #2d3342;
+    border: 1px solid #eba834;
+    color: #eba834;
+    width: 100%;
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.2s;
+}
+
+.btn-radar:hover {
+    background: #eba834;
+    color: #000;
+}
+
 /* Main Content */
 .main-content {
     flex: 1;
@@ -120,10 +140,13 @@ body {
     min-height: 400px;
     padding: 10px;
     position: relative;
+    flex: 1;
+    /* Fill space */
 }
 
 #chart-combined {
-    height: 95vh;
+    height: 100%;
+    width: 100%;
 }
 
 /* Status Bar / Loading */
@@ -137,8 +160,10 @@ body {
     border: 1px solid var(--border-color);
     font-size: 0.9rem;
     display: none;
+    /* JS toggles flex */
     align-items: center;
     gap: 10px;
+    z-index: 2000;
 }
 
 .spinner {
@@ -276,6 +301,7 @@ body {
     border-right: 1px solid var(--border-color);
     overflow-y: auto;
     padding: 10px;
+    flex-shrink: 0;
 }
 
 .category-item {
@@ -330,4 +356,198 @@ body {
 .ticker-name {
     font-size: 0.85rem;
     color: var(--text-secondary);
+}
+
+/* --- RADAR MODAL CONTROLS (New Classes) --- */
+.radar-controls {
+    padding: 15px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    background: #14161f;
+}
+
+.radar-inputs {
+    display: flex;
+    gap: 10px;
+}
+
+.radar-select {
+    padding: 8px;
+    background: #0f111a;
+    color: white;
+    border: 1px solid #333;
+    border-radius: 4px;
+}
+
+.btn-scan {
+    padding: 8px 15px;
+    background: #eba834;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    color: #111;
+}
+
+.timeline-group {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    border-left: 1px solid #444;
+    padding-left: 20px;
+    flex: 1;
+}
+
+.label-timeline {
+    color: #aaa;
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+#radar-slider {
+    flex: 1;
+    cursor: pointer;
+}
+
+#radar-date {
+    color: #eba834;
+    font-family: monospace;
+    width: 100px;
+    text-align: center;
+}
+
+.label-trails {
+    color: #aaa;
+    font-size: 0.9rem;
+    margin-left: 15px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+
+/* --- MOBILE RESPONSIVE --- */
+@media (max-width: 768px) {
+    body {
+        flex-direction: column;
+        height: 100%;
+        /* Auto height on mobile */
+        overflow-y: auto;
+    }
+
+    /* Stack Sidebar below content or make collapsible? 
+       Let's put Sidebar SECOND so user sees data first, then scrolls to change settings. 
+       Or maybe Sidebar FIRST to input data? 
+       Usually "Input -> Output". So Sidebar first is logical.
+    */
+    .sidebar {
+        width: 100%;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        padding: 15px;
+        order: 2;
+        /* Put chart first, controls below */
+    }
+
+    .main-content {
+        width: 100%;
+        height: 60vh;
+        /* Fixed height for chart area to ensure visibility */
+        padding: 10px;
+        order: 1;
+    }
+
+    .chart-container {
+        min-height: 50vh;
+    }
+
+    #chart-combined {
+        height: 50vh;
+    }
+
+    /* Modal Mobile */
+    .modal-content {
+        width: 95%;
+        height: 90vh;
+        max-width: none;
+    }
+
+    .modal-body {
+        flex-direction: column;
+    }
+
+    .categories-list {
+        width: 100%;
+        height: auto;
+        min-height: 50px;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: row;
+        overflow-x: auto;
+        padding-bottom: 5px;
+    }
+
+    .category-item {
+        white-space: nowrap;
+        margin-right: 15px;
+        padding: 8px 15px;
+        background: #0f111a;
+        margin-bottom: 0;
+    }
+
+    .tickers-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        padding: 10px;
+    }
+
+    /* Radar Mobile */
+    .radar-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+    }
+
+    .radar-inputs {
+        justify-content: space-between;
+    }
+
+    .radar-select {
+        flex: 1;
+    }
+
+    .timeline-group {
+        border-left: none;
+        padding-left: 0;
+        border-top: 1px solid #444;
+        padding-top: 15px;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .label-timeline {
+        text-align: left;
+    }
+
+    #radar-slider {
+        width: 100%;
+    }
+
+    .label-trails {
+        margin-left: 0;
+        margin-top: 10px;
+        justify-content: center;
+    }
+
+    #radar-date {
+        text-align: center;
+        width: 100%;
+        display: block;
+        margin: 5px 0;
+    }
 }
