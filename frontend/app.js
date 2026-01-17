@@ -442,21 +442,35 @@ function updateRadarFrame() {
                     texts.push(''); // Hide label
                 }
 
-                // MOMENTUM COLOR: Calculate 10-day Z-Kin change (smoothed)
-                const lookbackDays = 10;
-                const pastIdx = Math.max(0, dayIdx - lookbackDays);
-                const pastZKin = r.history.z_kin[pastIdx];
-                const pastZPot = r.history.z_pot[pastIdx];
+                // SLOPE COLOR: Linear regression slope on Z-Pot (minima azione)
+                const slopeWindow = 20; // 20 days window for stable slope
+                const startSlopeIdx = Math.max(0, dayIdx - slopeWindow);
 
-                // Calculate momentum as average of both dimensions' movement
-                let momentum = 0;
-                if (pastZKin !== null && pastZPot !== null) {
-                    // Use Z-Kin change primarily (kinetic = price movement speed)
-                    momentum = valX - pastZKin;
-                } else {
-                    momentum = 0; // No history
+                // Collect points for regression
+                const xReg = [];
+                const yReg = [];
+                for (let i = startSlopeIdx; i <= dayIdx; i++) {
+                    if (r.history.z_pot[i] !== null) {
+                        xReg.push(i - startSlopeIdx); // Normalize x to 0-based
+                        yReg.push(r.history.z_pot[i]);
+                    }
                 }
-                colors.push(momentum); // Positive = bullish, Negative = bearish
+
+                // Calculate slope via least squares: slope = Σ(x-x̄)(y-ȳ) / Σ(x-x̄)²
+                let slope = 0;
+                if (xReg.length >= 3) {
+                    const xMean = xReg.reduce((a, b) => a + b, 0) / xReg.length;
+                    const yMean = yReg.reduce((a, b) => a + b, 0) / yReg.length;
+
+                    let numerator = 0;
+                    let denominator = 0;
+                    for (let i = 0; i < xReg.length; i++) {
+                        numerator += (xReg[i] - xMean) * (yReg[i] - yMean);
+                        denominator += (xReg[i] - xMean) ** 2;
+                    }
+                    slope = denominator !== 0 ? numerator / denominator : 0;
+                }
+                colors.push(slope); // Positive slope = rising, Negative = falling
 
                 tickers.push(r.ticker);
 
