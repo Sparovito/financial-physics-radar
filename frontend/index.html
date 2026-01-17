@@ -75,6 +75,11 @@
             📡 MARKET RADAR
         </button>
 
+        <button class="btn-radar" onclick="openScannerModal()"
+            style="margin-top:10px; background:#1e2330; border:1px solid #00ff88; color:#00ff88; width:100%; padding:10px; border-radius:6px; cursor:pointer; font-weight:bold;">
+            🧪 SCANNER STRATEGIE
+        </button>
+
         <!-- BACKTEST SECTION -->
         <div
             style="margin-top: 20px; padding: 12px; background: linear-gradient(135deg, #1a1d2a 0%, #252836 100%); border-radius: 8px; border: 1px solid #333;">
@@ -244,6 +249,64 @@
             </div>
             <div id="trades-list" style="padding: 15px;">
                 <!-- Trades will be populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- SCANNER MODAL -->
+    <div id="scanner-modal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; 
+        background: rgba(0,0,0,0.85); z-index:20000; justify-content:center; align-items:center;">
+        <div
+            style="background: #1a1d2a; border-radius: 10px; max-width: 900px; width: 95%; max-height: 90vh; overflow: auto; display:flex; flex-direction:column;">
+
+            <!-- HEADER -->
+            <div
+                style="padding: 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0; color: #eba834;">🔬 Scanner Strategie (Massivo)</h3>
+                <button onclick="closeScannerModal()"
+                    style="background:none; border:none; color:#888; font-size:1.5rem; cursor:pointer;">&times;</button>
+            </div>
+
+            <!-- CONTROLS -->
+            <div
+                style="padding: 20px; background: #0f111a; border-bottom: 1px solid #333; display:flex; gap:15px; align-items:center;">
+                <select id="scanner-category"
+                    style="padding:10px; background:#222; color:#fff; border:1px solid #444; border-radius:4px;">
+                    <!-- Populated by JS -->
+                </select>
+                <button id="btn-start-scan" onclick="startBulkScan()"
+                    style="background: #00ff88; color: #000; padding: 10px 20px; border:none; border-radius: 4px; font-weight: bold; cursor: pointer;">
+                    🚀 AVVIA SCAN
+                </button>
+                <button id="btn-stop-scan" onclick="stopBulkScan()"
+                    style="display:none; background: #ff4444; color: #fff; padding: 10px 20px; border:none; border-radius: 4px; font-weight: bold; cursor: pointer;">
+                    ⏹️ STOP
+                </button>
+                <div style="flex:1; margin-left:15px; color:#888;">
+                    <span id="scan-status">Pronto.</span>
+                    <progress id="scan-progress" value="0" max="100"
+                        style="width:100%; height:5px; display:none;"></progress>
+                </div>
+            </div>
+
+            <!-- RESULTS TABLE -->
+            <div style="padding: 0; overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
+                    <thead style="background: #222; color: #ccc;">
+                        <tr>
+                            <th style="padding:12px;">Ticker</th>
+                            <th style="padding:12px; color:#00ff88;">✅ Win% (Live)</th>
+                            <th style="padding:12px; color:#00ff88;">📈 ROI (Live)</th>
+                            <th style="padding:12px; color:#ff9900;">✅ Win% (Frozen)</th>
+                            <th style="padding:12px; color:#ff9900;">📉 ROI (Frozen)</th>
+                            <th style="padding:12px;">Delta ROI</th>
+                            <th style="padding:12px;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scanner-results">
+                        <!-- Rows -->
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>

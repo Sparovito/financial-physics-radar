@@ -439,6 +439,12 @@ function renderCharts(data) {
     } else {
         document.getElementById('btn-view-trades').style.display = 'none';
     }
+
+    // Refresh Trades Modal if open (Live Update while scrolling)
+    const tradesModal = document.getElementById('trades-modal');
+    if (tradesModal && tradesModal.style.display !== 'none') {
+        renderTradesList();
+    }
 }
 
 // --- TRADES MODAL FUNCTIONS ---
@@ -1230,4 +1236,150 @@ function toggleFullScreen(elementId) {
             document.msExitFullscreen();
         }
     }
+}
+
+// --- SCANNER MODAL FUNCTIONS ---
+let SCAN_STOP_SIGNAL = false;
+
+function openScannerModal() {
+    const select = document.getElementById('scanner-category');
+    select.innerHTML = ''; // Reset
+
+    // Check if TICKERS_DATA exists
+    if (typeof TICKERS_DATA !== 'undefined') {
+        Object.keys(TICKERS_DATA).forEach(cat => {
+            select.innerHTML += `<option value="${cat}">${cat}</option>`;
+        });
+        select.innerHTML += '<option value="ALL">🚨 TUTTI I TITOLI (Lento)</option>';
+    }
+    document.getElementById('scanner-modal').style.display = 'flex';
+}
+
+function closeScannerModal() {
+    document.getElementById('scanner-modal').style.display = 'none';
+    stopBulkScan();
+}
+
+async function startBulkScan() {
+    const cat = document.getElementById('scanner-category').value;
+    const tableBody = document.getElementById('scanner-results');
+    const progressBar = document.getElementById('scan-progress');
+    const statusLabel = document.getElementById('scan-status');
+    const btnStart = document.getElementById('btn-start-scan');
+    const btnStop = document.getElementById('btn-stop-scan');
+
+    // UI Reset
+    tableBody.innerHTML = '';
+    progressBar.style.display = 'block';
+    progressBar.value = 0;
+    btnStart.style.display = 'none';
+    btnStop.style.display = 'inline-block';
+    SCAN_STOP_SIGNAL = false;
+
+    // Build Ticker List
+    let tickersToScan = [];
+    if (cat === 'ALL') {
+        Object.values(TICKERS_DATA).forEach(list => {
+            tickersToScan = tickersToScan.concat(list.map(t => t.symbol));
+        });
+        // Deduplicate
+        tickersToScan = [...new Set(tickersToScan)];
+    } else {
+        tickersToScan = TICKERS_DATA[cat].map(t => t.symbol);
+    }
+
+    progressBar.max = tickersToScan.length;
+
+    // Loop
+    for (let i = 0; i < tickersToScan.length; i++) {
+        if (SCAN_STOP_SIGNAL) {
+            statusLabel.innerHTML = '🛑 Scan Interrotto.';
+            break;
+        }
+
+        const ticker = tickersToScan[i];
+        statusLabel.innerHTML = `Analisi ${ticker} (${i + 1}/${tickersToScan.length})...`;
+        progressBar.value = i + 1;
+
+        try {
+            // Get Parameters (reuse current inputs or defaults)
+            const alpha = parseFloat(document.getElementById('alpha').value) || 200;
+            const beta = parseFloat(document.getElementById('beta').value) || 1.0;
+
+            // Use cache because "Frozen" calc is heavy. 
+            // If cache miss, first one will be slow, but subsequent scans fast.
+            const response = await fetch('http://127.0.0.1:8000/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ticker: ticker,
+                    alpha: alpha,
+                    beta: beta,
+                    top_k: 5,
+                    forecast_days: 60,
+                    start_date: "2023-01-01",
+                    end_date: null,
+                    use_cache: true
+                })
+            });
+
+            if (!response.ok) {
+                console.error(`Error scanning ${ticker}`);
+                continue;
+            }
+
+            const data = await response.json();
+
+            // Extract Stats
+            const liveStats = data.backtest?.stats;
+            const frozenStats = data.frozen_strategy?.stats;
+
+            if (liveStats && frozenStats) {
+                const liveRet = liveStats.total_return;
+                const frozenRet = frozenStats.total_return;
+                const delta = (liveRet - frozenRet).toFixed(2);
+
+                // Color Logic
+                const deltaColor = parseFloat(delta) > 20 ? '#ff4444' : (parseFloat(delta) < -5 ? '#00ff88' : '#888');
+
+                const row = `
+                    <tr style="border-bottom:1px solid #333;">
+                        <td style="padding:10px; font-weight:bold;">${ticker}</td>
+                        <td style="color:${liveStats.win_rate >= 50 ? '#00ff88' : '#888'}">${liveStats.win_rate}%</td>
+                        <td style="color:${liveRet > 0 ? '#00ff88' : '#ff4444'}">${liveRet}%</td>
+                        <td style="color:${frozenStats.win_rate >= 50 ? '#ff9900' : '#888'}">${frozenStats.win_rate}%</td>
+                        <td style="color:${frozenRet > 0 ? '#ff9900' : '#ff4444'}">${frozenRet}%</td>
+                        <td style="color:${deltaColor}; font-weight:bold;">${delta}%</td>
+                         <td>
+                            <button onclick="loadTickerFromScan('${ticker}')" style="background:#333; color:#fff; border:none; padding:4px 8px; cursor:pointer; font-size:0.8em; border-radius:4px;">🔍 Vedi</button>
+                        </td>
+                    </tr>
+                `;
+                tableBody.innerHTML += row;
+            }
+
+        } catch (e) {
+            console.error(e);
+        }
+
+        // Small delay to prevent UI freeze and allow stop button click
+        await new Promise(r => setTimeout(r, 10));
+    }
+
+    if (!SCAN_STOP_SIGNAL) {
+        statusLabel.innerHTML = '✅ Scan Completato!';
+    }
+    btnStart.style.display = 'inline-block';
+    btnStop.style.display = 'none';
+    progressBar.style.display = 'none';
+}
+
+function stopBulkScan() {
+    SCAN_STOP_SIGNAL = true;
+}
+
+function loadTickerFromScan(ticker) {
+    closeScannerModal();
+    document.getElementById('ticker').value = ticker;
+    runAnalysis();
 }
