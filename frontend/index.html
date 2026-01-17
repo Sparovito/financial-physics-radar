@@ -105,36 +105,37 @@
                 <h3>📡 Market Radar (Z-Score Energetici)</h3>
                 <span class="close-modal" onclick="closeRadar()">&times;</span>
             </div>
-            <div class="radar-controls">
-                <div class="radar-inputs">
-                    <select id="radar-category" class="radar-select">
-                        <option value="ALL">Tutto il Mercato</option>
-                        <option value="Tech">US Tech</option>
-                        <option value="Crypto">Crypto</option>
-                        <option value="Europe">Europa</option>
-                    </select>
-                    <button onclick="runRadarScan()" class="btn-scan">
-                        SCANSIONA
-                    </button>
-                </div>
+            <div id="radar-fullscreen-area"
+                style="display: flex; flex-direction: column; flex: 1; position: relative; background: #0f111a; height: 100%;">
 
-                <!-- TIMELINE CONTROLS -->
-                <div id="radar-fullscreen-area"
-                    style="display: flex; flex-direction: column; flex: 1; position: relative; background: #0f111a;">
-                    <button onclick="toggleFullScreen('radar-fullscreen-area')" class="btn-fullscreen"
-                        title="Full Screen">⛶</button>
-                    <div class="timeline-group" style="padding: 10px; background: #14161f;">
+                <!-- CONTROLS BAR (Inputs + Timeline) -->
+                <div class="radar-controls">
+                    <div class="radar-inputs">
+                        <select id="radar-category" class="radar-select">
+                            <option value="ALL">Tutto il Mercato</option>
+                            <option value="Tech">US Tech</option>
+                            <option value="Crypto">Crypto</option>
+                            <option value="Europe">Europa</option>
+                        </select>
+                        <button onclick="runRadarScan()" class="btn-scan">SCANSIONA</button>
+                    </div>
+
+                    <div class="timeline-group">
                         <label class="label-timeline">⏳ Timeline:</label>
                         <input type="range" id="radar-slider" min="0" max="29" value="29">
                         <span id="radar-date">Today</span>
-
                         <label class="label-trails">
                             <input type="checkbox" id="radar-trails"> 🌠 Scia
                         </label>
                     </div>
-                    <!-- RADAR CHART -->
-                    <div id="radar-chart" style="flex: 1; width:100%; background: #0f111a;"></div>
                 </div>
+
+                <!-- RADAR CHART -->
+                <div id="radar-chart" style="flex: 1; width:100%; min-height: 0; background: #0f111a;"></div>
+
+                <!-- Fullscreen Button (Absolute in top-right) -->
+                <button onclick="toggleFullScreen('radar-fullscreen-area')" class="btn-fullscreen"
+                    title="Full Screen">⛶</button>
             </div>
         </div>
     </div>
