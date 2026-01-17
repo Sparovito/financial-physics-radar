@@ -1309,9 +1309,13 @@ async function startBulkScan() {
         progressBar.value = i + 1;
 
         try {
-            // Get Parameters (reuse current inputs or defaults)
             const alpha = parseFloat(document.getElementById('alpha').value) || 200;
             const beta = parseFloat(document.getElementById('beta').value) || 1.0;
+
+            // Get Dates
+            const startDate = document.getElementById('scanner-start').value || "2023-01-01";
+            let endDate = document.getElementById('scanner-end').value;
+            if (endDate === "") endDate = null;
 
             // Use cache because "Frozen" calc is heavy. 
             // If cache miss, first one will be slow, but subsequent scans fast.
@@ -1324,8 +1328,8 @@ async function startBulkScan() {
                     beta: beta,
                     top_k: 5,
                     forecast_days: 60,
-                    start_date: "2023-01-01",
-                    end_date: null,
+                    start_date: startDate,
+                    end_date: endDate,
                     use_cache: true
                 })
             });
