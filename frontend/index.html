@@ -267,54 +267,46 @@
                     style="background:none; border:none; color:#888; font-size:1.5rem; cursor:pointer;">&times;</button>
             </div>
 
-            <!-- CONTROLS - Redesigned Card Layout -->
-            <div class="scanner-controls" style="padding: 20px; background: #0f111a; border-bottom: 1px solid #333;">
+            <!-- CONTROLS - True Inline Desktop Layout -->
+            <div class="scanner-controls"
+                style="padding: 15px 20px; background: #0f111a; border-bottom: 1px solid #333; display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
 
-                <!-- Row 1: Category -->
-                <div class="scanner-row" style="margin-bottom: 15px;">
-                    <label style="display:block; color:#888; font-size:0.8rem; margin-bottom:5px;">📁 Categoria</label>
-                    <select id="scanner-category"
-                        style="width:100%; padding:12px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:1rem;">
-                        <!-- Populated by JS -->
-                    </select>
-                </div>
+                <!-- Category Dropdown -->
+                <select id="scanner-category"
+                    style="padding:10px 15px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.95rem; min-width:160px;">
+                    <!-- Populated by JS -->
+                </select>
 
-                <!-- Row 2: Date Range -->
-                <div class="scanner-row" style="margin-bottom: 15px;">
-                    <label style="display:block; color:#888; font-size:0.8rem; margin-bottom:5px;">📅 Periodo di
-                        Analisi</label>
-                    <div style="display:flex; gap:10px;">
-                        <div style="flex:1;">
-                            <input type="date" id="scanner-start" value="2023-01-01"
-                                style="width:100%; padding:12px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.9rem;">
-                        </div>
-                        <span style="color:#666; display:flex; align-items:center;">→</span>
-                        <div style="flex:1;">
-                            <input type="date" id="scanner-end" placeholder="Oggi"
-                                style="width:100%; padding:12px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.9rem;">
-                        </div>
-                    </div>
-                </div>
+                <!-- Date Start -->
+                <input type="date" id="scanner-start" value="2023-01-01"
+                    style="padding:10px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.9rem;">
 
-                <!-- Row 3: Action Buttons -->
-                <div class="scanner-row" style="display:flex; gap:10px;">
-                    <button id="btn-start-scan" onclick="startBulkScan()"
-                        style="flex:1; background:linear-gradient(135deg, #00ff88, #00cc66); color:#000; padding:14px; border:none; border-radius:8px; font-weight:bold; font-size:1rem; cursor:pointer; box-shadow: 0 4px 15px rgba(0,255,136,0.3);">
-                        🚀 AVVIA SCANSIONE
-                    </button>
-                    <button id="btn-stop-scan" onclick="stopBulkScan()"
-                        style="display:none; flex:1; background:linear-gradient(135deg, #ff4444, #cc3333); color:#fff; padding:14px; border:none; border-radius:8px; font-weight:bold; font-size:1rem; cursor:pointer;">
-                        ⏹️ STOP
-                    </button>
+                <!-- Arrow -->
+                <span style="color:#666;">→</span>
+
+                <!-- Date End -->
+                <input type="date" id="scanner-end"
+                    style="padding:10px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.9rem;">
+
+                <!-- Start Button -->
+                <button id="btn-start-scan" onclick="startBulkScan()"
+                    style="background:linear-gradient(135deg, #00ff88, #00cc66); color:#000; padding:10px 20px; border:none; border-radius:6px; font-weight:bold; font-size:0.95rem; cursor:pointer; white-space:nowrap;">
+                    🚀 AVVIA SCAN
+                </button>
+
+                <!-- Stop Button (Hidden by default) -->
+                <button id="btn-stop-scan" onclick="stopBulkScan()"
+                    style="display:none; background:#ff4444; color:#fff; padding:10px 20px; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">
+                    ⏹️ STOP
+                </button>
+
+                <!-- Status (inline on desktop) -->
+                <div style="flex:1; text-align:right; min-width:150px;">
+                    <span id="scan-status" style="color:#eba834; font-weight:500;">📊 Pronto.</span>
                 </div>
             </div>
 
-            <!-- STATUS BAR - Redesigned -->
-            <div
-                style="padding: 12px 20px; background: #151720; border-bottom: 1px solid #333; display:flex; align-items:center; gap:10px;">
-                <span style="font-size:1.2rem;">📊</span>
-                <span id="scan-status" style="font-weight:bold; color:#eba834; flex:1;">Pronto per la scansione.</span>
-            </div>
+            <!-- Progress Bar -->
             <progress id="scan-progress" value="0" max="100"
                 style="width:100%; height:4px; display:none; border:none; background:#222;"></progress>
 

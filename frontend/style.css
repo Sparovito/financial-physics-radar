@@ -698,54 +698,26 @@ body {
 /* --- SCANNER MODAL STYLES --- */
 .scanner-controls {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
 }
 
-.scanner-row {
-    width: 100%;
-}
-
-/* Desktop: True Single-Line Inline Layout */
-@media (min-width: 769px) {
+/* Mobile: Stack vertically */
+@media (max-width: 768px) {
     .scanner-controls {
-        flex-direction: row !important;
-        align-items: center !important;
-        gap: 15px !important;
-        padding: 15px 20px !important;
+        flex-direction: column;
+        align-items: stretch;
     }
 
-    /* Hide labels on desktop - controls are self-explanatory */
-    .scanner-controls label {
-        display: none !important;
+    .scanner-controls select,
+    .scanner-controls input,
+    .scanner-controls button {
+        width: 100% !important;
     }
 
-    .scanner-row {
-        flex: 0 0 auto;
-        margin-bottom: 0 !important;
-    }
-
-    /* Category Dropdown */
-    .scanner-row:first-child {
-        flex: 0 0 180px;
-    }
-
-    /* Date Range - Inline */
-    .scanner-row:nth-child(2) {
-        flex: 0 0 auto;
-    }
-
-    .scanner-row:nth-child(2)>div {
-        gap: 8px !important;
-    }
-
-    /* Button - Compact */
-    .scanner-row:last-child {
-        flex: 0 0 auto;
-    }
-
-    .scanner-row:last-child button {
-        padding: 12px 25px !important;
-        font-size: 0.9rem !important;
+    .scanner-controls>div {
+        width: 100%;
     }
 }
 
