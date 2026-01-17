@@ -743,11 +743,17 @@ progress::-webkit-progress-value {
     /* We DO NOT want display: block on table elements as it breaks column alignment */
 
     /* Compact Table Text - Uniform padding is CRITICAL for alignment */
+    .scanner-table {
+        min-width: 600px !important;
+        /* Force scrolling, prevent squashing */
+    }
+
     .scanner-table td,
     .scanner-table th {
         padding: 10px 8px !important;
         font-size: 0.8rem !important;
         white-space: nowrap;
+        box-sizing: border-box;
     }
 
     /* Modal full width on mobile */
