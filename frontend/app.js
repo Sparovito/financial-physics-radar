@@ -68,20 +68,43 @@ async function runAnalysis() {
 }
 
 // Shift date by N days and re-run analysis
+// Keyboard Listener for Navigation
+document.addEventListener('keydown', (e) => {
+    // Ignore if typing in text inputs (except end-date)
+    const active = document.activeElement;
+    const isInput = (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.id !== 'end-date';
+    if (isInput) return;
+
+    if (e.key === 'ArrowLeft') shiftDate(-1);
+    if (e.key === 'ArrowRight') shiftDate(1);
+});
+
+let isThrottled = false;
+const THROTTLE_DELAY = 50; // Fast updates (20fps cap)
+
+// Shift date by N days and re-run analysis (Throttled)
 function shiftDate(days) {
     const dateInput = document.getElementById('end-date');
-    let currentDate = dateInput.value ? new Date(dateInput.value) : new Date();
+    if (!dateInput.value) {
+        // Init to today if empty
+        dateInput.value = new Date().toISOString().split('T')[0];
+    }
 
+    let currentDate = new Date(dateInput.value);
     currentDate.setDate(currentDate.getDate() + days);
 
-    // Format as YYYY-MM-DD
+    // Update Input Immediately (Visual Feedback)
     const year = currentDate.getFullYear();
     const month = String(currentDate.getMonth() + 1).padStart(2, '0');
     const day = String(currentDate.getDate()).padStart(2, '0');
     dateInput.value = `${year}-${month}-${day}`;
 
-    // Re-run analysis
-    runAnalysis();
+    // Throttle calls to runAnalysis
+    if (!isThrottled) {
+        runAnalysis();
+        isThrottled = true;
+        setTimeout(() => { isThrottled = false; }, THROTTLE_DELAY);
+    }
 }
 
 function renderCharts(data) {
