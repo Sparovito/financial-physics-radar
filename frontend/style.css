@@ -617,3 +617,10 @@ body {
     border-color: #ff4444;
     /* Visual feedback: Red border to close */
 }
+
+/* --- FORCE HIDE LEGEND ON MOBILE --- */
+@media (max-width: 1024px) {
+    .js-plotly-plot .legend {
+        display: none !important;
+    }
+}
