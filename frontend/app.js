@@ -638,16 +638,49 @@ function updateRadarFrame() {
                 // Focus Mode: Only show label for focused ticker
                 if (FOCUSED_TICKER === null || r.ticker === FOCUSED_TICKER) {
                     const price = r.history.prices && r.history.prices[dayIdx];
+                    const zKin = r.history.z_kin[dayIdx];
                     const zSlopeVal = r.history.z_slope && r.history.z_slope[dayIdx];
 
                     if (FOCUSED_TICKER && price) {
-                        // Build label with price and Z-Slope as colored percentage
                         let label = `${r.ticker} [${price.toFixed(2)}]`;
-                        if (zSlopeVal !== null && zSlopeVal !== undefined) {
-                            // Z-Slope shown as percentage with sign, will be colored via textfont
-                            const sign = zSlopeVal >= 0 ? '+' : '';
-                            label += ` ${sign}${(zSlopeVal * 10).toFixed(1)}%`;
+
+                        // Calculate actual Trade P/L % using same logic as backtest
+                        // Find entry price: scan backwards to find when z_kin crossed from <0 to >0
+                        let tradePnl = 0;
+                        if (zKin > 0) {
+                            // We're "in a trade" - find entry price
+                            let entryPrice = null;
+                            let entryDirection = null;
+
+                            for (let j = dayIdx; j >= 0; j--) {
+                                const prevZKin = r.history.z_kin[j];
+                                if (prevZKin === null) continue;
+
+                                if (prevZKin <= 0 && j < dayIdx) {
+                                    // Found the entry point (day after this was entry)
+                                    entryPrice = r.history.prices[j + 1];
+                                    entryDirection = (r.history.z_slope[j + 1] || 0) >= 0 ? 'LONG' : 'SHORT';
+                                    break;
+                                } else if (j === 0) {
+                                    // Started in trade from beginning
+                                    entryPrice = r.history.prices[0];
+                                    entryDirection = (r.history.z_slope[0] || 0) >= 0 ? 'LONG' : 'SHORT';
+                                }
+                            }
+
+                            if (entryPrice && entryPrice > 0) {
+                                if (entryDirection === 'LONG') {
+                                    tradePnl = ((price - entryPrice) / entryPrice) * 100;
+                                } else {
+                                    tradePnl = ((entryPrice - price) / entryPrice) * 100;
+                                }
+                            }
                         }
+                        // If zKin <= 0, tradePnl stays 0 (not invested)
+
+                        const sign = tradePnl >= 0 ? '+' : '';
+                        label += ` ${sign}${tradePnl.toFixed(1)}%`;
+
                         texts.push(label);
                     } else {
                         texts.push(r.ticker);
@@ -662,6 +695,7 @@ function updateRadarFrame() {
                     ? r.history.z_slope[dayIdx]
                     : 0;
                 colors.push(zSlope); // Positive = accelerating up, Negative = decelerating/falling
+
 
                 tickers.push(r.ticker);
 
