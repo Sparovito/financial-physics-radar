@@ -225,7 +225,7 @@ function renderCharts(data) {
             bgcolor: 'rgba(0,0,0,0)'
         },
         margin: isMobile ?
-            { t: 60, r: 30, l: 30, b: 150 } : // Huge bottom margin for multi-line legend
+            { t: 60, r: 10, l: 30, b: 40 } : // Reduced margins, no legend space needed
             { t: 60, r: 50, l: 50, b: 40 },
 
         hovermode: 'x unified'
@@ -233,17 +233,14 @@ function renderCharts(data) {
 
     // FORCE HEIGHT ON MOBILE (Bypass CSS Cache)
     if (isMobile) {
-        layout.height = 1200;
-        layout.legend = {
-            orientation: 'h',
-            x: 0,
-            y: -0.1, // Push below x-axis
-            xanchor: 'left',
-            font: { size: 9 }, // Smaller font
-            itemwidth: 80, // Wrapping
-            bgcolor: 'rgba(0,0,0,0)'
-        };
+        layout.height = 1400; // Increased to 1400px ("allunga il box")
+        // No legend overrides needed since we hide it via CSS and showlegend: !isMobile
     }
+
+    const config = {
+        responsive: true,
+        displayModeBar: !isMobile // HIDE MODE BAR ON MOBILE
+    };
 
     Plotly.newPlot('chart-combined', [
         tracePrice, tracePath, traceFund, traceForecast,
