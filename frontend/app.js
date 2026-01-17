@@ -231,9 +231,9 @@ function renderCharts(data) {
         hovermode: 'x unified'
     };
 
-    // FORCE HEIGHT ON MOBILE (Bypass CSS Cache)
+    // FORCE HEIGHT ON MOBILE (Use viewport height)
     if (isMobile) {
-        layout.height = 1400; // Increased to 1400px ("allunga il box")
+        layout.height = Math.max(window.innerHeight * 0.8, 600); // 80% of viewport, min 600px
         // No legend overrides needed since we hide it via CSS and showlegend: !isMobile
     }
 

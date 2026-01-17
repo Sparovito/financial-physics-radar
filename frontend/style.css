@@ -457,24 +457,22 @@ body {
     .main-content {
         width: 100%;
         height: auto;
-        /* REMOVED FIXED HEIGHT - LET IT GROW */
-        min-height: 1500px;
-        /* FORCE TALL */
+        min-height: 85vh;
+        /* Use viewport height, not fixed px */
         padding: 10px;
         order: 1;
     }
 
     .chart-container {
-        min-height: 1400px;
-        /* MATCH PLOTLY HEIGHT */
+        min-height: 80vh;
+        /* Fill most of viewport */
         height: auto;
     }
 
     #chart-combined {
-        min-height: 1400px;
-        /* FORCE TALL */
+        min-height: 75vh;
+        /* Nearly full viewport */
         height: auto !important;
-        /* Vertically spacious for mobile scrolling */
     }
 
     /* Modal Mobile */
