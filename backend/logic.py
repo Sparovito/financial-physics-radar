@@ -403,15 +403,6 @@ class MarketScanner:
             return None
 
 # --- 5. Backtesting Strategy ---
-def backtest_strategy(prices, z_kinetic, z_slope, dates):
-    """
-    Simulates a trading strategy based on Z-Score signals.
-    
-    Entry Rules:
-    - LONG when z_kinetic > 0 AND z_slope > 0 (momentum up)
-    - SHORT when z_kinetic > 0 AND z_slope < 0 (momentum down)
-    
-    Exit Rules:
 def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list, initial_capital=1000.0, start_date=None, end_date=None):
     """
     Esegue il backtest della strategia basata su Z-Scores.
