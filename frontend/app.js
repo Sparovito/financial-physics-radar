@@ -621,6 +621,7 @@ function updateRadarFrame() {
     const yHead = [];
     const texts = [];
     const colors = [];
+    const textColors = []; // Text color per point (green/red/white based on P/L)
     const tickers = [];
     const opacities = []; // Per-point opacity for focus mode
 
@@ -690,12 +691,17 @@ function updateRadarFrame() {
                         const sign = tradePnl >= 0 ? '+' : '';
                         label += ` ${sign}${tradePnl.toFixed(1)}%`;
 
+                        // Color based on P/L: green if positive, red if negative, white if 0
+                        const textColor = tradePnl > 0 ? '#00ff88' : (tradePnl < 0 ? '#ff4444' : '#ffffff');
                         texts.push(label);
+                        textColors.push(textColor);
                     } else {
                         texts.push(r.ticker);
+                        textColors.push('#ffffff'); // Default white
                     }
                 } else {
                     texts.push(''); // Hide label
+                    textColors.push('#ffffff');
                 }
 
                 // SLOPE COLOR: Use backend-calculated Z-Slope (dX of minima azione path)
@@ -760,6 +766,10 @@ function updateRadarFrame() {
         mode: 'markers+text',
         textposition: 'top center',
         texttemplate: '%{text}',
+        textfont: {
+            color: textColors,
+            size: 14
+        },
         marker: {
             size: FOCUSED_TICKER ?
                 texts.map(t => t === FOCUSED_TICKER ? 20 : 12) : 15, // Bigger if focused
