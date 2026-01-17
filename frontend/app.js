@@ -434,7 +434,14 @@ function updateRadarFrame() {
             if (valX !== null && valY !== null) {
                 xHead.push(valX);
                 yHead.push(valY);
-                texts.push(r.ticker);
+
+                // Focus Mode: Only show label for focused ticker
+                if (FOCUSED_TICKER === null || r.ticker === FOCUSED_TICKER) {
+                    texts.push(r.ticker); // Show label
+                } else {
+                    texts.push(''); // Hide label
+                }
+
                 colors.push(valY);
                 tickers.push(r.ticker);
 
