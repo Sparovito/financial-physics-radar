@@ -327,20 +327,60 @@ async function runRadarScan() {
     if (category === "ALL") {
         tickersToScan = Object.values(TICKERS_DATA).flat().map(t => t.symbol);
     } else if (category === "Tech") {
-        tickersToScan = TICKERS_DATA["💻 US Tech & Growth"].map(t => t.symbol);
+        tickersToScan = TICKERS_DATA["💻 US Tech"].map(t => t.symbol);
     } else if (category === "Crypto") {
         tickersToScan = TICKERS_DATA["🪙 Crypto"].map(t => t.symbol);
     } else if (category === "Europe") {
-        tickersToScan = TICKERS_DATA["🇪🇺 Europe"].map(t => t.symbol);
+        // Combine all European categories
+        const euCats = ["🇬🇧 UK (FTSE)", "🇩🇪 Germany (DAX)", "🇫🇷 France (CAC 40)", "🇮🇹 Italy (MIB)"];
+        euCats.forEach(cat => {
+            if (TICKERS_DATA[cat]) tickersToScan.push(...TICKERS_DATA[cat].map(t => t.symbol));
+        });
     } else {
-        tickersToScan = TICKERS_DATA["Highlights"].map(t => t.symbol);
+        tickersToScan = TICKERS_DATA["⭐ Highlights"]?.map(t => t.symbol) || [];
     }
 
     tickersToScan = [...new Set(tickersToScan)];
+    const totalTickers = tickersToScan.length;
 
-    chartDiv.innerHTML = `<div style="display:flex; height:100%; align-items:center; justify-content:center; color:#eba834;">
-        <h3>📡 Scansione Temporale di ${tickersToScan.length} titoli...</h3>
-    </div>`;
+    // 2. CHECK DAILY CACHE
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const cacheKey = `radar_cache_${category}_${today}`;
+
+    try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            console.log("📦 Using cached radar data from today");
+            RADAR_RESULTS_CACHE = JSON.parse(cached);
+            setupRadarAfterLoad();
+            return;
+        }
+    } catch (e) {
+        console.warn("Cache read failed:", e);
+    }
+
+    // 3. Show Progress Bar
+    chartDiv.innerHTML = `
+        <div style="display:flex; flex-direction:column; height:100%; align-items:center; justify-content:center; color:#eba834; gap: 15px;">
+            <h3>📡 Scansione di ${totalTickers} titoli...</h3>
+            <div style="width: 80%; max-width: 400px; background: #1a1d2a; border-radius: 10px; overflow: hidden; height: 20px;">
+                <div id="radar-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #eba834, #ffd700); transition: width 0.3s;"></div>
+            </div>
+            <span id="radar-progress-text" style="font-size: 0.9rem; color: #888;">Avvio scansione...</span>
+        </div>`;
+
+    // Simulate progress while waiting (real progress would require server-sent events)
+    let fakeProgress = 0;
+    const progressBar = document.getElementById('radar-progress-bar');
+    const progressText = document.getElementById('radar-progress-text');
+
+    const progressInterval = setInterval(() => {
+        if (fakeProgress < 90) {
+            fakeProgress += Math.random() * 10;
+            if (progressBar) progressBar.style.width = `${Math.min(fakeProgress, 90)}%`;
+            if (progressText) progressText.innerText = `Analisi in corso... ${Math.floor(fakeProgress)}%`;
+        }
+    }, 500);
 
     try {
         const response = await fetch(`${API_URL}/scan`, {
@@ -349,47 +389,69 @@ async function runRadarScan() {
             body: JSON.stringify({ tickers: tickersToScan })
         });
 
+        clearInterval(progressInterval);
+        if (progressBar) progressBar.style.width = '100%';
+        if (progressText) progressText.innerText = 'Elaborazione completata!';
+
         const data = await response.json();
         if (data.status !== "ok") throw new Error(data.detail);
 
         // SALVA CACHE
         RADAR_RESULTS_CACHE = data.results;
 
+        // Save to localStorage for today
+        try {
+            localStorage.setItem(cacheKey, JSON.stringify(RADAR_RESULTS_CACHE));
+            console.log("💾 Radar data cached for today");
+        } catch (e) {
+            console.warn("Cache write failed (maybe too large):", e);
+        }
+
         if (!RADAR_RESULTS_CACHE || RADAR_RESULTS_CACHE.length === 0) {
             chartDiv.innerHTML = `<div style="display:flex; justify-content:center; align-items:center; height:100%; color:orange;"><h3>Nessun dato trovato per questa categoria.</h3></div>`;
             return;
         }
 
-        // Setup Slider
-        const slider = document.getElementById('radar-slider');
-        const trailsCheck = document.getElementById('radar-trails');
-
-        // Trova una history valida per settare il max
-        let maxIdx = 0;
-        for (let r of RADAR_RESULTS_CACHE) {
-            if (r.history && r.history.dates) {
-                maxIdx = r.history.dates.length - 1;
-                break;
-            }
-        }
-
-        slider.max = maxIdx;
-        slider.value = maxIdx;
-
-        // Attiva Listener
-        slider.oninput = updateRadarFrame;
-        trailsCheck.onchange = updateRadarFrame;
-
-        // CRITICAL FOR LOADING FIX: CLEAR THE LOADING MESSAGE!
-        chartDiv.innerHTML = "";
-
-        // Render Iniziale
-        updateRadarFrame();
+        setupRadarAfterLoad();
 
     } catch (e) {
+        clearInterval(progressInterval);
         chartDiv.innerHTML = `<h3 style="color:red">Errore: ${e.message}</h3>`;
         console.error(e);
     }
+}
+
+// Helper function to setup radar after data is loaded (either from cache or API)
+function setupRadarAfterLoad() {
+    const chartDiv = document.getElementById('radar-chart');
+    const slider = document.getElementById('radar-slider');
+    const trailsCheck = document.getElementById('radar-trails');
+
+    // Trova una history valida per settare il max
+    let maxIdx = 0;
+    for (let r of RADAR_RESULTS_CACHE) {
+        if (r.history && r.history.dates) {
+            maxIdx = r.history.dates.length - 1;
+            break;
+        }
+    }
+
+    slider.max = maxIdx;
+    slider.value = maxIdx;
+
+    // Attiva Listener
+    slider.oninput = updateRadarFrame;
+    trailsCheck.onchange = updateRadarFrame;
+
+    // CRITICAL: Clear loading message
+    chartDiv.innerHTML = "";
+
+    // Reset focus when loading new data
+    FOCUSED_TICKER = null;
+    updateAnalyzeButton();
+
+    // Render Iniziale
+    updateRadarFrame();
 }
 
 // Funzione Core per il "Time Travel"
