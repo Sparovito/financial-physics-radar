@@ -475,6 +475,26 @@ def backtest_strategy(prices, z_kinetic, z_slope, dates):
                 # Still in position, show current P/L
                 trade_pnl_curve.append(round(current_pnl, 2))
     
+    # Check for OPEN Position at the end
+    if in_position:
+        # Calculate final Unrealized P/L
+        final_price = prices[-1]
+        
+        if position_direction == 'LONG':
+            unrealized_pnl = ((final_price - entry_price) / entry_price) * 100
+        else:
+            unrealized_pnl = ((entry_price - final_price) / entry_price) * 100
+            
+        trades.append({
+            "entry_date": entry_date,
+            "exit_date": "OPEN", # Marker specific
+            "direction": position_direction,
+            "entry_price": round(entry_price, 2),
+            "exit_price": round(final_price, 2),
+            "pnl_pct": round(unrealized_pnl, 2),
+            "capital_after": round(capital, 2) # Capital not updated yet
+        })
+    
     # Calculate stats
     if len(trades) > 0:
         wins = sum(1 for t in trades if t['pnl_pct'] > 0)

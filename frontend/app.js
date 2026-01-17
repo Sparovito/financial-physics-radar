@@ -496,16 +496,34 @@ function renderTradesList() {
     const tradesReversed = [...trades].reverse();
 
     tradesReversed.forEach(t => {
+        const isOpen = t.exit_date === 'OPEN';
+
+        // Custom styling for OPEN trades
+        const rowStyle = isOpen
+            ? 'border-bottom: 1px solid #444; background: rgba(255, 153, 0, 0.15); box-shadow: 0 0 5px rgba(255,153,0,0.2) inset;'
+            : 'border-bottom: 1px solid #222;';
+
+        const exitDateDisplay = isOpen
+            ? '<span style="color: #ff9900; font-weight: bold; border: 1px solid #ff9900; padding: 2px 6px; border-radius: 4px; font-size: 0.8em;">⚠️ IN CORSO</span>'
+            : `${t.exit_date}`;
+
+        const exitPriceDisplay = isOpen
+            ? `<span style="color: #fff;">${t.exit_price}</span> <small>(att)</small>`
+            : t.exit_price;
+
         const pnlColor = t.pnl_pct >= 0 ? '#00ff88' : '#ff4444';
         const pnlSign = t.pnl_pct >= 0 ? '+' : '';
         const typeEmoji = t.direction === 'LONG' ? '🟢' : '🔴';
 
-        html += `<tr style="border-bottom: 1px solid #222;">
-            <td style="padding: 8px; color: #aaa;">${t.entry_date}<br><small>→ ${t.exit_date}</small></td>
+        html += `<tr style="${rowStyle}">
+            <td style="padding: 8px; color: #aaa;">${t.entry_date}<br><small>→ ${exitDateDisplay}</small></td>
             <td style="padding: 8px; text-align: center;">${typeEmoji} ${t.direction}</td>
             <td style="padding: 8px; text-align: right; color: #ccc;">${t.entry_price}</td>
-            <td style="padding: 8px; text-align: right; color: #ccc;">${t.exit_price}</td>
-            <td style="padding: 8px; text-align: right; color: ${pnlColor}; font-weight: bold;">${pnlSign}${t.pnl_pct}%</td>
+            <td style="padding: 8px; text-align: right; color: #ccc;">${exitPriceDisplay}</td>
+            <td style="padding: 8px; text-align: right; color: ${pnlColor}; font-weight: bold;">
+                ${pnlSign}${t.pnl_pct}%
+                ${isOpen ? '<br><small style="font-weight:normal; opacity:0.8;">(open)</small>' : ''}
+            </td>
         </tr>`;
     });
 
