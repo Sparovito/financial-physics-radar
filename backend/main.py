@@ -61,31 +61,90 @@ async def analyze_stock(req: AnalysisRequest):
     try:
         print(f"Ricevuta richiesta: {req.dict()}")
         
-        # 1. Scarica Dati (con Caching Opzionale)
+        # 1. Scarica Dati & Gestione Cache Avanzata
         px = None
+        full_frozen_data = None
         
-        # SeCache attivata e presente, usa dati in memoria
+        # Check Cache
         if req.use_cache and req.ticker in TICKER_CACHE:
             print(f"⚡ CACHE HIT: Uso dati in memoria per {req.ticker}")
-            px = TICKER_CACHE[req.ticker]
+            cached_obj = TICKER_CACHE[req.ticker]
+            px = cached_obj["px"]
+            full_frozen_data = cached_obj.get("frozen", None)
         else:
-            # Scarica storia COMPLETA (anche se end_date è settata, scarichiamo tutto per cachare)
+            # Scarica storia COMPLETA
             print(f"🌐 API FETCH: Scarico dati freschi per {req.ticker}...")
-            # Ignore end_date for fetching to populate full cache
             md = MarketData(req.ticker, start_date=req.start_date, end_date=None)
-            px = md.fetch() # Pandas Series
+            px = md.fetch()
             
-            # Salva in cache
-            TICKER_CACHE[req.ticker] = px
+            # --- PRE-CALCOLO FROZEN HISTORY (Heavy Computation) ---
+            print(f"🧊 Pre-calcolo Frozen History completa (può richiedere tempo)...")
+            SAMPLE_EVERY = 1
+            MIN_POINTS = 100
             
-        # Apply end_date Truncation (Simulation Logic)
+            f_kin, f_pot, f_dates = [], [], []
+            n_total = len(px)
+            
+            for t in range(MIN_POINTS, n_total, SAMPLE_EVERY):
+                px_t = px.iloc[:t+1]
+                try:
+                    mech_t = ActionPath(px_t, alpha=req.alpha, beta=req.beta)
+                    # Save RAW DENSITY
+                    f_kin.append(round(float(mech_t.kin_density.iloc[-1]), 2))
+                    f_pot.append(round(float(mech_t.pot_density.iloc[-1]), 2))
+                    f_dates.append(px.index[t].strftime('%Y-%m-%d'))
+                except:
+                    continue
+            
+            full_frozen_data = {
+                "dates": f_dates,
+                "kin": f_kin,
+                "pot": f_pot
+            }
+            
+            # Salva tutto in cache
+            TICKER_CACHE[req.ticker] = {
+                "px": px,
+                "frozen": full_frozen_data
+            }
+
+        # --- SIMULATION TIME TRAVEL (Slicing istantaneo) ---
         if req.end_date:
             end_ts = pd.Timestamp(req.end_date)
-            # Filter the cached/fetched full series
+            # Slice Prices
             px = px[px.index <= end_ts]
-            print(f"🕐 Simulating past: data truncated to {req.end_date}, {len(px)} points remaining")
+            
+            # Slice Frozen Data
+            # Troviamo l'indice fin dove arrivare nei dati frozen
+            target_date_str = req.end_date
+            
+            # Filtro rapido liste (date frozen sono già sorted)
+            trunc_dates = []
+            trunc_kin = []
+            trunc_pot = []
+            
+            # Ottimizzazione: bisect o semplice loop finché <= date
+            # Dato che sono stringhe YYYY-MM-DD, confronto lessicografico funziona
+            for i, d in enumerate(full_frozen_data["dates"]):
+                if d <= target_date_str:
+                    trunc_dates.append(d)
+                    trunc_kin.append(full_frozen_data["kin"][i])
+                    trunc_pot.append(full_frozen_data["pot"][i])
+                else:
+                    break # Stop appena superiamo la data
+            
+            frozen_dates = trunc_dates
+            frozen_z_kin = trunc_kin
+            frozen_z_pot = trunc_pot
+            
+            print(f"🕐 Simulating past: data truncated to {req.end_date}")
+        else:
+            # Dati completi
+            frozen_dates = full_frozen_data["dates"]
+            frozen_z_kin = full_frozen_data["kin"]
+            frozen_z_pot = full_frozen_data["pot"]
         
-        # 2. Calcola Minima Azione
+        # 2. Calcola Minima Azione (Live su dati tranciati)
         mechanics = ActionPath(px, alpha=req.alpha, beta=req.beta)
         
         # 3. Calcola Fourier
@@ -93,9 +152,6 @@ async def analyze_stock(req: AnalysisRequest):
         future_idx, future_vals = fourier.reconstruct_scenario(future_horizon=req.forecast_days)
         
         # 4. Prepara Risposta JSON
-        # Convertiamo tutto in liste/stringhe per JSON
-        
-        # Date (unificate nel formato YYYY-MM-DD)
         dates_historical = px.index.strftime('%Y-%m-%d').tolist()
         
         # Prezzi
@@ -112,51 +168,16 @@ async def analyze_stock(req: AnalysisRequest):
         slope_line = mechanics.dX.values.tolist()
         z_residuo_line = mechanics.z_residuo.values.tolist()
         
-        # ROC (Rate of Change) - ISTANTANEO, no look-ahead bias
-        # ROC = (price[t] - price[t-n]) / price[t-n] * 100
-        ROC_PERIOD = 20  # 20 giorni lookback
+        # ROC (Rate of Change)
+        ROC_PERIOD = 20
         roc = ((px - px.shift(ROC_PERIOD)) / px.shift(ROC_PERIOD) * 100).fillna(0)
         roc_line = roc.values.tolist()
         
-        # Z-Score del ROC (rolling per consistenza)
+        # Z-Score del ROC
         roll_roc_mean = roc.rolling(window=252, min_periods=20).mean()
         roll_roc_std = roc.rolling(window=252, min_periods=20).std()
         z_roc = ((roc - roll_roc_mean) / (roll_roc_std + 1e-6)).fillna(0)
         z_roc_line = z_roc.values.tolist()
-        
-        # 6. FROZEN Z-SCORES (Point-in-Time) - Expanding Window
-        # Calculate what z_kin would have been at each point using ONLY data up to that point
-        # SAMPLE_EVERY=1 ensures daily precision (slower but accurate)
-        SAMPLE_EVERY = 1
-        MIN_POINTS = 100  # Minimum data points needed
-        
-        frozen_z_kin = []
-        frozen_z_pot = []
-        frozen_dates = []
-        
-        n = len(px)
-        for t in range(MIN_POINTS, n, SAMPLE_EVERY):
-            # Truncate data to day t (only past data)
-            px_t = px.iloc[:t+1]
-            
-            try:
-                # Recalculate mechanics with truncated data
-                mech_t = ActionPath(px_t, alpha=req.alpha, beta=req.beta)
-                kin_t = mech_t.kin_density
-                pot_t = mech_t.pot_density
-                
-                # Save RAW DENSITY (Frozen at time t) instead of Z-Score
-                # This ensures we compare apples-to-apples with the main Energy chart
-                raw_kin_t = kin_t.iloc[-1]
-                raw_pot_t = pot_t.iloc[-1]
-                
-                frozen_z_kin.append(round(float(raw_kin_t), 2))
-                frozen_z_pot.append(round(float(raw_pot_t), 2))
-                frozen_dates.append(px.index[t].strftime('%Y-%m-%d'))
-            except:
-                continue
-        
-        print(f"📊 Frozen Z-Scores calculated: {len(frozen_dates)} points")
         
         # 5. Backtest Strategy
         # Calculate ROLLING Z-Scores to avoid look-ahead bias (252-day window)
