@@ -695,50 +695,33 @@ body {
     }
 }
 
-/* --- MOBILE OPTIMIZATION SPRINT --- */
+/* --- SCANNER MODAL STYLES --- */
 .scanner-controls {
-    padding: 20px;
-    background: #0f111a;
-    border-bottom: 1px solid #333;
     display: flex;
-    gap: 15px;
-    align-items: center;
+    flex-direction: column;
 }
 
+.scanner-row {
+    width: 100%;
+}
+
+/* Progress bar styling */
+progress {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+progress::-webkit-progress-bar {
+    background-color: #222;
+}
+
+progress::-webkit-progress-value {
+    background: linear-gradient(90deg, #00ff88, #eba834);
+    border-radius: 2px;
+}
+
+/* Mobile Adjustments */
 @media (max-width: 768px) {
-
-    /* Scanner Controls Stack */
-    .scanner-controls {
-        flex-direction: column !important;
-        align-items: stretch !important;
-        gap: 12px !important;
-        padding: 15px !important;
-    }
-
-    /* Hide the divider line on mobile */
-    .scanner-separator {
-        display: none !important;
-    }
-
-    .scanner-controls select,
-    .scanner-controls input[type="date"],
-    .scanner-controls button {
-        width: 100% !important;
-        margin: 0 !important;
-        padding: 12px !important;
-        /* Larger touch target */
-        height: auto !important;
-    }
-
-    .scanner-controls>div {
-        width: 100%;
-        display: flex;
-        gap: 10px;
-    }
-
-    .scanner-controls>div>div {
-        flex: 1;
-    }
 
     /* Table Horizontal Scroll */
     #scanner-results,
@@ -748,31 +731,18 @@ body {
         white-space: nowrap;
     }
 
-    /* Smaller Text in Tables */
-    td,
-    th {
-        padding: 10px 8px !important;
-        /* More breathing room */
-        font-size: 0.85rem !important;
-        white-space: nowrap;
+    /* Compact Table Text */
+    #scanner-results td,
+    #scanner-results th {
+        padding: 10px 6px !important;
+        font-size: 0.8rem !important;
     }
 
-    /* Header alignment */
-    th {
-        text-align: left;
-    }
-
-    /* Hide Delta Column on super small screens? No, user needs it. */
-
-    /* Modal Padding */
+    /* Modal full width on mobile */
     .modal-overlay>div {
         width: 98% !important;
         max-height: 95vh !important;
-        margin: 5px !important;
-    }
-
-    /* Adjust header font size */
-    h3 {
-        font-size: 1.1rem !important;
+        margin: 5px auto !important;
+        border-radius: 8px !important;
     }
 }
