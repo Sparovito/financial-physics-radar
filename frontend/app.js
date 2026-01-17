@@ -304,7 +304,60 @@ function renderCharts(data) {
                 Return: ${backtestStats.total_return}%
             `;
         }
+
+        // Store trades globally and show button
+        if (data.backtest && data.backtest.trades && data.backtest.trades.length > 0) {
+            window.BACKTEST_TRADES = data.backtest.trades;
+            document.getElementById('btn-view-trades').style.display = 'block';
+        } else {
+            window.BACKTEST_TRADES = [];
+            document.getElementById('btn-view-trades').style.display = 'none';
+        }
+    } else {
+        document.getElementById('btn-view-trades').style.display = 'none';
     }
+}
+
+// --- TRADES MODAL FUNCTIONS ---
+function openTradesModal() {
+    const modal = document.getElementById('trades-modal');
+    const listDiv = document.getElementById('trades-list');
+
+    if (!window.BACKTEST_TRADES || window.BACKTEST_TRADES.length === 0) {
+        listDiv.innerHTML = '<p style="color: #888;">Nessuna operazione disponibile.</p>';
+    } else {
+        let html = '<table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">';
+        html += `<tr style="color: #888; border-bottom: 1px solid #333;">
+            <th style="text-align: left; padding: 8px;">Data</th>
+            <th style="text-align: center; padding: 8px;">Tipo</th>
+            <th style="text-align: right; padding: 8px;">Entry</th>
+            <th style="text-align: right; padding: 8px;">Exit</th>
+            <th style="text-align: right; padding: 8px;">P/L %</th>
+        </tr>`;
+
+        window.BACKTEST_TRADES.forEach(t => {
+            const pnlColor = t.pnl_pct >= 0 ? '#00ff88' : '#ff4444';
+            const pnlSign = t.pnl_pct >= 0 ? '+' : '';
+            const typeEmoji = t.direction === 'LONG' ? '🟢' : '🔴';
+
+            html += `<tr style="border-bottom: 1px solid #222;">
+                <td style="padding: 8px; color: #aaa;">${t.entry_date}<br><small>→ ${t.exit_date}</small></td>
+                <td style="padding: 8px; text-align: center;">${typeEmoji} ${t.direction}</td>
+                <td style="padding: 8px; text-align: right; color: #ccc;">${t.entry_price}</td>
+                <td style="padding: 8px; text-align: right; color: #ccc;">${t.exit_price}</td>
+                <td style="padding: 8px; text-align: right; color: ${pnlColor}; font-weight: bold;">${pnlSign}${t.pnl_pct}%</td>
+            </tr>`;
+        });
+
+        html += '</table>';
+        listDiv.innerHTML = html;
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeTradesModal() {
+    document.getElementById('trades-modal').style.display = 'none';
 }
 
 function renderStats(components) {

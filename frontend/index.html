@@ -69,6 +69,11 @@
             <!-- Stats will be populated by JS -->
         </div>
 
+        <button id="btn-view-trades" onclick="openTradesModal()"
+            style="margin-top: 10px; width: 100%; padding: 8px; background: #2d3342; border: 1px solid #00ff88; color: #00ff88; border-radius: 6px; cursor: pointer; font-weight: bold; display: none;">
+            📋 Vedi Operazioni
+        </button>
+
         <div id="fourier-stats" style="margin-top: 20px; font-size: 0.8rem; color: #888;">
             <!-- Tabella cicli verrà inserita qui -->
         </div>
@@ -187,8 +192,25 @@
         </div>
     </div>
 
+    <!-- TRADES MODAL -->
+    <div id="trades-modal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; 
+        background: rgba(0,0,0,0.85); z-index:20000; justify-content:center; align-items:center;">
+        <div
+            style="background: #1a1d2a; border-radius: 10px; max-width: 700px; width: 90%; max-height: 80vh; overflow: auto; position: relative;">
+            <div
+                style="position: sticky; top: 0; background: #1a1d2a; padding: 15px 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0; color: #00ff88;">📋 Storico Operazioni</h3>
+                <button onclick="closeTradesModal()"
+                    style="background: none; border: none; color: #888; font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div id="trades-list" style="padding: 15px;">
+                <!-- Trades will be populated by JS -->
+            </div>
+        </div>
+    </div>
+
     <script src="tickers.js?v=6"></script>
-    <script src="app.js?v=6"></script>
+    <script src="app.js?v=7"></script>
 </body>
 
 </html>
