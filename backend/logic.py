@@ -507,7 +507,7 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
     if len(trades) > 0:
         wins = sum(1 for t in trades if t['pnl_pct'] > 0)
         win_rate = (wins / len(trades)) * 100
-        total_return = ((capital - 100) / 100) * 100
+        total_return = ((capital - initial_capital) / initial_capital) * 100
         avg_trade = sum(t['pnl_pct'] for t in trades) / len(trades)
     else:
         win_rate = 0
