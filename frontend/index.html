@@ -56,25 +56,32 @@
             📡 MARKET RADAR
         </button>
 
-        <div class="control-group" style="margin-top: 15px;">
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="checkbox" id="show-backtest" checked>
-                📈 Mostra Backtest Strategia
+        <!-- BACKTEST SECTION -->
+        <div
+            style="margin-top: 20px; padding: 12px; background: linear-gradient(135deg, #1a1d2a 0%, #252836 100%); border-radius: 8px; border: 1px solid #333;">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.95rem;">
+                <input type="checkbox" id="show-backtest" checked
+                    style="width: 18px; height: 18px; accent-color: #00ff88;">
+                <span style="color: #fff;">📈 Backtest Strategia</span>
             </label>
-            <small style="color: #666;">Simula trading basato su Z-Score</small>
+            <small style="display: block; margin-top: 6px; color: #666; font-size: 0.75rem;">Simula trading basato su
+                Z-Score</small>
+
+            <div id="backtest-stats"
+                style="margin-top: 12px; padding: 10px; background: rgba(0,255,136,0.1); border-radius: 6px; border-left: 3px solid #00ff88; font-size: 0.85rem; color: #00ff88;">
+                <!-- Stats will be populated by JS -->
+            </div>
+
+            <button id="btn-view-trades" onclick="openTradesModal()"
+                style="margin-top: 10px; width: 100%; padding: 10px; background: transparent; border: 1px solid #00ff88; color: #00ff88; border-radius: 6px; cursor: pointer; font-weight: 500; display: none; transition: all 0.2s;"
+                onmouseover="this.style.background='rgba(0,255,136,0.15)'"
+                onmouseout="this.style.background='transparent'">
+                📋 Vedi Operazioni
+            </button>
         </div>
 
-        <div id="backtest-stats"
-            style="margin-top: 10px; padding: 10px; background: #1a1d2a; border-radius: 6px; font-size: 0.85rem; color: #00ff88;">
-            <!-- Stats will be populated by JS -->
-        </div>
-
-        <button id="btn-view-trades" onclick="openTradesModal()"
-            style="margin-top: 10px; width: 100%; padding: 8px; background: #2d3342; border: 1px solid #00ff88; color: #00ff88; border-radius: 6px; cursor: pointer; font-weight: bold; display: none;">
-            📋 Vedi Operazioni
-        </button>
-
-        <div id="fourier-stats" style="margin-top: 20px; font-size: 0.8rem; color: #888;">
+        <div id="fourier-stats"
+            style="margin-top: 15px; padding: 12px; background: #1a1d2a; border-radius: 6px; font-size: 0.8rem; color: #888;">
             <!-- Tabella cicli verrà inserita qui -->
         </div>
     </div>
