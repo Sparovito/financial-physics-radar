@@ -157,7 +157,8 @@ function renderCharts(data) {
     };
 
     // --- DETECT MOBILE ---
-    const isMobile = window.innerWidth < 768;
+    // Increased threshold to ensure it catches high-res phones/tablets
+    const isMobile = window.innerWidth < 1024;
 
     // --- LAYOUT COMBINATO ---
     const layout = {
