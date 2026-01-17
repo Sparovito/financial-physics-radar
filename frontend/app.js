@@ -442,7 +442,22 @@ function updateRadarFrame() {
                     texts.push(''); // Hide label
                 }
 
-                colors.push(valY);
+                // MOMENTUM COLOR: Calculate 10-day Z-Kin change (smoothed)
+                const lookbackDays = 10;
+                const pastIdx = Math.max(0, dayIdx - lookbackDays);
+                const pastZKin = r.history.z_kin[pastIdx];
+                const pastZPot = r.history.z_pot[pastIdx];
+
+                // Calculate momentum as average of both dimensions' movement
+                let momentum = 0;
+                if (pastZKin !== null && pastZPot !== null) {
+                    // Use Z-Kin change primarily (kinetic = price movement speed)
+                    momentum = valX - pastZKin;
+                } else {
+                    momentum = 0; // No history
+                }
+                colors.push(momentum); // Positive = bullish, Negative = bearish
+
                 tickers.push(r.ticker);
 
                 // Focus Mode: Set opacity per point
@@ -501,17 +516,19 @@ function updateRadarFrame() {
             size: FOCUSED_TICKER ?
                 texts.map(t => t === FOCUSED_TICKER ? 20 : 12) : 15, // Bigger if focused
             color: colors,
-            colorscale: 'RdBu',
-            reversescale: true,
+            colorscale: 'RdYlGn', // Red (bearish) - Yellow (neutral) - Green (bullish)
+            reversescale: false, // Green = positive momentum
             showscale: true,
+            cmin: -2, // Clamp color range to avoid outliers
+            cmax: 2,
             colorbar: isMobile ? {
-                title: 'Z-Pot',
+                title: 'Momentum',
                 orientation: 'h',
                 y: -0.25,
                 thickness: 10,
                 len: 0.9
             } : {
-                title: 'Z-Potential'
+                title: 'Momentum (10d)'
             },
             line: { color: 'white', width: 0.5 },
             opacity: opacities // Use per-point opacity array
