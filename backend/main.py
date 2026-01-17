@@ -205,8 +205,19 @@ async def analyze_stock(req: AnalysisRequest):
         
         # --- STRATEGIA 2: FROZEN POTENTIAL (Richiesta User) ---
         # 1. Calcoliamo Z-Score della serie Frozen Potential (che è Raw Density)
-        #    Usiamo rolling window per coerenza con la strategia originale
-        frozen_pot_series = pd.Series(frozen_z_pot).fillna(0)
+        #    La serie frozen è più corta (parte da MIN_POINTS). Dobbiamo allinearla a Price.
+        
+        # Calculate padding size (difference in length)
+        padding_size = len(price_real) - len(frozen_z_pot)
+        
+        # Prepend zeros/NaNs to align time series
+        # Using 0 as neutral value for Z-score calc is safer than NaN for backtest logic
+        aligned_frozen_pot = [0] * padding_size + frozen_z_pot
+        
+        # Ora è allineato
+        frozen_pot_series = pd.Series(aligned_frozen_pot).fillna(0)
+        
+        # Calculate rolling stats
         roll_fpot_mean = frozen_pot_series.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
         roll_fpot_std = frozen_pot_series.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
         
