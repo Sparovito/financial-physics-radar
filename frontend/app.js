@@ -302,6 +302,7 @@ const radarModal = document.getElementById('radar-modal');
 
 // Global Cache per Timeline
 let RADAR_RESULTS_CACHE = null;
+let FOCUSED_TICKER = null; // Ticker in focus mode (null = show all)
 
 function openRadar() {
     radarModal.style.display = 'flex';
@@ -421,6 +422,7 @@ function updateRadarFrame() {
     const texts = [];
     const colors = [];
     const tickers = [];
+    const opacities = []; // Per-point opacity for focus mode
 
     RADAR_RESULTS_CACHE.forEach(r => {
         // Safety check index (some histories might be shorter/padded differently if bugged, but logic used padding)
@@ -435,36 +437,44 @@ function updateRadarFrame() {
                 texts.push(r.ticker);
                 colors.push(valY);
                 tickers.push(r.ticker);
+
+                // Focus Mode: Set opacity per point
+                if (FOCUSED_TICKER === null) {
+                    opacities.push(0.9); // All visible
+                } else if (r.ticker === FOCUSED_TICKER) {
+                    opacities.push(1.0); // Focused = full opacity
+                } else {
+                    opacities.push(0.15); // Others = faded
+                }
             }
         }
     });
 
     // 2. Dati Scie (Trails) - Solo se attive
-    // Tecnica: Unica traccia con NaN per separare i segmenti
+    // Focus Mode: Se c'è un ticker focalizzato, mostra solo la sua scia
     const xTail = [];
     const yTail = [];
 
-    if (showTrails) {
-        const TAIL_LEN = 50; // Increased to 50 as per session summary
+    if (showTrails || FOCUSED_TICKER !== null) { // Also show trail if focused
+        const TAIL_LEN = 50;
         const startIdx = Math.max(0, dayIdx - TAIL_LEN);
 
         RADAR_RESULTS_CACHE.forEach(r => {
+            // Focus Mode: Skip trails for non-focused tickers
+            if (FOCUSED_TICKER !== null && r.ticker !== FOCUSED_TICKER) return;
+
             if (r.history && r.history.z_kin) {
-                // Check bounds
                 if (dayIdx < r.history.z_kin.length) {
                     for (let i = startIdx; i <= dayIdx; i++) {
-                        // Check if data exists at i
                         if (i < r.history.z_kin.length) {
                             const tX = r.history.z_kin[i];
                             const tY = r.history.z_pot[i];
-                            // Only add if not null
                             if (tX !== null && tY !== null) {
                                 xTail.push(tX);
                                 yTail.push(tY);
                             }
                         }
                     }
-                    // Interruzione linea (Gap) tra un ticker e l'altro
                     xTail.push(null);
                     yTail.push(null);
                 }
@@ -481,7 +491,8 @@ function updateRadarFrame() {
         textposition: 'top center',
         texttemplate: '%{text}',
         marker: {
-            size: 15,
+            size: FOCUSED_TICKER ?
+                texts.map(t => t === FOCUSED_TICKER ? 20 : 12) : 15, // Bigger if focused
             color: colors,
             colorscale: 'RdBu',
             reversescale: true,
@@ -496,7 +507,7 @@ function updateRadarFrame() {
                 title: 'Z-Potential'
             },
             line: { color: 'white', width: 0.5 },
-            opacity: 0.9
+            opacity: opacities // Use per-point opacity array
         },
         type: 'scatter',
         name: 'Asset'
@@ -581,18 +592,34 @@ function updateRadarFrame() {
     // Usa newPlot per garantire il rendering corretto anche la prima volta
     Plotly.newPlot('radar-chart', dataToPlot, layout, config);
 
-    // Re-bind Click
+    // Re-bind Click - FOCUS MODE + Double-click for Analysis
     document.getElementById('radar-chart').on('plotly_click', function (data) {
-        // Attenzione: se ci sono 2 tracce (scia+head), l'indice cambia.
-        // traceMain è la seconda (index 1) o la prima (index 0)
         const point = data.points[0];
-        // Cerca il punto che ha "text" definita (è un marker)
-        if (point.data.mode === 'lines') return; // Ignora click sulla scia
+        if (point.data.mode === 'lines') return; // Ignore trail click
 
-        const tickerClicked = point.text; // Abbiamo messo ticker nel text
-        if (tickerClicked) {
+        const tickerClicked = point.text;
+        if (!tickerClicked) return;
+
+        // Toggle Focus Mode
+        if (FOCUSED_TICKER === tickerClicked) {
+            // Click same ticker again = unfocus
+            FOCUSED_TICKER = null;
+        } else {
+            // Focus on this ticker
+            FOCUSED_TICKER = tickerClicked;
+        }
+
+        // Re-render radar with new focus state
+        updateRadarFrame();
+    });
+
+    // Double-click to run analysis
+    document.getElementById('radar-chart').on('plotly_doubleclick', function () {
+        if (FOCUSED_TICKER) {
+            // Double-click when focused = run analysis
             closeRadar();
-            document.getElementById('ticker').value = tickerClicked;
+            document.getElementById('ticker').value = FOCUSED_TICKER;
+            FOCUSED_TICKER = null; // Reset focus
             runAnalysis();
         }
     });
