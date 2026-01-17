@@ -1290,6 +1290,13 @@ async function startBulkScan() {
 
     progressBar.max = tickersToScan.length;
 
+    // --- ACCUMULATORS FOR AVERAGE ---
+    let totalLiveRet = 0;
+    let totalFrozenRet = 0;
+    let totalWinLive = 0;
+    let totalWinFrozen = 0;
+    let countStats = 0;
+
     // Loop
     for (let i = 0; i < tickersToScan.length; i++) {
         if (SCAN_STOP_SIGNAL) {
@@ -1335,6 +1342,13 @@ async function startBulkScan() {
             const frozenStats = data.frozen_strategy?.stats;
 
             if (liveStats && frozenStats) {
+                // ACCUMULATE
+                totalLiveRet += liveStats.total_return;
+                totalFrozenRet += frozenStats.total_return;
+                totalWinLive += liveStats.win_rate;
+                totalWinFrozen += frozenStats.win_rate;
+                countStats++;
+
                 const liveRet = liveStats.total_return;
                 const frozenRet = frozenStats.total_return;
                 const delta = (liveRet - frozenRet).toFixed(2);
@@ -1364,6 +1378,31 @@ async function startBulkScan() {
 
         // Small delay to prevent UI freeze and allow stop button click
         await new Promise(r => setTimeout(r, 10));
+    }
+
+    // --- APPEND AVERAGE ROW ---
+    if (countStats > 0) {
+        const avgLiveRet = (totalLiveRet / countStats).toFixed(2);
+        const avgFrozenRet = (totalFrozenRet / countStats).toFixed(2);
+        const avgWinLive = (totalWinLive / countStats).toFixed(1);
+        const avgWinFrozen = (totalWinFrozen / countStats).toFixed(1);
+        const avgDelta = (avgLiveRet - avgFrozenRet).toFixed(2);
+
+        const statsRow = `
+            <tr style="border-top: 3px solid #eba834; background: rgba(235, 168, 52, 0.15); font-weight: bold; font-size: 1.05em;">
+                <td style="padding:15px; color:#eba834;">📊 MEDIA (${countStats})</td>
+                <td style="color:${avgWinLive >= 50 ? '#00ff88' : '#bbb'}">${avgWinLive}%</td>
+                <td style="color:${avgLiveRet > 0 ? '#00ff88' : '#ff4444'}">${avgLiveRet}%</td>
+                <td style="color:${avgWinFrozen >= 50 ? '#ff9900' : '#bbb'}">${avgWinFrozen}%</td>
+                <td style="color:${avgFrozenRet > 0 ? '#ff9900' : '#ff4444'}">${avgFrozenRet}%</td>
+                <td style="color:#eba834;">${avgDelta}%</td>
+                <td></td>
+            </tr>
+        `;
+        tableBody.innerHTML += statsRow;
+
+        // Auto scroll to bottom
+        tableBody.parentElement.parentElement.scrollTop = tableBody.parentElement.parentElement.scrollHeight;
     }
 
     if (!SCAN_STOP_SIGNAL) {
