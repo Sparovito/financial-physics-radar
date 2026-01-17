@@ -65,6 +65,23 @@ async function runAnalysis() {
     }
 }
 
+// Shift date by N days and re-run analysis
+function shiftDate(days) {
+    const dateInput = document.getElementById('end-date');
+    let currentDate = dateInput.value ? new Date(dateInput.value) : new Date();
+
+    currentDate.setDate(currentDate.getDate() + days);
+
+    // Format as YYYY-MM-DD
+    const year = currentDate.getFullYear();
+    const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+    const day = String(currentDate.getDate()).padStart(2, '0');
+    dateInput.value = `${year}-${month}-${day}`;
+
+    // Re-run analysis
+    runAnalysis();
+}
+
 function renderCharts(data) {
     // Safety Check for updated backend
     if (!data.indicators) {
