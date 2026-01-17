@@ -345,15 +345,23 @@ class MarketScanner:
             def pad_left(lst, length, fill=None):
                 return [fill] * (length - len(lst)) + lst
             
+            # Calcola Z-Score dello Slope (dX)
+            slope = mech.dX
+            slope_mean = slope.mean()
+            slope_std = slope.std()
+            z_slope_series = (slope - slope_mean) / (slope_std + 1e-6)
+            
             # Prendi al massimo HISTORY_LEN finali
             segment_px = px.iloc[-HISTORY_LEN:]
             segment_z_kin = z_kin_series.iloc[-HISTORY_LEN:]
             segment_z_pot = z_pot_series.iloc[-HISTORY_LEN:]
+            segment_z_slope = z_slope_series.iloc[-HISTORY_LEN:]
             
             # Converti in lista e padding
             hist_dates = pad_left(segment_px.index.strftime('%Y-%m-%d').tolist(), HISTORY_LEN, None)
             hist_z_kin = pad_left(segment_z_kin.tolist(), HISTORY_LEN, None)
             hist_z_pot = pad_left(segment_z_pot.tolist(), HISTORY_LEN, None)
+            hist_z_slope = pad_left(segment_z_slope.tolist(), HISTORY_LEN, None)
             hist_price = pad_left(segment_px.tolist(), HISTORY_LEN, None)
 
             # Snapshot Attuale (Ultimo valore valido)
@@ -372,6 +380,7 @@ class MarketScanner:
                     "dates": hist_dates,
                     "z_kin": [round(x, 2) if x is not None else None for x in hist_z_kin],
                     "z_pot": [round(x, 2) if x is not None else None for x in hist_z_pot],
+                    "z_slope": [round(x, 2) if x is not None else None for x in hist_z_slope],
                     "prices": [round(x, 2) if x is not None else None for x in hist_price]
                 }
             }

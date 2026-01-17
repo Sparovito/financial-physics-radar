@@ -442,35 +442,12 @@ function updateRadarFrame() {
                     texts.push(''); // Hide label
                 }
 
-                // SLOPE COLOR: Linear regression slope on Z-Pot (minima azione)
-                const slopeWindow = 20; // 20 days window for stable slope
-                const startSlopeIdx = Math.max(0, dayIdx - slopeWindow);
-
-                // Collect points for regression
-                const xReg = [];
-                const yReg = [];
-                for (let i = startSlopeIdx; i <= dayIdx; i++) {
-                    if (r.history.z_pot[i] !== null) {
-                        xReg.push(i - startSlopeIdx); // Normalize x to 0-based
-                        yReg.push(r.history.z_pot[i]);
-                    }
-                }
-
-                // Calculate slope via least squares: slope = Σ(x-x̄)(y-ȳ) / Σ(x-x̄)²
-                let slope = 0;
-                if (xReg.length >= 3) {
-                    const xMean = xReg.reduce((a, b) => a + b, 0) / xReg.length;
-                    const yMean = yReg.reduce((a, b) => a + b, 0) / yReg.length;
-
-                    let numerator = 0;
-                    let denominator = 0;
-                    for (let i = 0; i < xReg.length; i++) {
-                        numerator += (xReg[i] - xMean) * (yReg[i] - yMean);
-                        denominator += (xReg[i] - xMean) ** 2;
-                    }
-                    slope = denominator !== 0 ? numerator / denominator : 0;
-                }
-                colors.push(slope); // Positive slope = rising, Negative = falling
+                // SLOPE COLOR: Use backend-calculated Z-Slope (dX of minima azione path)
+                // z_slope is the Z-Score of the path velocity, already in history
+                const zSlope = r.history.z_slope && r.history.z_slope[dayIdx] !== null
+                    ? r.history.z_slope[dayIdx]
+                    : 0;
+                colors.push(zSlope); // Positive = accelerating up, Negative = decelerating/falling
 
                 tickers.push(r.ticker);
 
@@ -533,16 +510,16 @@ function updateRadarFrame() {
             colorscale: 'RdYlGn', // Red (bearish) - Yellow (neutral) - Green (bullish)
             reversescale: false, // Green = positive momentum
             showscale: true,
-            cmin: -0.15, // Adjusted range for slope values
-            cmax: 0.15,
+            cmin: -2, // Z-Score range
+            cmax: 2,
             colorbar: isMobile ? {
-                title: 'Slope',
+                title: 'Z-Slope',
                 orientation: 'h',
                 y: -0.25,
                 thickness: 10,
                 len: 0.9
             } : {
-                title: 'Slope (20d)'
+                title: 'Z-Slope (dX)'
             },
             line: { color: 'white', width: 0.5 },
             opacity: opacities // Use per-point opacity array
