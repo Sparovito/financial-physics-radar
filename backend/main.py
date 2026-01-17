@@ -107,8 +107,8 @@ async def analyze_stock(req: AnalysisRequest):
         
         # 6. FROZEN Z-SCORES (Point-in-Time) - Expanding Window
         # Calculate what z_kin would have been at each point using ONLY data up to that point
-        # This is computationally expensive, so we sample every 5 days
-        SAMPLE_EVERY = 5
+        # SAMPLE_EVERY=1 ensures daily precision (slower but accurate)
+        SAMPLE_EVERY = 1
         MIN_POINTS = 100  # Minimum data points needed
         
         frozen_z_kin = []
