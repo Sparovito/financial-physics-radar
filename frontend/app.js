@@ -239,21 +239,40 @@ function renderCharts(data) {
     // --- BACKTEST TRACE (Equity Curve) ---
     const showBacktest = document.getElementById('show-backtest')?.checked ?? false;
     let traceBacktest = null;
+    let traceFrozenStrat = null;
     let backtestStats = null;
+    let frozenStats = null;
 
-    if (showBacktest && data.backtest && data.backtest.trade_pnl_curve) {
-        traceBacktest = {
-            x: data.dates,
-            y: data.backtest.trade_pnl_curve,
-            name: `Trade P/L % (Avg: ${data.backtest.stats.avg_trade}%)`,
-            type: 'scatter',
-            fill: 'tozeroy',
-            line: { color: '#00ff88', width: 2 },
-            fillcolor: 'rgba(0, 255, 136, 0.3)',
-            xaxis: 'x',
-            yaxis: 'y5'
-        };
-        backtestStats = data.backtest.stats;
+    if (showBacktest) {
+        // 1. Live Strategy (Green)
+        if (data.backtest && data.backtest.trade_pnl_curve) {
+            traceBacktest = {
+                x: data.dates,
+                y: data.backtest.trade_pnl_curve,
+                name: `LIVE Strat (Avg: ${data.backtest.stats.avg_trade}%)`,
+                type: 'scatter',
+                fill: 'tozeroy',
+                line: { color: '#00ff88', width: 2 },
+                fillcolor: 'rgba(0, 255, 136, 0.2)',
+                xaxis: 'x',
+                yaxis: 'y5'
+            };
+            backtestStats = data.backtest.stats;
+        }
+
+        // 2. Frozen Strategy (Orange)
+        if (data.frozen_strategy && data.frozen_strategy.trade_pnl_curve) {
+            traceFrozenStrat = {
+                x: data.dates,
+                y: data.frozen_strategy.trade_pnl_curve,
+                name: `❄️ FROZEN Strat (Avg: ${data.frozen_strategy.stats.avg_trade}%)`,
+                type: 'scatter',
+                line: { color: '#ff9900', width: 2, dash: 'solid' }, // Orange
+                xaxis: 'x',
+                yaxis: 'y5'
+            };
+            frozenStats = data.frozen_strategy.stats;
+        }
     }
 
     // --- DETECT MOBILE ---
@@ -378,33 +397,45 @@ function renderCharts(data) {
         traceFrozenKin, traceFrozenPot  // Frozen (point-in-time) values
     ];
 
-    if (traceBacktest) {
-        traces.push(traceBacktest);
-    }
+    if (traceBacktest) traces.push(traceBacktest);
+    if (traceFrozenStrat) traces.push(traceFrozenStrat);
 
     Plotly.newPlot('chart-combined', traces, layout, config);
 
     // Display backtest stats if available
-    if (backtestStats) {
-        const statsDiv = document.getElementById('backtest-stats');
-        if (statsDiv) {
-            statsDiv.innerHTML = `
-                <strong>📊 Backtest Stats:</strong><br>
-                Trades: ${backtestStats.total_trades} | 
-                Win: ${backtestStats.win_rate}% | 
-                Return: ${backtestStats.total_return}%
-            `;
+    const statsDiv = document.getElementById('backtest-stats');
+    if (statsDiv) {
+        let html = '';
+
+        if (backtestStats) {
+            html += `
+                <div style="color: #00ff88; margin-bottom: 4px;">
+                    <strong>🟢 LIVE Strat:</strong> 
+                    Trades: ${backtestStats.total_trades} | 
+                    Win: ${backtestStats.win_rate}% | 
+                    Return: ${backtestStats.total_return}%
+                </div>`;
         }
 
-        // Store trades globally and show button
-        if (data.backtest && data.backtest.trades && data.backtest.trades.length > 0) {
-            window.BACKTEST_TRADES = data.backtest.trades;
-            document.getElementById('btn-view-trades').style.display = 'block';
-        } else {
-            window.BACKTEST_TRADES = [];
-            document.getElementById('btn-view-trades').style.display = 'none';
+        if (frozenStats) {
+            html += `
+                <div style="color: #ff9900;">
+                    <strong>🟠 FROZEN Strat:</strong> 
+                    Trades: ${frozenStats.total_trades} | 
+                    Win: ${frozenStats.win_rate}% | 
+                    Return: ${frozenStats.total_return}%
+                </div>`;
         }
+
+        statsDiv.innerHTML = html || 'No Stats Available';
+    }
+
+    // Store trades globally and show button
+    if (data.backtest && data.backtest.trades && data.backtest.trades.length > 0) {
+        window.BACKTEST_TRADES = data.backtest.trades;
+        document.getElementById('btn-view-trades').style.display = 'block';
     } else {
+        window.BACKTEST_TRADES = [];
         document.getElementById('btn-view-trades').style.display = 'none';
     }
 }

@@ -194,10 +194,31 @@ async def analyze_stock(req: AnalysisRequest):
         z_slope_series = ((slope - roll_slope_mean) / (roll_slope_std + 1e-6)).fillna(0).values.tolist()
         
         from logic import backtest_strategy
+        
+        # --- STRATEGIA 1: LIVE KINETIC (Originale) ---
         backtest_result = backtest_strategy(
             prices=price_real,
             z_kinetic=z_kin_series,
             z_slope=z_slope_series,
+            dates=dates_historical
+        )
+        
+        # --- STRATEGIA 2: FROZEN POTENTIAL (Richiesta User) ---
+        # 1. Calcoliamo Z-Score della serie Frozen Potential (che è Raw Density)
+        #    Usiamo rolling window per coerenza con la strategia originale
+        frozen_pot_series = pd.Series(frozen_z_pot).fillna(0)
+        roll_fpot_mean = frozen_pot_series.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
+        roll_fpot_std = frozen_pot_series.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
+        
+        # Questo è lo Z-Score del Potenziale Frozen Point-in-Time
+        z_frozen_pot_score = ((frozen_pot_series - roll_fpot_mean) / (roll_fpot_std + 1e-6)).fillna(0).values.tolist()
+        
+        # 2. Eseguiamo backtest sostituendo Kinetic con Frozen Potential
+        #    Nota: Usiamo ancora z_slope Live per la direzione (Long/Short)
+        backtest_result_frozen = backtest_strategy(
+            prices=price_real,
+            z_kinetic=z_frozen_pot_score, # Sostituiamo segnale trigger
+            z_slope=z_slope_series,       # Manteniamo filtro direzionale
             dates=dates_historical
         )
         
@@ -234,6 +255,8 @@ async def analyze_stock(req: AnalysisRequest):
                 "roc": roc_line,
                 "z_roc": z_roc_line
             },
+            "backtest": backtest_result,                  # Strategia Live
+            "frozen_strategy": backtest_result_frozen,    # Strategia Frozen (NEW)
             "forecast": {
                 "dates": dates_future,
                 "values": future_scenario
@@ -243,8 +266,7 @@ async def analyze_stock(req: AnalysisRequest):
                 "dates": frozen_dates,
                 "z_kinetic": frozen_z_kin,
                 "z_potential": frozen_z_pot
-            },
-            "backtest": backtest_result
+            }
         }
 
     except Exception as e:
