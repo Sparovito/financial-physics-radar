@@ -63,8 +63,9 @@
 
     <!-- Main Charts Area -->
     <div class="main-content">
-        <div class="chart-container" id="chart-combined">
-            <!-- Combined Plotly graph (Price + Energy) -->
+        <div class="chart-container" style="position: relative;">
+            <button onclick="toggleFullScreen('chart-combined')" class="btn-fullscreen" title="Full Screen">⛶</button>
+            <div id="chart-combined" style="height:100%; width:100%;"></div>
         </div>
     </div>
 
