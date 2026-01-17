@@ -467,7 +467,8 @@ body {
     }
 
     #chart-combined {
-        height: 50vh;
+        height: 800px;
+        /* More vertical space for subplots */
     }
 
     /* Modal Mobile */

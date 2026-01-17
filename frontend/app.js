@@ -156,6 +156,9 @@ function renderCharts(data) {
         yaxis: 'y4' // Asse destro
     };
 
+    // --- DETECT MOBILE ---
+    const isMobile = window.innerWidth < 768;
+
     // --- LAYOUT COMBINATO ---
     const layout = {
         // Grid rimosso per garantire il rispetto dei domini manuali
@@ -202,16 +205,27 @@ function renderCharts(data) {
         title: { text: `Analisi: ${data.ticker}`, font: { color: '#fff' } },
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
-        font: { color: '#aaa' },
+        font: { color: '#aaa', size: isMobile ? 10 : 12 }, // Smaller font on mobile
         showlegend: true,
-        legend: {
+        legend: isMobile ? {
+            // Mobile Legend: Below chart
+            orientation: 'h',
+            x: 0,
+            y: -0.15, // Push below x-axis
+            xanchor: 'left',
+            font: { size: 10 },
+            bgcolor: 'rgba(0,0,0,0)'
+        } : {
+            // Desktop Legend: Top center
             orientation: 'h',
             x: 0.5,
             y: 1.05,
             xanchor: 'center',
             bgcolor: 'rgba(0,0,0,0)'
         },
-        margin: { t: 60, r: 50, l: 50, b: 40 }, // Right margin increased for 2nd axis
+        margin: isMobile ?
+            { t: 60, r: 30, l: 30, b: 80 } : // More bottom margin for legend
+            { t: 60, r: 50, l: 50, b: 40 },
 
         hovermode: 'x unified'
     };
