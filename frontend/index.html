@@ -133,6 +133,14 @@
                 <!-- RADAR CHART -->
                 <div id="radar-chart" style="flex: 1; width:100%; min-height: 0; background: #0f111a;"></div>
 
+                <!-- ANALYZE FOCUSED TICKER BUTTON (Hidden by default) -->
+                <button id="btn-analyze-focused" onclick="analyzeFocusedTicker()"
+                    style="display:none; position:absolute; bottom:80px; left:50%; transform:translateX(-50%); 
+                           background:#eba834; color:#111; border:none; padding:10px 25px; border-radius:25px;
+                           font-weight:bold; font-size:1rem; cursor:pointer; z-index:10001; box-shadow: 0 4px 15px rgba(0,0,0,0.4);">
+                    📊 ANALIZZA <span id="focused-ticker-label"></span>
+                </button>
+
                 <!-- Fullscreen Button (Absolute in top-right) -->
                 <button onclick="toggleFullScreen('radar-fullscreen-area')" class="btn-fullscreen"
                     title="Full Screen">⛶</button>

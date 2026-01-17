@@ -618,18 +618,41 @@ function updateRadarFrame() {
 
         // Re-render radar with new focus state
         updateRadarFrame();
+
+        // Update Analyze Button visibility
+        updateAnalyzeButton();
     });
 
     // Double-click to run analysis
     document.getElementById('radar-chart').on('plotly_doubleclick', function () {
         if (FOCUSED_TICKER) {
-            // Double-click when focused = run analysis
-            closeRadar();
-            document.getElementById('ticker').value = FOCUSED_TICKER;
-            FOCUSED_TICKER = null; // Reset focus
-            runAnalysis();
+            analyzeFocusedTicker();
         }
     });
+}
+
+// Update Analyze Button visibility and label
+function updateAnalyzeButton() {
+    const btn = document.getElementById('btn-analyze-focused');
+    const label = document.getElementById('focused-ticker-label');
+
+    if (FOCUSED_TICKER && btn) {
+        btn.style.display = 'block';
+        if (label) label.innerText = FOCUSED_TICKER;
+    } else if (btn) {
+        btn.style.display = 'none';
+    }
+}
+
+// Analyze the currently focused ticker
+function analyzeFocusedTicker() {
+    if (!FOCUSED_TICKER) return;
+
+    closeRadar();
+    document.getElementById('ticker').value = FOCUSED_TICKER;
+    FOCUSED_TICKER = null;
+    updateAnalyzeButton(); // Hide button
+    runAnalysis();
 }
 
 
