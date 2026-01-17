@@ -233,9 +233,8 @@ function renderCharts(data) {
 
     // FORCE HEIGHT ON MOBILE (Use viewport height)
     if (isMobile) {
-        // Get container height and use 95% of it
-        const containerHeight = document.querySelector('.chart-container')?.offsetHeight || window.innerHeight * 0.85;
-        layout.height = containerHeight - 20; // Fill container minus padding
+        // Use 100% of visible viewport height minus some padding for title
+        layout.height = window.innerHeight - 80; // Full viewport minus browser bars
         // No legend overrides needed since we hide it via CSS and showlegend: !isMobile
     }
 
