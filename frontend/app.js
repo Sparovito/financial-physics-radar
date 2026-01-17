@@ -533,16 +533,16 @@ function updateRadarFrame() {
             colorscale: 'RdYlGn', // Red (bearish) - Yellow (neutral) - Green (bullish)
             reversescale: false, // Green = positive momentum
             showscale: true,
-            cmin: -2, // Clamp color range to avoid outliers
-            cmax: 2,
+            cmin: -0.15, // Adjusted range for slope values
+            cmax: 0.15,
             colorbar: isMobile ? {
-                title: 'Momentum',
+                title: 'Slope',
                 orientation: 'h',
                 y: -0.25,
                 thickness: 10,
                 len: 0.9
             } : {
-                title: 'Momentum (10d)'
+                title: 'Slope (20d)'
             },
             line: { color: 'white', width: 0.5 },
             opacity: opacities // Use per-point opacity array
