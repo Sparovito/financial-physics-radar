@@ -538,8 +538,22 @@ function updateRadarFrame() {
         ],
         hovermode: 'closest',
         margin: isMobile ?
-            { t: 40, l: 30, r: 10, b: 60 } :
+            { t: 40, l: 30, r: 10, b: 120 } :  // Margine extra per Legenda e Colorbar orizzontale
             { t: 50, l: 50, r: 50, b: 50 },
+        showlegend: true,
+        legend: isMobile ? {
+            orientation: 'h',
+            x: 0.5,
+            y: -0.4, // Sotto la colorbar
+            xanchor: 'center',
+            bgcolor: 'rgba(0,0,0,0)'
+        } : {
+            orientation: 'v',
+            x: 1.02,
+            y: 1,
+            xanchor: 'left',
+            bgcolor: 'rgba(0,0,0,0)'
+        },
         transition: { duration: 0 } // Disabilita animazione nativa plotly per performance
     };
 
