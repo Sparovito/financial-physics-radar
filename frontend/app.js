@@ -584,10 +584,17 @@ function updateRadarFrame() {
 
                 // Focus Mode: Only show label for focused ticker
                 if (FOCUSED_TICKER === null || r.ticker === FOCUSED_TICKER) {
-                    // If focused, show price in brackets
                     const price = r.history.prices && r.history.prices[dayIdx];
+                    const zSlopeVal = r.history.z_slope && r.history.z_slope[dayIdx];
+
                     if (FOCUSED_TICKER && price) {
-                        texts.push(`${r.ticker} [${price.toFixed(2)}]`);
+                        // Build label with price and Z-Slope indicator
+                        let label = `${r.ticker} [${price.toFixed(2)}]`;
+                        if (zSlopeVal !== null && zSlopeVal !== undefined) {
+                            const slopeSign = zSlopeVal >= 0 ? '🟢' : '🔴';
+                            label += ` ${slopeSign} ${zSlopeVal.toFixed(2)}`;
+                        }
+                        texts.push(label);
                     } else {
                         texts.push(r.ticker);
                     }
