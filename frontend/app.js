@@ -177,6 +177,17 @@ function renderCharts(data) {
         yaxis: 'y4' // Asse destro
     };
 
+    // Z-ROC TRACE (Rate of Change) - NO LOOK-AHEAD BIAS
+    const traceZRoc = {
+        x: data.dates,
+        y: data.indicators.z_roc || [],
+        name: 'Z-ROC (Istantaneo)',
+        type: 'scatter',
+        line: { color: '#00ffff', width: 2, dash: 'dot' }, // Cyan dashed
+        xaxis: 'x',
+        yaxis: 'y4' // Same axis as Z-residuo for comparison
+    };
+
     // --- BACKTEST TRACE (Equity Curve) ---
     const showBacktest = document.getElementById('show-backtest')?.checked ?? false;
     let traceBacktest = null;
@@ -305,7 +316,7 @@ function renderCharts(data) {
     const traces = [
         tracePrice, tracePath, traceFund, traceForecast,
         traceKinetic, tracePotential,
-        traceSlope, traceZ
+        traceSlope, traceZ, traceZRoc
     ];
 
     if (traceBacktest) {

@@ -93,6 +93,18 @@ async def analyze_stock(req: AnalysisRequest):
         slope_line = mechanics.dX.values.tolist()
         z_residuo_line = mechanics.z_residuo.values.tolist()
         
+        # ROC (Rate of Change) - ISTANTANEO, no look-ahead bias
+        # ROC = (price[t] - price[t-n]) / price[t-n] * 100
+        ROC_PERIOD = 20  # 20 giorni lookback
+        roc = ((px - px.shift(ROC_PERIOD)) / px.shift(ROC_PERIOD) * 100).fillna(0)
+        roc_line = roc.values.tolist()
+        
+        # Z-Score del ROC (rolling per consistenza)
+        roll_roc_mean = roc.rolling(window=252, min_periods=20).mean()
+        roll_roc_std = roc.rolling(window=252, min_periods=20).std()
+        z_roc = ((roc - roll_roc_mean) / (roll_roc_std + 1e-6)).fillna(0)
+        z_roc_line = z_roc.values.tolist()
+        
         # 5. Backtest Strategy
         # Calculate ROLLING Z-Scores to avoid look-ahead bias (252-day window)
         ZSCORE_WINDOW = 252
@@ -144,7 +156,9 @@ async def analyze_stock(req: AnalysisRequest):
             },
             "indicators": {
                 "slope": slope_line,
-                "z_residuo": z_residuo_line
+                "z_residuo": z_residuo_line,
+                "roc": roc_line,
+                "z_roc": z_roc_line
             },
             "forecast": {
                 "dates": dates_future,
