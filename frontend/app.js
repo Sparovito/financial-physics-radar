@@ -224,11 +224,25 @@ function renderCharts(data) {
             bgcolor: 'rgba(0,0,0,0)'
         },
         margin: isMobile ?
-            { t: 60, r: 30, l: 30, b: 80 } : // More bottom margin for legend
+            { t: 60, r: 30, l: 30, b: 150 } : // Huge bottom margin for multi-line legend
             { t: 60, r: 50, l: 50, b: 40 },
 
         hovermode: 'x unified'
     };
+
+    // FORCE HEIGHT ON MOBILE (Bypass CSS Cache)
+    if (isMobile) {
+        layout.height = 1200;
+        layout.legend = {
+            orientation: 'h',
+            x: 0,
+            y: -0.1, // Push below x-axis
+            xanchor: 'left',
+            font: { size: 9 }, // Smaller font
+            itemwidth: 80, // Wrapping
+            bgcolor: 'rgba(0,0,0,0)'
+        };
+    }
 
     Plotly.newPlot('chart-combined', [
         tracePrice, tracePath, traceFund, traceForecast,
