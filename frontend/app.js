@@ -322,22 +322,50 @@ async function runRadarScan() {
     const category = document.getElementById('radar-category').value;
     const chartDiv = document.getElementById('radar-chart');
 
-    // 1. Raccogli Tickers
+    // 1. Raccogli Tickers based on category
     let tickersToScan = [];
+
+    // Category mapping to tickers.js keys
+    const categoryMap = {
+        "ALL": null, // Special: all tickers
+        "US_MEGA": "🏛️ US Mega Cap",
+        "US_TECH": "💻 US Tech",
+        "US_FINANCE": "🏦 US Finance",
+        "US_HEALTH": "🏥 US Healthcare",
+        "US_INDUSTRIAL": "🏭 US Industrials",
+        "US_CONSUMER": "🛒 US Consumer",
+        "US_ENERGY": "⚡ US Energy",
+        "US_MIDCAP": ["📈 US Mid Cap A-L", "📉 US Mid Cap M-Z"],
+        "UK": "🇬🇧 UK (FTSE)",
+        "DE": "🇩🇪 Germany (DAX)",
+        "FR": "🇫🇷 France (CAC 40)",
+        "IT": "🇮🇹 Italy (MIB)",
+        "EU_ALL": ["🇬🇧 UK (FTSE)", "🇩🇪 Germany (DAX)", "🇫🇷 France (CAC 40)", "🇮🇹 Italy (MIB)", "🇳🇱 Netherlands", "🇪🇸 Spain", "🇨🇭 Switzerland"],
+        "JP": "🇯🇵 Japan",
+        "CN": "🇨🇳 China / HK",
+        "KR": "🇰🇷 Korea",
+        "TW": "🇹🇼 Taiwan",
+        "IN": "🇮🇳 India",
+        "ETF": "📊 Major ETFs",
+        "CRYPTO": "🪙 Crypto",
+        "COMMODITIES": "🛢️ Commodities"
+    };
+
     if (category === "ALL") {
         tickersToScan = Object.values(TICKERS_DATA).flat().map(t => t.symbol);
-    } else if (category === "Tech") {
-        tickersToScan = TICKERS_DATA["💻 US Tech"].map(t => t.symbol);
-    } else if (category === "Crypto") {
-        tickersToScan = TICKERS_DATA["🪙 Crypto"].map(t => t.symbol);
-    } else if (category === "Europe") {
-        // Combine all European categories
-        const euCats = ["🇬🇧 UK (FTSE)", "🇩🇪 Germany (DAX)", "🇫🇷 France (CAC 40)", "🇮🇹 Italy (MIB)"];
-        euCats.forEach(cat => {
-            if (TICKERS_DATA[cat]) tickersToScan.push(...TICKERS_DATA[cat].map(t => t.symbol));
-        });
     } else {
-        tickersToScan = TICKERS_DATA["⭐ Highlights"]?.map(t => t.symbol) || [];
+        const catKeys = categoryMap[category];
+        if (Array.isArray(catKeys)) {
+            // Multiple categories
+            catKeys.forEach(key => {
+                if (TICKERS_DATA[key]) tickersToScan.push(...TICKERS_DATA[key].map(t => t.symbol));
+            });
+        } else if (catKeys && TICKERS_DATA[catKeys]) {
+            tickersToScan = TICKERS_DATA[catKeys].map(t => t.symbol);
+        } else {
+            // Fallback to Highlights
+            tickersToScan = TICKERS_DATA["⭐ Highlights"]?.map(t => t.symbol) || [];
+        }
     }
 
     tickersToScan = [...new Set(tickersToScan)];

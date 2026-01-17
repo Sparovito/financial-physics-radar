@@ -112,10 +112,36 @@
                 <div class="radar-controls">
                     <div class="radar-inputs">
                         <select id="radar-category" class="radar-select">
-                            <option value="ALL">Tutto il Mercato</option>
-                            <option value="Tech">US Tech</option>
-                            <option value="Crypto">Crypto</option>
-                            <option value="Europe">Europa</option>
+                            <option value="ALL">🌍 Tutto il Mercato</option>
+                            <optgroup label="🇺🇸 USA">
+                                <option value="US_MEGA">🏛️ US Mega Cap</option>
+                                <option value="US_TECH">💻 US Tech</option>
+                                <option value="US_FINANCE">🏦 US Finance</option>
+                                <option value="US_HEALTH">🏥 US Healthcare</option>
+                                <option value="US_INDUSTRIAL">🏭 US Industrials</option>
+                                <option value="US_CONSUMER">🛒 US Consumer</option>
+                                <option value="US_ENERGY">⚡ US Energy</option>
+                                <option value="US_MIDCAP">📈 US Mid Cap</option>
+                            </optgroup>
+                            <optgroup label="🇪🇺 Europa">
+                                <option value="UK">🇬🇧 UK (FTSE)</option>
+                                <option value="DE">🇩🇪 Germania (DAX)</option>
+                                <option value="FR">🇫🇷 Francia (CAC)</option>
+                                <option value="IT">🇮🇹 Italia (MIB)</option>
+                                <option value="EU_ALL">🇪🇺 Tutta Europa</option>
+                            </optgroup>
+                            <optgroup label="🌏 Asia">
+                                <option value="JP">🇯🇵 Giappone</option>
+                                <option value="CN">🇨🇳 Cina / HK</option>
+                                <option value="KR">🇰🇷 Korea</option>
+                                <option value="TW">🇹🇼 Taiwan</option>
+                                <option value="IN">🇮🇳 India</option>
+                            </optgroup>
+                            <optgroup label="📊 Altri">
+                                <option value="ETF">📊 Major ETFs</option>
+                                <option value="CRYPTO">🪙 Crypto</option>
+                                <option value="COMMODITIES">🛢️ Commodities</option>
+                            </optgroup>
                         </select>
                         <button onclick="runRadarScan()" class="btn-scan">SCANSIONA</button>
                     </div>
