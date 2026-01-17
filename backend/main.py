@@ -105,6 +105,39 @@ async def analyze_stock(req: AnalysisRequest):
         z_roc = ((roc - roll_roc_mean) / (roll_roc_std + 1e-6)).fillna(0)
         z_roc_line = z_roc.values.tolist()
         
+        # 6. FROZEN Z-SCORES (Point-in-Time) - Expanding Window
+        # Calculate what z_kin would have been at each point using ONLY data up to that point
+        # This is computationally expensive, so we sample every 5 days
+        SAMPLE_EVERY = 5
+        MIN_POINTS = 100  # Minimum data points needed
+        
+        frozen_z_kin = []
+        frozen_z_pot = []
+        frozen_dates = []
+        
+        n = len(px)
+        for t in range(MIN_POINTS, n, SAMPLE_EVERY):
+            # Truncate data to day t (only past data)
+            px_t = px.iloc[:t+1]
+            
+            try:
+                # Recalculate mechanics with truncated data
+                mech_t = ActionPath(px_t, alpha=req.alpha, beta=req.beta)
+                kin_t = mech_t.kin_density
+                pot_t = mech_t.pot_density
+                
+                # Calculate Z-Score using only data up to t
+                z_kin_t = (kin_t.iloc[-1] - kin_t.mean()) / (kin_t.std() + 1e-6)
+                z_pot_t = (pot_t.iloc[-1] - pot_t.mean()) / (pot_t.std() + 1e-6)
+                
+                frozen_z_kin.append(round(float(z_kin_t), 2))
+                frozen_z_pot.append(round(float(z_pot_t), 2))
+                frozen_dates.append(px.index[t].strftime('%Y-%m-%d'))
+            except:
+                continue
+        
+        print(f"📊 Frozen Z-Scores calculated: {len(frozen_dates)} points")
+        
         # 5. Backtest Strategy
         # Calculate ROLLING Z-Scores to avoid look-ahead bias (252-day window)
         ZSCORE_WINDOW = 252
@@ -165,6 +198,11 @@ async def analyze_stock(req: AnalysisRequest):
                 "values": future_scenario
             },
             "fourier_components": fourier_comps,
+            "frozen": {
+                "dates": frozen_dates,
+                "z_kinetic": frozen_z_kin,
+                "z_potential": frozen_z_pot
+            },
             "backtest": backtest_result
         }
 

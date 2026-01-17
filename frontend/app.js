@@ -156,6 +156,31 @@ function renderCharts(data) {
         yaxis: 'y2'
     };
 
+    // --- FROZEN Z-SCORES (Point-in-Time - No Look-Ahead Bias) ---
+    const traceFrozenKin = {
+        x: data.frozen?.dates || [],
+        y: data.frozen?.z_kinetic || [],
+        name: '❄️ Z-Kin (Frozen)',
+        type: 'scatter',
+        mode: 'markers+lines',
+        marker: { size: 6, color: '#00ff88' },
+        line: { color: '#00ff88', width: 2 },
+        xaxis: 'x',
+        yaxis: 'y4' // Same axis as Z-residuo
+    };
+
+    const traceFrozenPot = {
+        x: data.frozen?.dates || [],
+        y: data.frozen?.z_potential || [],
+        name: '❄️ Z-Pot (Frozen)',
+        type: 'scatter',
+        mode: 'markers+lines',
+        marker: { size: 6, color: '#ff6600' },
+        line: { color: '#ff6600', width: 2 },
+        xaxis: 'x',
+        yaxis: 'y4'
+    };
+
     // --- TRACCE INDICATORI (Sotto - Dual Axis) ---
     const traceSlope = {
         x: data.dates,
@@ -316,7 +341,8 @@ function renderCharts(data) {
     const traces = [
         tracePrice, tracePath, traceFund, traceForecast,
         traceKinetic, tracePotential,
-        traceSlope, traceZ, traceZRoc
+        traceSlope, traceZ, traceZRoc,
+        traceFrozenKin, traceFrozenPot  // Frozen (point-in-time) values
     ];
 
     if (traceBacktest) {
