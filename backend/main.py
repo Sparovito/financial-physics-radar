@@ -86,6 +86,26 @@ async def analyze_stock(req: AnalysisRequest):
         slope_line = mechanics.dX.values.tolist()
         z_residuo_line = mechanics.z_residuo.values.tolist()
         
+        # 5. Backtest Strategy
+        # Calculate Z-Scores for kinetic and slope
+        kin = mechanics.kin_density
+        kin_mean = kin.mean()
+        kin_std = kin.std()
+        z_kin_series = ((kin - kin_mean) / (kin_std + 1e-6)).values.tolist()
+        
+        slope = mechanics.dX
+        slope_mean = slope.mean()
+        slope_std = slope.std()
+        z_slope_series = ((slope - slope_mean) / (slope_std + 1e-6)).values.tolist()
+        
+        from logic import backtest_strategy
+        backtest_result = backtest_strategy(
+            prices=price_real,
+            z_kinetic=z_kin_series,
+            z_slope=z_slope_series,
+            dates=dates_historical
+        )
+        
         # Dati Futuri (Proiezione)
         # Nota: future_idx potrebbe contenere timestamp o interi, convertiamo
         try:
@@ -109,7 +129,9 @@ async def analyze_stock(req: AnalysisRequest):
             "energy": {
                 "kinetic": kin_density,
                 "potential": pot_density,
-                "cumulative": cum_action
+                "cumulative": cum_action,
+                "z_kinetic": z_kin_series,
+                "z_slope": z_slope_series
             },
             "indicators": {
                 "slope": slope_line,
@@ -119,7 +141,8 @@ async def analyze_stock(req: AnalysisRequest):
                 "dates": dates_future,
                 "values": future_scenario
             },
-            "fourier_components": fourier_comps
+            "fourier_components": fourier_comps,
+            "backtest": backtest_result
         }
 
     except Exception as e:

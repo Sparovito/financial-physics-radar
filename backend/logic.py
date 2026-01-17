@@ -300,7 +300,7 @@ class MarketScanner:
         import concurrent.futures
         
         results = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:  # Limited to 5 to avoid rate limits
             future_to_ticker = {executor.submit(self._analyze_single, t): t for t in self.tickers}
             
             for future in concurrent.futures.as_completed(future_to_ticker):
@@ -387,3 +387,103 @@ class MarketScanner:
             
         except Exception as e:
             return None
+
+# --- 5. Backtesting Strategy ---
+def backtest_strategy(prices, z_kinetic, z_slope, dates):
+    """
+    Simulates a trading strategy based on Z-Score signals.
+    
+    Entry Rules:
+    - LONG when z_kinetic > 0 AND z_slope > 0 (momentum up)
+    - SHORT when z_kinetic > 0 AND z_slope < 0 (momentum down)
+    
+    Exit Rules:
+    - Close position when z_kinetic < 0 (return to calm zone)
+    
+    Returns:
+    - trades: List of trade dictionaries
+    - equity_curve: Cumulative capital (starting at 100)
+    - stats: Summary statistics
+    """
+    trades = []
+    equity_curve = []
+    capital = 100.0
+    
+    in_position = False
+    position_direction = None  # 'LONG' or 'SHORT'
+    entry_price = None
+    entry_date = None
+    entry_idx = None
+    
+    n = len(prices)
+    
+    for i in range(n):
+        price = prices[i]
+        z_kin = z_kinetic[i]
+        z_sl = z_slope[i]
+        date = dates[i] if dates else str(i)
+        
+        # Skip if data is missing
+        if price is None or z_kin is None or z_sl is None:
+            equity_curve.append(capital)
+            continue
+            
+        if not in_position:
+            # Check for entry signal
+            if z_kin > 0:
+                in_position = True
+                entry_price = price
+                entry_date = date
+                entry_idx = i
+                position_direction = 'LONG' if z_sl > 0 else 'SHORT'
+        else:
+            # Check for exit signal
+            if z_kin < 0:
+                # Calculate P/L
+                if position_direction == 'LONG':
+                    pnl_pct = ((price - entry_price) / entry_price) * 100
+                else:  # SHORT
+                    pnl_pct = ((entry_price - price) / entry_price) * 100
+                
+                # Update capital
+                capital = capital * (1 + pnl_pct / 100)
+                
+                trades.append({
+                    "entry_date": entry_date,
+                    "exit_date": date,
+                    "direction": position_direction,
+                    "entry_price": round(entry_price, 2),
+                    "exit_price": round(price, 2),
+                    "pnl_pct": round(pnl_pct, 2),
+                    "capital_after": round(capital, 2)
+                })
+                
+                in_position = False
+                position_direction = None
+                entry_price = None
+                entry_date = None
+        
+        equity_curve.append(round(capital, 2))
+    
+    # Calculate stats
+    if len(trades) > 0:
+        wins = sum(1 for t in trades if t['pnl_pct'] > 0)
+        win_rate = (wins / len(trades)) * 100
+        total_return = ((capital - 100) / 100) * 100
+        avg_trade = sum(t['pnl_pct'] for t in trades) / len(trades)
+    else:
+        win_rate = 0
+        total_return = 0
+        avg_trade = 0
+    
+    return {
+        "trades": trades,
+        "equity_curve": equity_curve,
+        "stats": {
+            "total_trades": len(trades),
+            "win_rate": round(win_rate, 1),
+            "total_return": round(total_return, 2),
+            "avg_trade": round(avg_trade, 2),
+            "final_capital": round(capital, 2)
+        }
+    }

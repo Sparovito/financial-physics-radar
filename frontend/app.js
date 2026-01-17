@@ -156,6 +156,25 @@ function renderCharts(data) {
         yaxis: 'y4' // Asse destro
     };
 
+    // --- BACKTEST TRACE (Equity Curve) ---
+    const showBacktest = document.getElementById('show-backtest')?.checked ?? false;
+    let traceBacktest = null;
+    let backtestStats = null;
+
+    if (showBacktest && data.backtest && data.backtest.equity_curve) {
+        traceBacktest = {
+            x: data.dates,
+            y: data.backtest.equity_curve,
+            name: `Equity (${data.backtest.stats.total_return}%)`,
+            type: 'scatter',
+            fill: 'tozeroy',
+            line: { color: '#00ff88', width: 2 },
+            xaxis: 'x',
+            yaxis: 'y5'
+        };
+        backtestStats = data.backtest.stats;
+    }
+
     // --- DETECT MOBILE ---
     // Increased threshold to ensure it catches high-res phones/tablets
     const isMobile = window.innerWidth < 1024;
@@ -170,41 +189,39 @@ function renderCharts(data) {
         ? `Analisi: ${data.ticker} (${extendedName})`
         : `Analisi: ${data.ticker}`;
 
-    // --- LAYOUT COMBINATO ---
+    // --- LAYOUT COMBINATO (Adjust domains based on backtest visibility) ---
     const layout = {
         // Grid rimosso per garantire il rispetto dei domini manuali
 
         // --- Asse X Condiviso ---
         xaxis: {
-            anchor: 'y3', // Ancorato all'ultimo grafico
+            anchor: showBacktest ? 'y5' : 'y3',
             domain: [0, 1],
             gridcolor: '#333'
         },
 
         // --- Configurazione Assi Y (Domini) ---
-        // Grafico 1: Prezzo (55-100%)
+        // Adjust domains if backtest is shown
         yaxis: {
-            domain: [0.55, 1],
+            domain: showBacktest ? [0.60, 1] : [0.55, 1],
             gridcolor: '#333',
             title: 'Prezzo (€)',
             tickfont: { color: '#e0e0e0' }
         },
-        // Grafico 2: Fourier (30-50%)
         yaxis2: {
-            domain: [0.3, 0.5],
+            domain: showBacktest ? [0.40, 0.55] : [0.3, 0.5],
             gridcolor: '#333333',
             title: 'Proiezione',
             tickfont: { color: '#9966ff' }
         },
-        // Grafico 3: Energia (0-25%)
         yaxis3: {
-            domain: [0, 0.25],
+            domain: showBacktest ? [0.20, 0.35] : [0, 0.25],
             gridcolor: '#333333',
             title: 'Energia',
             tickfont: { color: '#ff9966' }
         },
         yaxis4: {
-            domain: [0, 0.25],
+            domain: showBacktest ? [0.20, 0.35] : [0, 0.25],
             gridcolor: '#333333',
             title: 'Z-Score',
             titlefont: { color: '#ff88ff' },
@@ -239,23 +256,51 @@ function renderCharts(data) {
         hovermode: 'x unified'
     };
 
+    // Add yaxis5 for backtest if visible
+    if (showBacktest) {
+        layout.yaxis5 = {
+            domain: [0, 0.15],
+            gridcolor: '#333333',
+            title: 'Capitale',
+            tickfont: { color: '#00ff88' }
+        };
+    }
+
     // FORCE HEIGHT ON MOBILE (Use viewport height)
     if (isMobile) {
-        // Use 100% of visible viewport height minus some padding for title
-        layout.height = window.innerHeight - 80; // Full viewport minus browser bars
-        // No legend overrides needed since we hide it via CSS and showlegend: !isMobile
+        layout.height = window.innerHeight - 80;
     }
 
     const config = {
         responsive: true,
-        displayModeBar: !isMobile // HIDE MODE BAR ON MOBILE
+        displayModeBar: !isMobile
     };
 
-    Plotly.newPlot('chart-combined', [
+    // Build traces array
+    const traces = [
         tracePrice, tracePath, traceFund, traceForecast,
         traceKinetic, tracePotential,
         traceSlope, traceZ
-    ], layout, { responsive: true });
+    ];
+
+    if (traceBacktest) {
+        traces.push(traceBacktest);
+    }
+
+    Plotly.newPlot('chart-combined', traces, layout, config);
+
+    // Display backtest stats if available
+    if (backtestStats) {
+        const statsDiv = document.getElementById('backtest-stats');
+        if (statsDiv) {
+            statsDiv.innerHTML = `
+                <strong>📊 Backtest Stats:</strong><br>
+                Trades: ${backtestStats.total_trades} | 
+                Win: ${backtestStats.win_rate}% | 
+                Return: ${backtestStats.total_return}%
+            `;
+        }
+    }
 }
 
 function renderStats(components) {
