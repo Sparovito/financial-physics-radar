@@ -739,19 +739,26 @@ progress::-webkit-progress-value {
 /* Mobile Adjustments */
 @media (max-width: 768px) {
 
-    /* Table Horizontal Scroll */
-    #scanner-results,
+    /* Scanner Table Container */
+    .scanner-table-wrapper {
+        max-height: 60vh;
+        overflow: auto;
+    }
+
+    .scanner-table {
+        font-size: 0.8rem !important;
+    }
+
+    .scanner-table th,
+    .scanner-table td {
+        padding: 8px 6px !important;
+    }
+
+    /* Trades Modal Table */
     #trades-list table {
         display: block;
         overflow-x: auto;
         white-space: nowrap;
-    }
-
-    /* Compact Table Text */
-    #scanner-results td,
-    #scanner-results th {
-        padding: 10px 6px !important;
-        font-size: 0.8rem !important;
     }
 
     /* Modal full width on mobile */

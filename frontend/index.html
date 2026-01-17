@@ -311,17 +311,18 @@
                 style="width:100%; height:4px; display:none; border:none; background:#222;"></progress>
 
             <!-- RESULTS TABLE -->
-            <div style="padding: 0; overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
-                    <thead style="background: #222; color: #ccc;">
+            <div class="scanner-table-wrapper" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                <table class="scanner-table"
+                    style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; min-width: 700px;">
+                    <thead style="background: #222; color: #ccc; position: sticky; top: 0;">
                         <tr>
-                            <th style="padding:12px;">Ticker</th>
-                            <th style="padding:12px; color:#00ff88;">✅ Win% (Live)</th>
-                            <th style="padding:12px; color:#00ff88;">📈 ROI (Live)</th>
-                            <th style="padding:12px; color:#ff9900;">✅ Win% (Frozen)</th>
-                            <th style="padding:12px; color:#ff9900;">📉 ROI (Frozen)</th>
-                            <th style="padding:12px;">Delta ROI</th>
-                            <th style="padding:12px;">Action</th>
+                            <th style="padding:10px 8px; white-space:nowrap;">Ticker</th>
+                            <th style="padding:10px 8px; color:#00ff88; white-space:nowrap;">Win%🟢</th>
+                            <th style="padding:10px 8px; color:#00ff88; white-space:nowrap;">ROI🟢</th>
+                            <th style="padding:10px 8px; color:#ff9900; white-space:nowrap;">Win%🟠</th>
+                            <th style="padding:10px 8px; color:#ff9900; white-space:nowrap;">ROI🟠</th>
+                            <th style="padding:10px 8px; white-space:nowrap;">Delta</th>
+                            <th style="padding:10px 8px; white-space:nowrap;"></th>
                         </tr>
                     </thead>
                     <tbody id="scanner-results">
