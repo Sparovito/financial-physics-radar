@@ -399,6 +399,9 @@ function updateRadarFrame() {
     }
     dateLabel.innerText = currentDate;
 
+    // --- DETECT MOBILE ---
+    const isMobile = window.innerWidth < 768;
+
     // 1. Dati Punti (Teste)
     const xHead = [];
     const yHead = [];
@@ -470,7 +473,15 @@ function updateRadarFrame() {
             colorscale: 'RdBu',
             reversescale: true,
             showscale: true,
-            colorbar: { title: 'Z-Potential' },
+            colorbar: isMobile ? {
+                title: 'Z-Pot',
+                orientation: 'h',
+                y: -0.25,
+                thickness: 10,
+                len: 0.9
+            } : {
+                title: 'Z-Potential'
+            },
             line: { color: 'white', width: 0.5 },
             opacity: 0.9
         },
@@ -496,12 +507,25 @@ function updateRadarFrame() {
 
     // Layout (Statico)
     const layout = {
-        title: { text: `Market Radar (${currentDate})`, font: { color: 'white' } },
-        xaxis: { title: 'Volatilità (Kinetic Z)', gridcolor: '#333', range: [-3, 5] },
-        yaxis: { title: 'Tensione (Potential Z)', gridcolor: '#333', range: [-3, 5] },
+        title: {
+            text: `Market Radar (${currentDate})`,
+            font: { color: 'white', size: isMobile ? 14 : 18 }
+        },
+        xaxis: {
+            title: 'Volatilità (Kinetic Z)',
+            gridcolor: '#333',
+            range: [-3, 5],
+            titlefont: { size: isMobile ? 12 : 14 }
+        },
+        yaxis: {
+            title: 'Tensione (Potential Z)',
+            gridcolor: '#333',
+            range: [-3, 5],
+            titlefont: { size: isMobile ? 12 : 14 }
+        },
         paper_bgcolor: '#0f111a',
         plot_bgcolor: '#0f111a',
-        font: { color: '#aaa' },
+        font: { color: '#aaa', size: isMobile ? 10 : 12 },
         shapes: [
             // Quadrante 1 (Alto Dx): SURRISCALDAMENTO -> Rosso
             { type: 'rect', x0: 0, y0: 0, x1: 10, y1: 10, fillcolor: '#ff0000', opacity: 0.1, line: { width: 0 }, layer: 'below' },
@@ -513,6 +537,9 @@ function updateRadarFrame() {
             { type: 'rect', x0: 0, y0: -10, x1: 10, y1: 0, fillcolor: '#0000ff', opacity: 0.1, line: { width: 0 }, layer: 'below' }
         ],
         hovermode: 'closest',
+        margin: isMobile ?
+            { t: 40, l: 30, r: 10, b: 60 } :
+            { t: 50, l: 50, r: 50, b: 50 },
         transition: { duration: 0 } // Disabilita animazione nativa plotly per performance
     };
 
