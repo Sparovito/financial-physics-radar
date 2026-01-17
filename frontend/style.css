@@ -705,6 +705,37 @@ body {
     width: 100%;
 }
 
+/* Desktop: Horizontal Single-Row Layout */
+@media (min-width: 769px) {
+    .scanner-controls {
+        flex-direction: row !important;
+        align-items: flex-end !important;
+        gap: 20px !important;
+        flex-wrap: wrap;
+    }
+
+    .scanner-row {
+        flex: 0 0 auto;
+        margin-bottom: 0 !important;
+    }
+
+    /* Category Dropdown - Fixed Width */
+    .scanner-row:first-child {
+        flex: 0 0 200px;
+    }
+
+    /* Date Range - Medium Width */
+    .scanner-row:nth-child(2) {
+        flex: 0 0 280px;
+    }
+
+    /* Button - Auto Width */
+    .scanner-row:last-child {
+        flex: 1 1 auto;
+        max-width: 250px;
+    }
+}
+
 /* Progress bar styling */
 progress {
     -webkit-appearance: none;
