@@ -644,39 +644,48 @@ function updateRadarFrame() {
                     if (FOCUSED_TICKER && price) {
                         let label = `${r.ticker} [${price.toFixed(2)}]`;
 
-                        // Calculate actual Trade P/L % using same logic as backtest
-                        // Find entry price: scan backwards to find when z_kin crossed from <0 to >0
+                        // Calculate Trade P/L % using EXACT same logic as backend backtest_strategy
+                        // Simulate forward from day 0 to dayIdx tracking position state
                         let tradePnl = 0;
-                        if (zKin > 0) {
-                            // We're "in a trade" - find entry price
-                            let entryPrice = null;
-                            let entryDirection = null;
+                        let inPosition = false;
+                        let entryPrice = null;
+                        let positionDirection = null;
 
-                            for (let j = dayIdx; j >= 0; j--) {
-                                const prevZKin = r.history.z_kin[j];
-                                if (prevZKin === null) continue;
+                        for (let j = 0; j <= dayIdx; j++) {
+                            const jPrice = r.history.prices[j];
+                            const jZKin = r.history.z_kin[j];
+                            const jZSlope = r.history.z_slope ? r.history.z_slope[j] : 0;
 
-                                if (prevZKin <= 0 && j < dayIdx) {
-                                    // Found the entry point (day after this was entry)
-                                    entryPrice = r.history.prices[j + 1];
-                                    entryDirection = (r.history.z_slope[j + 1] || 0) >= 0 ? 'LONG' : 'SHORT';
-                                    break;
-                                } else if (j === 0) {
-                                    // Started in trade from beginning
-                                    entryPrice = r.history.prices[0];
-                                    entryDirection = (r.history.z_slope[0] || 0) >= 0 ? 'LONG' : 'SHORT';
-                                }
-                            }
+                            if (jPrice === null || jZKin === null) continue;
 
-                            if (entryPrice && entryPrice > 0) {
-                                if (entryDirection === 'LONG') {
-                                    tradePnl = ((price - entryPrice) / entryPrice) * 100;
+                            if (!inPosition) {
+                                // Check for entry signal
+                                if (jZKin > 0) {
+                                    inPosition = true;
+                                    entryPrice = jPrice;
+                                    positionDirection = (jZSlope || 0) >= 0 ? 'LONG' : 'SHORT';
+                                    tradePnl = 0; // Just entered
                                 } else {
-                                    tradePnl = ((entryPrice - price) / entryPrice) * 100;
+                                    tradePnl = 0; // Not invested
+                                }
+                            } else {
+                                // In position - calculate current P/L
+                                if (positionDirection === 'LONG') {
+                                    tradePnl = ((jPrice - entryPrice) / entryPrice) * 100;
+                                } else {
+                                    tradePnl = ((entryPrice - jPrice) / entryPrice) * 100;
+                                }
+
+                                // Check for exit signal
+                                if (jZKin < 0) {
+                                    // Trade closed
+                                    inPosition = false;
+                                    entryPrice = null;
+                                    positionDirection = null;
+                                    tradePnl = 0; // Back to 0
                                 }
                             }
                         }
-                        // If zKin <= 0, tradePnl stays 0 (not invested)
 
                         const sign = tradePnl >= 0 ? '+' : '';
                         label += ` ${sign}${tradePnl.toFixed(1)}%`;
