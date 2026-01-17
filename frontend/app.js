@@ -684,11 +684,30 @@ function selectTicker(symbol) {
     // runAnalysis(); 
 }
 
-// --- FULLSCREEN UTILITY ---
+// --- FULLSCREEN UTILITY (iOS Fallback) ---
 function toggleFullScreen(elementId) {
     const elem = document.getElementById(elementId);
     if (!elem) return;
 
+    // Detect iOS (iPhone/iPad) or generic lack of API support
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    // Check if API exists
+    const hasApi = elem.requestFullscreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
+
+    if (isIOS || !hasApi) {
+        // Fallback: Toggle CSS class
+        const parent = elem.parentElement; // Usually chart-container
+        // Toggle on parent to handle position relative
+        parent.classList.toggle('pseudo-fullscreen');
+
+        // Force Resize Plotly
+        if (typeof Plotly !== 'undefined') {
+            setTimeout(() => { Plotly.Plots.resize(elem); }, 100);
+        }
+        return;
+    }
+
+    // Standard API
     if (!document.fullscreenElement) {
         if (elem.requestFullscreen) {
             elem.requestFullscreen();

@@ -593,3 +593,27 @@ body {
     background-color: var(--bg-color) !important;
     padding: 20px;
 }
+
+/* --- PSEUDO FULLSCREEN (iOS Fallback) --- */
+.pseudo-fullscreen {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 9999 !important;
+    background-color: var(--bg-color) !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    border-radius: 0 !important;
+    overflow: auto !important;
+    /* Allow scrolling if needed */
+}
+
+/* Adjust button position in pseudo-fullscreen */
+.pseudo-fullscreen .btn-fullscreen {
+    top: 20px;
+    right: 20px;
+    border-color: #ff4444;
+    /* Visual feedback: Red border to close */
+}
