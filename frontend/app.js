@@ -431,51 +431,86 @@ function renderCharts(data) {
     }
 
     // Store trades globally and show button
-    if (data.backtest && data.backtest.trades && data.backtest.trades.length > 0) {
-        window.BACKTEST_TRADES = data.backtest.trades;
+    window.TRADES_LIVE = (data.backtest && data.backtest.trades) ? data.backtest.trades : [];
+    window.TRADES_FROZEN = (data.frozen_strategy && data.frozen_strategy.trades) ? data.frozen_strategy.trades : [];
+
+    if (window.TRADES_LIVE.length > 0 || window.TRADES_FROZEN.length > 0) {
         document.getElementById('btn-view-trades').style.display = 'block';
     } else {
-        window.BACKTEST_TRADES = [];
         document.getElementById('btn-view-trades').style.display = 'none';
     }
 }
 
 // --- TRADES MODAL FUNCTIONS ---
-function openTradesModal() {
-    const modal = document.getElementById('trades-modal');
-    const listDiv = document.getElementById('trades-list');
+// --- TRADES MODAL FUNCTIONS ---
+window.CURRENT_TRADES_VIEW = 'LIVE';
 
-    if (!window.BACKTEST_TRADES || window.BACKTEST_TRADES.length === 0) {
-        listDiv.innerHTML = '<p style="color: #888;">Nessuna operazione disponibile.</p>';
-    } else {
-        let html = '<table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">';
-        html += `<tr style="color: #888; border-bottom: 1px solid #333;">
-            <th style="text-align: left; padding: 8px;">Data</th>
-            <th style="text-align: center; padding: 8px;">Tipo</th>
-            <th style="text-align: right; padding: 8px;">Entry</th>
-            <th style="text-align: right; padding: 8px;">Exit</th>
-            <th style="text-align: right; padding: 8px;">P/L %</th>
-        </tr>`;
+function switchTradesView(mode) {
+    window.CURRENT_TRADES_VIEW = mode;
 
-        window.BACKTEST_TRADES.forEach(t => {
-            const pnlColor = t.pnl_pct >= 0 ? '#00ff88' : '#ff4444';
-            const pnlSign = t.pnl_pct >= 0 ? '+' : '';
-            const typeEmoji = t.direction === 'LONG' ? '🟢' : '🔴';
+    // Update Buttons UI
+    const btnLive = document.getElementById('btn-trades-live');
+    const btnFrozen = document.getElementById('btn-trades-frozen');
 
-            html += `<tr style="border-bottom: 1px solid #222;">
-                <td style="padding: 8px; color: #aaa;">${t.entry_date}<br><small>→ ${t.exit_date}</small></td>
-                <td style="padding: 8px; text-align: center;">${typeEmoji} ${t.direction}</td>
-                <td style="padding: 8px; text-align: right; color: #ccc;">${t.entry_price}</td>
-                <td style="padding: 8px; text-align: right; color: #ccc;">${t.exit_price}</td>
-                <td style="padding: 8px; text-align: right; color: ${pnlColor}; font-weight: bold;">${pnlSign}${t.pnl_pct}%</td>
-            </tr>`;
-        });
-
-        html += '</table>';
-        listDiv.innerHTML = html;
+    if (btnLive && btnFrozen) {
+        if (mode === 'LIVE') {
+            btnLive.style.background = '#00ff88'; btnLive.style.color = '#000'; btnLive.style.border = 'none';
+            btnFrozen.style.background = 'transparent'; btnFrozen.style.color = '#888'; btnFrozen.style.border = 'none';
+        } else {
+            btnLive.style.background = 'transparent'; btnLive.style.color = '#888'; btnLive.style.border = 'none';
+            btnFrozen.style.background = '#ff9900'; btnFrozen.style.color = '#000'; btnFrozen.style.border = 'none';
+        }
     }
 
-    modal.style.display = 'flex';
+    renderTradesList();
+}
+
+function openTradesModal() {
+    // Force Default to Live on open unless we want persistence
+    if (!window.CURRENT_TRADES_VIEW) window.CURRENT_TRADES_VIEW = 'LIVE';
+
+    switchTradesView(window.CURRENT_TRADES_VIEW);
+    document.getElementById('trades-modal').style.display = 'flex';
+}
+
+function renderTradesList() {
+    const listDiv = document.getElementById('trades-list');
+    const trades = (window.CURRENT_TRADES_VIEW === 'LIVE') ? window.TRADES_LIVE : window.TRADES_FROZEN;
+
+    if (!trades || trades.length === 0) {
+        listDiv.innerHTML = '<p style="color: #888; text-align: center; margin-top: 20px;">Nessuna operazione disponibile per questa strategia.</p>';
+        return;
+    }
+
+    let html = '<table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">';
+    html += `<tr style="color: #888; border-bottom: 1px solid #333;">
+        <th style="text-align: left; padding: 8px;">Data</th>
+        <th style="text-align: center; padding: 8px;">Tipo</th>
+        <th style="text-align: right; padding: 8px;">Entry</th>
+        <th style="text-align: right; padding: 8px;">Exit</th>
+        <th style="text-align: right; padding: 8px;">P/L %</th>
+    </tr>`;
+
+    // Sort by recent first? usually sequential is better. We keep array order.
+    // Trades are typically oldest to newest. Reverse for newest first?
+    const tradesReversed = [...trades].reverse();
+
+    tradesReversed.forEach(t => {
+        const pnlColor = t.pnl_pct >= 0 ? '#00ff88' : '#ff4444';
+        const pnlSign = t.pnl_pct >= 0 ? '+' : '';
+        const typeEmoji = t.direction === 'LONG' ? '🟢' : '🔴';
+
+        html += `<tr style="border-bottom: 1px solid #222;">
+            <td style="padding: 8px; color: #aaa;">${t.entry_date}<br><small>→ ${t.exit_date}</small></td>
+            <td style="padding: 8px; text-align: center;">${typeEmoji} ${t.direction}</td>
+            <td style="padding: 8px; text-align: right; color: #ccc;">${t.entry_price}</td>
+            <td style="padding: 8px; text-align: right; color: #ccc;">${t.exit_price}</td>
+            <td style="padding: 8px; text-align: right; color: ${pnlColor}; font-weight: bold;">${pnlSign}${t.pnl_pct}%</td>
+        </tr>`;
+    });
+
+    html += '</table>';
+    listDiv.innerHTML = html;
 }
 
 function closeTradesModal() {
