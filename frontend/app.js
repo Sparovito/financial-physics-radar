@@ -10,6 +10,7 @@ async function runAnalysis() {
     const alpha = parseFloat(document.getElementById('alpha').value);
     const beta = parseFloat(document.getElementById('beta').value);
     const forecast = parseInt(document.getElementById('forecast').value);
+    const endDate = document.getElementById('end-date').value || null; // null if empty
 
     if (!ticker) {
         alert("Inserisci un Ticker!");
@@ -19,7 +20,9 @@ async function runAnalysis() {
     // UI Loading State
     btn.disabled = true;
     status.style.display = 'flex';
-    statusText.innerText = `Scaricando dati per ${ticker}...`;
+    statusText.innerText = endDate
+        ? `Analisi storica (fino a ${endDate}) per ${ticker}...`
+        : `Scaricando dati per ${ticker}...`;
 
     try {
         // 2. Chiama API Backend
@@ -30,7 +33,8 @@ async function runAnalysis() {
                 ticker: ticker,
                 alpha: alpha,
                 beta: beta,
-                forecast_days: forecast
+                forecast_days: forecast,
+                end_date: endDate
             })
         });
 

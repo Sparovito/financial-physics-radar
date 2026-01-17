@@ -35,6 +35,7 @@ class AnalysisRequest(BaseModel):
     top_k: int = 5
     forecast_days: int = 60
     start_date: Optional[str] = "2023-01-01"
+    end_date: Optional[str] = None  # If set, truncate data to this date (simulate past)
 
 class ScanRequest(BaseModel):
     tickers: List[str]
@@ -56,8 +57,14 @@ async def analyze_stock(req: AnalysisRequest):
         print(f"Ricevuta richiesta: {req.dict()}")
         
         # 1. Scarica Dati
-        md = MarketData(req.ticker, start_date=req.start_date)
+        md = MarketData(req.ticker, start_date=req.start_date, end_date=req.end_date)
         px = md.fetch() # Pandas Series
+        
+        # If end_date is set, truncate data to simulate being in the past
+        if req.end_date:
+            end_ts = pd.Timestamp(req.end_date)
+            px = px[px.index <= end_ts]
+            print(f"🕐 Simulating past: data truncated to {req.end_date}, {len(px)} points remaining")
         
         # 2. Calcola Minima Azione
         mechanics = ActionPath(px, alpha=req.alpha, beta=req.beta)

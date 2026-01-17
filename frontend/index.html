@@ -47,6 +47,15 @@
             <small>Giorni di proiezione futura</small>
         </div>
 
+        <div class="control-group"
+            style="background: linear-gradient(135deg, #1a1d2a 0%, #252836 100%); padding: 12px; border-radius: 8px; border: 1px solid #444; margin-top: 10px;">
+            <label style="color: #eba834;">🕐 Simula Data Storica</label>
+            <input type="date" id="end-date"
+                style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #555; background: #1a1d2a; color: #fff;">
+            <small style="color: #888;">Lascia vuoto per dati attuali. Imposta una data per simulare il passato (senza
+                dati futuri).</small>
+        </div>
+
         <button class="btn-analyze" onclick="runAnalysis()">
             ANALIZZA
         </button>
