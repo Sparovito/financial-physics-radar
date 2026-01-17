@@ -128,7 +128,11 @@
                     </label>
                 </div>
             </div>
-            <div id="radar-chart" style="flex: 1; background: #0f111a;"></div>
+            <!-- RADAR CHART CONTAINER -->
+            <div class="chart-container" style="position: relative; flex: 1; border:none; padding:0; background:none;">
+                <button onclick="toggleFullScreen('radar-chart')" class="btn-fullscreen" title="Full Screen">⛶</button>
+                <div id="radar-chart" style="width:100%; height:100%; background: #0f111a;"></div>
+            </div>
         </div>
     </div>
 

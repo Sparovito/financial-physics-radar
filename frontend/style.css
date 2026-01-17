@@ -565,7 +565,8 @@ body {
     height: 32px;
     border-radius: 4px;
     cursor: pointer;
-    z-index: 100;
+    z-index: 10000;
+    /* High z-index to be above Plotly */
     font-size: 1.2rem;
     display: flex;
     align-items: center;
