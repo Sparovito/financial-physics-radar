@@ -1319,7 +1319,7 @@ async function startBulkScan() {
 
             // Use cache because "Frozen" calc is heavy. 
             // If cache miss, first one will be slow, but subsequent scans fast.
-            const response = await fetch('http://127.0.0.1:8000/analyze', {
+            const response = await fetch(`${API_URL}/analyze`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
