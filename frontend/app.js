@@ -160,7 +160,7 @@ function renderCharts(data) {
     const traceFrozenKin = {
         x: data.frozen?.dates || [],
         y: data.frozen?.z_kinetic || [],
-        name: '❄️ Z-Kin (Frozen)',
+        name: '❄️ Kin Density (Frozen)',
         type: 'scatter',
         fill: 'tozeroy',
         line: { color: '#00e5ff', width: 2 }, // Cyan
@@ -171,7 +171,7 @@ function renderCharts(data) {
     const traceFrozenPot = {
         x: data.frozen?.dates || [],
         y: data.frozen?.z_potential || [],
-        name: '❄️ Z-Pot (Frozen)',
+        name: '❄️ Pot Density (Frozen)',
         type: 'scatter',
         fill: 'tozeroy',
         line: { color: '#ff6600', width: 2 }, // Orange
@@ -279,7 +279,7 @@ function renderCharts(data) {
         yaxis6: { // NEW FROZEN PANEL
             domain: showBacktest ? [0.35, 0.47] : [0.30, 0.40],
             gridcolor: '#333333',
-            title: 'Frozen (No-Bias)',
+            title: 'Density (Frozen)',
             tickfont: { color: '#00e5ff' }
         },
         yaxis3: {

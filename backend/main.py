@@ -126,12 +126,13 @@ async def analyze_stock(req: AnalysisRequest):
                 kin_t = mech_t.kin_density
                 pot_t = mech_t.pot_density
                 
-                # Calculate Z-Score using only data up to t
-                z_kin_t = (kin_t.iloc[-1] - kin_t.mean()) / (kin_t.std() + 1e-6)
-                z_pot_t = (pot_t.iloc[-1] - pot_t.mean()) / (pot_t.std() + 1e-6)
+                # Save RAW DENSITY (Frozen at time t) instead of Z-Score
+                # This ensures we compare apples-to-apples with the main Energy chart
+                raw_kin_t = kin_t.iloc[-1]
+                raw_pot_t = pot_t.iloc[-1]
                 
-                frozen_z_kin.append(round(float(z_kin_t), 2))
-                frozen_z_pot.append(round(float(z_pot_t), 2))
+                frozen_z_kin.append(round(float(raw_kin_t), 2))
+                frozen_z_pot.append(round(float(raw_pot_t), 2))
                 frozen_dates.append(px.index[t].strftime('%Y-%m-%d'))
             except:
                 continue
