@@ -225,7 +225,7 @@ function renderCharts(data) {
             bgcolor: 'rgba(0,0,0,0)'
         },
         margin: isMobile ?
-            { t: 60, r: 10, l: 30, b: 40 } : // Reduced margins, no legend space needed
+            { t: 40, r: 10, l: 35, b: 30 } : // Reduced margins to maximize chart area
             { t: 60, r: 50, l: 50, b: 40 },
 
         hovermode: 'x unified'
@@ -233,7 +233,9 @@ function renderCharts(data) {
 
     // FORCE HEIGHT ON MOBILE (Use viewport height)
     if (isMobile) {
-        layout.height = Math.max(window.innerHeight * 0.8, 600); // 80% of viewport, min 600px
+        // Get container height and use 95% of it
+        const containerHeight = document.querySelector('.chart-container')?.offsetHeight || window.innerHeight * 0.85;
+        layout.height = containerHeight - 20; // Fill container minus padding
         // No legend overrides needed since we hide it via CSS and showlegend: !isMobile
     }
 
