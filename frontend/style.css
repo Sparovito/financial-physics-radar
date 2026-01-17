@@ -711,8 +711,13 @@ body {
     .scanner-controls {
         flex-direction: column !important;
         align-items: stretch !important;
-        gap: 10px !important;
-        padding: 10px !important;
+        gap: 12px !important;
+        padding: 15px !important;
+    }
+
+    /* Hide the divider line on mobile */
+    .scanner-separator {
+        display: none !important;
     }
 
     .scanner-controls select,
@@ -720,6 +725,9 @@ body {
     .scanner-controls button {
         width: 100% !important;
         margin: 0 !important;
+        padding: 12px !important;
+        /* Larger touch target */
+        height: auto !important;
     }
 
     .scanner-controls>div {
@@ -743,8 +751,15 @@ body {
     /* Smaller Text in Tables */
     td,
     th {
-        padding: 8px 4px !important;
-        font-size: 0.8rem !important;
+        padding: 10px 8px !important;
+        /* More breathing room */
+        font-size: 0.85rem !important;
+        white-space: nowrap;
+    }
+
+    /* Header alignment */
+    th {
+        text-align: left;
     }
 
     /* Hide Delta Column on super small screens? No, user needs it. */
