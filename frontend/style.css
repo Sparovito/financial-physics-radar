@@ -556,14 +556,18 @@ body {
 /* Fullscreen Button */
 .btn-fullscreen {
     position: absolute;
-    top: 10px;
-    right: 10px;
-    background: rgba(26, 29, 41, 0.8);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    width: 32px;
-    height: 32px;
-    border-radius: 4px;
+    top: 50px;
+    /* Lower to avoid status bar overlap */
+    right: 15px;
+    background: rgba(26, 29, 41, 0.95);
+    border: 2px solid #eba834;
+    /* GOLD BORDER FOR VISIBILITY */
+    color: #eba834;
+    width: 40px;
+    /* Bigger */
+    height: 40px;
+    /* Bigger */
+    border-radius: 8px;
     cursor: pointer;
     z-index: 10000;
     /* High z-index to be above Plotly */
