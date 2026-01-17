@@ -325,18 +325,23 @@ class MarketScanner:
             # Calcola Meccanica (Alpha standard 200, Beta 1.0)
             mech = ActionPath(px, alpha=200, beta=1.0)
             
-            # 1. Energia Cinetica (Volatilità)
-            kin = mech.kin_density
-            kin_mean = kin.mean()
-            kin_std = kin.std()
-            # Calcola Z-Score per intera serie (vettoriale)
-            z_kin_series = (kin - kin_mean) / (kin_std + 1e-6)
+            # === ROLLING Z-SCORE TO ELIMINATE LOOK-AHEAD BIAS ===
+            # Use 252-day (1 year) rolling window - each point only uses PAST data
+            ZSCORE_WINDOW = 252
             
-            # 2. Energia Potenziale (Tensione)
+            # 1. Energia Cinetica (Momentum) - ROLLING Z-Score
+            kin = mech.kin_density
+            roll_kin_mean = kin.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
+            roll_kin_std = kin.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
+            z_kin_series = (kin - roll_kin_mean) / (roll_kin_std + 1e-6)
+            z_kin_series = z_kin_series.fillna(0)
+            
+            # 2. Energia Potenziale (Tensione) - ROLLING Z-Score
             pot = mech.pot_density
-            pot_mean = pot.mean()
-            pot_std = pot.std()
-            z_pot_series = (pot - pot_mean) / (pot_std + 1e-6)
+            roll_pot_mean = pot.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
+            roll_pot_std = pot.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
+            z_pot_series = (pot - roll_pot_mean) / (roll_pot_std + 1e-6)
+            z_pot_series = z_pot_series.fillna(0)
             
             # Prendi ultimi 756 giorni (3 Anni Trading) per "Deep Time Travel" fino 2023
             HISTORY_LEN = 756
@@ -345,11 +350,12 @@ class MarketScanner:
             def pad_left(lst, length, fill=None):
                 return [fill] * (length - len(lst)) + lst
             
-            # Calcola Z-Score dello Slope (dX)
+            # Calcola Z-Score dello Slope (dX) - ROLLING Z-Score
             slope = mech.dX
-            slope_mean = slope.mean()
-            slope_std = slope.std()
-            z_slope_series = (slope - slope_mean) / (slope_std + 1e-6)
+            roll_slope_mean = slope.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
+            roll_slope_std = slope.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
+            z_slope_series = (slope - roll_slope_mean) / (roll_slope_std + 1e-6)
+            z_slope_series = z_slope_series.fillna(0)
             
             # Prendi al massimo HISTORY_LEN finali
             segment_px = px.iloc[-HISTORY_LEN:]

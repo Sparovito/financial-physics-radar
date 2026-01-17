@@ -94,16 +94,18 @@ async def analyze_stock(req: AnalysisRequest):
         z_residuo_line = mechanics.z_residuo.values.tolist()
         
         # 5. Backtest Strategy
-        # Calculate Z-Scores for kinetic and slope
+        # Calculate ROLLING Z-Scores to avoid look-ahead bias (252-day window)
+        ZSCORE_WINDOW = 252
+        
         kin = mechanics.kin_density
-        kin_mean = kin.mean()
-        kin_std = kin.std()
-        z_kin_series = ((kin - kin_mean) / (kin_std + 1e-6)).values.tolist()
+        roll_kin_mean = kin.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
+        roll_kin_std = kin.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
+        z_kin_series = ((kin - roll_kin_mean) / (roll_kin_std + 1e-6)).fillna(0).values.tolist()
         
         slope = mechanics.dX
-        slope_mean = slope.mean()
-        slope_std = slope.std()
-        z_slope_series = ((slope - slope_mean) / (slope_std + 1e-6)).values.tolist()
+        roll_slope_mean = slope.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
+        roll_slope_std = slope.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
+        z_slope_series = ((slope - roll_slope_mean) / (roll_slope_std + 1e-6)).fillna(0).values.tolist()
         
         from logic import backtest_strategy
         backtest_result = backtest_strategy(
