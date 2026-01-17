@@ -552,16 +552,10 @@ function updateRadarFrame() {
         ],
         hovermode: 'closest',
         margin: isMobile ?
-            { t: 40, l: 30, r: 10, b: 120 } :  // Margine extra per Legenda e Colorbar orizzontale
+            { t: 40, l: 30, r: 10, b: 40 } :  // Reduced bottom margin (no legend)
             { t: 50, l: 50, r: 50, b: 50 },
-        showlegend: true,
-        legend: isMobile ? {
-            orientation: 'h',
-            x: 0.5,
-            y: -0.4, // Sotto la colorbar
-            xanchor: 'center',
-            bgcolor: 'rgba(0,0,0,0)'
-        } : {
+        showlegend: !isMobile, // HIDE LEGEND ON MOBILE
+        legend: {
             orientation: 'v',
             x: 1.02,
             y: 1,
@@ -580,8 +574,13 @@ function updateRadarFrame() {
         layout.title.text += " [NESSUN DATO VISIBILE]";
     }
 
+    const config = {
+        responsive: true,
+        displayModeBar: !isMobile // HIDE MODE BAR ON MOBILE
+    };
+
     // Usa newPlot per garantire il rendering corretto anche la prima volta
-    Plotly.newPlot('radar-chart', dataToPlot, layout, { responsive: true });
+    Plotly.newPlot('radar-chart', dataToPlot, layout, config);
 
     // Re-bind Click
     document.getElementById('radar-chart').on('plotly_click', function (data) {
