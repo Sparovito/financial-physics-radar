@@ -627,11 +627,55 @@ body {
     .js-plotly-plot .legend {
         display: none !important;
     }
-}
 
-/* --- FORCE HIDE LEGEND ON MOBILE --- */
-@media (max-width: 1024px) {
-    .js-plotly-plot .legend {
+    /* COMPACT CONTROLS IN PSEUDO-FULLSCREEN */
+    .pseudo-fullscreen .timeline-group {
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        padding: 5px 10px !important;
+        gap: 8px !important;
+        background: rgba(20, 22, 31, 0.95) !important;
+        position: absolute;
+        bottom: 40px;
+        /* Floating slightly above bottom */
+        left: 2%;
+        width: 96%;
+        border-radius: 20px;
+        /* Pill shape */
+        z-index: 10001;
+        border: 1px solid #eba834;
+        /* Gold border match */
+        height: 50px !important;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    }
+
+    .pseudo-fullscreen .label-timeline {
         display: none !important;
+    }
+
+    .pseudo-fullscreen #radar-slider {
+        flex: 1;
+        height: 6px;
+        margin: 0 10px !important;
+    }
+
+    .pseudo-fullscreen #radar-date {
+        font-size: 0.8rem !important;
+        width: 80px !important;
+        text-align: center !important;
+        white-space: nowrap;
+        color: #fff;
+        font-weight: bold;
+    }
+
+    .pseudo-fullscreen .label-trails {
+        font-size: 0.8rem !important;
+        margin: 0 !important;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        color: #eba834;
     }
 }

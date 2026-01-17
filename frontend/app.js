@@ -233,8 +233,8 @@ function renderCharts(data) {
 
     // FORCE HEIGHT ON MOBILE (Use viewport height)
     if (isMobile) {
-        // DOUBLED: Use 200% of viewport height for massive chart
-        layout.height = window.innerHeight * 2; // DOUBLED!
+        // Use 100% of visible viewport height minus some padding for title
+        layout.height = window.innerHeight - 80; // Full viewport minus browser bars
         // No legend overrides needed since we hide it via CSS and showlegend: !isMobile
     }
 
