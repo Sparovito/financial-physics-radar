@@ -535,7 +535,13 @@ function updateRadarFrame() {
 
                 // Focus Mode: Only show label for focused ticker
                 if (FOCUSED_TICKER === null || r.ticker === FOCUSED_TICKER) {
-                    texts.push(r.ticker); // Show label
+                    // If focused, show price in brackets
+                    const price = r.history.prices && r.history.prices[dayIdx];
+                    if (FOCUSED_TICKER && price) {
+                        texts.push(`${r.ticker} [${price.toFixed(2)}]`);
+                    } else {
+                        texts.push(r.ticker);
+                    }
                 } else {
                     texts.push(''); // Hide label
                 }
