@@ -641,11 +641,12 @@ function updateRadarFrame() {
                     const zSlopeVal = r.history.z_slope && r.history.z_slope[dayIdx];
 
                     if (FOCUSED_TICKER && price) {
-                        // Build label with price and Z-Slope indicator
+                        // Build label with price and Z-Slope as colored percentage
                         let label = `${r.ticker} [${price.toFixed(2)}]`;
                         if (zSlopeVal !== null && zSlopeVal !== undefined) {
-                            const slopeSign = zSlopeVal >= 0 ? '🟢' : '🔴';
-                            label += ` ${slopeSign} ${zSlopeVal.toFixed(2)}`;
+                            // Z-Slope shown as percentage with sign, will be colored via textfont
+                            const sign = zSlopeVal >= 0 ? '+' : '';
+                            label += ` ${sign}${(zSlopeVal * 10).toFixed(1)}%`;
                         }
                         texts.push(label);
                     } else {
