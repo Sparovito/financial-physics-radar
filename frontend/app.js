@@ -11,6 +11,7 @@ async function runAnalysis() {
     const beta = parseFloat(document.getElementById('beta').value);
     const forecast = parseInt(document.getElementById('forecast').value);
     const endDate = document.getElementById('end-date').value || null; // null if empty
+    const useCache = document.getElementById('use-cache').checked;
 
     if (!ticker) {
         alert("Inserisci un Ticker!");
@@ -34,7 +35,8 @@ async function runAnalysis() {
                 alpha: alpha,
                 beta: beta,
                 forecast_days: forecast,
-                end_date: endDate
+                end_date: endDate,
+                use_cache: useCache
             })
         });
 

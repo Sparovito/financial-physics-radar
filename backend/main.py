@@ -36,6 +36,11 @@ class AnalysisRequest(BaseModel):
     forecast_days: int = 60
     start_date: Optional[str] = "2023-01-01"
     end_date: Optional[str] = None  # If set, truncate data to this date (simulate past)
+    use_cache: bool = False # If True, try to use cached full history
+
+# Global Cache for Full Ticker History (DataFrame)
+# Key: Ticker, Value: Pandas Series (Full History)
+TICKER_CACHE = {}
 
 class ScanRequest(BaseModel):
     tickers: List[str]
@@ -56,13 +61,27 @@ async def analyze_stock(req: AnalysisRequest):
     try:
         print(f"Ricevuta richiesta: {req.dict()}")
         
-        # 1. Scarica Dati
-        md = MarketData(req.ticker, start_date=req.start_date, end_date=req.end_date)
-        px = md.fetch() # Pandas Series
+        # 1. Scarica Dati (con Caching Opzionale)
+        px = None
         
-        # If end_date is set, truncate data to simulate being in the past
+        # SeCache attivata e presente, usa dati in memoria
+        if req.use_cache and req.ticker in TICKER_CACHE:
+            print(f"⚡ CACHE HIT: Uso dati in memoria per {req.ticker}")
+            px = TICKER_CACHE[req.ticker]
+        else:
+            # Scarica storia COMPLETA (anche se end_date è settata, scarichiamo tutto per cachare)
+            print(f"🌐 API FETCH: Scarico dati freschi per {req.ticker}...")
+            # Ignore end_date for fetching to populate full cache
+            md = MarketData(req.ticker, start_date=req.start_date, end_date=None)
+            px = md.fetch() # Pandas Series
+            
+            # Salva in cache
+            TICKER_CACHE[req.ticker] = px
+            
+        # Apply end_date Truncation (Simulation Logic)
         if req.end_date:
             end_ts = pd.Timestamp(req.end_date)
+            # Filter the cached/fetched full series
             px = px[px.index <= end_ts]
             print(f"🕐 Simulating past: data truncated to {req.end_date}, {len(px)} points remaining")
         
