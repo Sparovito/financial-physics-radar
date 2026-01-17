@@ -162,11 +162,10 @@ function renderCharts(data) {
         y: data.frozen?.z_kinetic || [],
         name: '❄️ Z-Kin (Frozen)',
         type: 'scatter',
-        mode: 'markers+lines',
-        marker: { size: 6, color: '#00ff88' },
-        line: { color: '#00ff88', width: 2 },
+        fill: 'tozeroy',
+        line: { color: '#00e5ff', width: 2 }, // Cyan
         xaxis: 'x',
-        yaxis: 'y4' // Same axis as Z-residuo
+        yaxis: 'y6' // DEDICATED PANEL
     };
 
     const traceFrozenPot = {
@@ -174,11 +173,10 @@ function renderCharts(data) {
         y: data.frozen?.z_potential || [],
         name: '❄️ Z-Pot (Frozen)',
         type: 'scatter',
-        mode: 'markers+lines',
-        marker: { size: 6, color: '#ff6600' },
-        line: { color: '#ff6600', width: 2 },
+        fill: 'tozeroy',
+        line: { color: '#ff6600', width: 2 }, // Orange
         xaxis: 'x',
-        yaxis: 'y4'
+        yaxis: 'y6'
     };
 
     // --- TRACCE INDICATORI (Sotto - Dual Axis) ---
@@ -253,40 +251,50 @@ function renderCharts(data) {
 
         // --- Asse X Condiviso ---
         xaxis: {
-            anchor: showBacktest ? 'y5' : 'y3',
+            anchor: showBacktest ? 'y5' : 'y3', // TODO: Anchor to lowest axis 
             domain: [0, 1],
             gridcolor: '#333'
         },
 
-        // --- Configurazione Assi Y (Domini) ---
-        // Adjust domains if backtest is shown
+        // --- Configurazione Assi Y (Domini RE-LAYOUT) ---
+        // WITH FROZEN PANEL:
+        // Price (y1): Top
+        // Energy (y2): Below Price
+        // Frozen (y6): Below Energy
+        // Indicators (y3): Below Frozen
+        // Backtest (y5): Bottom (if enabled)
+
         yaxis: {
-            domain: showBacktest ? [0.60, 1] : [0.55, 1],
+            domain: showBacktest ? [0.65, 1] : [0.60, 1],
             gridcolor: '#333',
             title: 'Prezzo (€)',
             tickfont: { color: '#e0e0e0' }
         },
         yaxis2: {
-            domain: showBacktest ? [0.40, 0.55] : [0.3, 0.5],
+            domain: showBacktest ? [0.50, 0.62] : [0.45, 0.55],
             gridcolor: '#333333',
-            title: 'Proiezione',
+            title: 'Energy',
             tickfont: { color: '#9966ff' }
         },
-        yaxis3: {
-            domain: showBacktest ? [0.20, 0.35] : [0, 0.25],
+        yaxis6: { // NEW FROZEN PANEL
+            domain: showBacktest ? [0.35, 0.47] : [0.30, 0.40],
             gridcolor: '#333333',
-            title: 'Energia',
+            title: 'Frozen (No-Bias)',
+            tickfont: { color: '#00e5ff' }
+        },
+        yaxis3: {
+            domain: showBacktest ? [0.20, 0.32] : [0.15, 0.25],
+            gridcolor: '#333333',
+            title: 'Ind.',
             tickfont: { color: '#ff9966' }
         },
         yaxis4: {
-            domain: showBacktest ? [0.20, 0.35] : [0, 0.25],
-            gridcolor: '#333333',
-            title: 'Z-Score',
-            titlefont: { color: '#ff88ff' },
-            tickfont: { color: '#ff88ff' },
-            anchor: 'x',
+            // Z-Score Axis (Right side of Indicators panel)
             overlaying: 'y3',
-            side: 'right'
+            side: 'right',
+            gridcolor: 'rgba(0,0,0,0)',
+            tickfont: { color: '#00ffff' },
+            showgrid: false
         },
 
         title: { text: titleText, font: { color: '#fff' } },
