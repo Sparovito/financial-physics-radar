@@ -338,8 +338,8 @@ class MarketScanner:
             pot_std = pot.std()
             z_pot_series = (pot - pot_mean) / (pot_std + 1e-6)
             
-            # Prendi ultimi 252 giorni (1 Anno Trading) per "Deep Time Travel"
-            HISTORY_LEN = 252
+            # Prendi ultimi 756 giorni (3 Anni Trading) per "Deep Time Travel" fino 2023
+            HISTORY_LEN = 756
             
             # Preparazione vettori allineati (Padding a sinistra con None se < 252)
             def pad_left(lst, length, fill=None):
