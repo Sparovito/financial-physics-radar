@@ -160,6 +160,16 @@ function renderCharts(data) {
     // Increased threshold to ensure it catches high-res phones/tablets
     const isMobile = window.innerWidth < 1024;
 
+    // Get extended name from TICKERS_DATA for title
+    let extendedName = '';
+    for (const cat of Object.values(TICKERS_DATA)) {
+        const found = cat.find(t => t.symbol === data.ticker);
+        if (found) { extendedName = found.name; break; }
+    }
+    const titleText = extendedName
+        ? `Analisi: ${data.ticker} (${extendedName})`
+        : `Analisi: ${data.ticker}`;
+
     // --- LAYOUT COMBINATO ---
     const layout = {
         // Grid rimosso per garantire il rispetto dei domini manuali
@@ -176,21 +186,22 @@ function renderCharts(data) {
         yaxis: {
             domain: [0.55, 1],
             gridcolor: '#333',
-            title: 'Prezzo'
+            title: 'Prezzo (€)',
+            tickfont: { color: '#e0e0e0' }
         },
-        // Grafico 2: Energia (30-50%)
+        // Grafico 2: Fourier (30-50%)
         yaxis2: {
-            domain: [0.30, 0.50],
-            gridcolor: '#333',
-            title: 'Energia'
+            domain: [0.3, 0.5],
+            gridcolor: '#333333',
+            title: 'Proiezione',
+            tickfont: { color: '#9966ff' }
         },
-        // Grafico 3: Slope (Left) & Z-Res (Right) (0-25%)
+        // Grafico 3: Energia (0-25%)
         yaxis3: {
             domain: [0, 0.25],
-            gridcolor: '#333',
-            title: 'Slope',
-            titlefont: { color: '#eba834' },
-            tickfont: { color: '#eba834' }
+            gridcolor: '#333333',
+            title: 'Energia',
+            tickfont: { color: '#ff9966' }
         },
         yaxis4: {
             domain: [0, 0.25],
@@ -203,21 +214,19 @@ function renderCharts(data) {
             side: 'right'
         },
 
-        title: { text: `Analisi: ${data.ticker}`, font: { color: '#fff' } },
+        title: { text: titleText, font: { color: '#fff' } },
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
-        font: { color: '#aaa', size: isMobile ? 10 : 12 }, // Smaller font on mobile
+        font: { color: '#aaa', size: isMobile ? 10 : 12 },
         showlegend: true,
         legend: isMobile ? {
-            // Mobile Legend: Below chart
             orientation: 'h',
             x: 0,
-            y: -0.15, // Push below x-axis
+            y: -0.15,
             xanchor: 'left',
             font: { size: 10 },
             bgcolor: 'rgba(0,0,0,0)'
         } : {
-            // Desktop Legend: Top center
             orientation: 'h',
             x: 0.5,
             y: 1.05,
@@ -225,9 +234,8 @@ function renderCharts(data) {
             bgcolor: 'rgba(0,0,0,0)'
         },
         margin: isMobile ?
-            { t: 40, r: 10, l: 35, b: 30 } : // Reduced margins to maximize chart area
+            { t: 40, r: 10, l: 35, b: 30 } :
             { t: 60, r: 50, l: 50, b: 40 },
-
         hovermode: 'x unified'
     };
 
