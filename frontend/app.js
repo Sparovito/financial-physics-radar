@@ -161,14 +161,15 @@ function renderCharts(data) {
     let traceBacktest = null;
     let backtestStats = null;
 
-    if (showBacktest && data.backtest && data.backtest.equity_curve) {
+    if (showBacktest && data.backtest && data.backtest.trade_pnl_curve) {
         traceBacktest = {
             x: data.dates,
-            y: data.backtest.equity_curve,
-            name: `Equity (${data.backtest.stats.total_return}%)`,
+            y: data.backtest.trade_pnl_curve,
+            name: `Trade P/L % (Avg: ${data.backtest.stats.avg_trade}%)`,
             type: 'scatter',
             fill: 'tozeroy',
             line: { color: '#00ff88', width: 2 },
+            fillcolor: 'rgba(0, 255, 136, 0.3)',
             xaxis: 'x',
             yaxis: 'y5'
         };
@@ -261,8 +262,11 @@ function renderCharts(data) {
         layout.yaxis5 = {
             domain: [0, 0.15],
             gridcolor: '#333333',
-            title: 'Capitale',
-            tickfont: { color: '#00ff88' }
+            title: 'Trade P/L %',
+            tickfont: { color: '#00ff88' },
+            zeroline: true,
+            zerolinecolor: '#666',
+            zerolinewidth: 2
         };
     }
 

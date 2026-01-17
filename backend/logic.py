@@ -402,18 +402,17 @@ def backtest_strategy(prices, z_kinetic, z_slope, dates):
     
     Returns:
     - trades: List of trade dictionaries
-    - equity_curve: Cumulative capital (starting at 100)
+    - trade_pnl_curve: Shows 0 when not invested, % P/L during open positions
     - stats: Summary statistics
     """
     trades = []
-    equity_curve = []
+    trade_pnl_curve = []  # Shows individual trade P/L (0 when not invested)
     capital = 100.0
     
     in_position = False
     position_direction = None  # 'LONG' or 'SHORT'
     entry_price = None
     entry_date = None
-    entry_idx = None
     
     n = len(prices)
     
@@ -425,7 +424,7 @@ def backtest_strategy(prices, z_kinetic, z_slope, dates):
         
         # Skip if data is missing
         if price is None or z_kin is None or z_sl is None:
-            equity_curve.append(capital)
+            trade_pnl_curve.append(0)
             continue
             
         if not in_position:
@@ -434,18 +433,21 @@ def backtest_strategy(prices, z_kinetic, z_slope, dates):
                 in_position = True
                 entry_price = price
                 entry_date = date
-                entry_idx = i
                 position_direction = 'LONG' if z_sl > 0 else 'SHORT'
+                trade_pnl_curve.append(0)  # Just entered, P/L is 0
+            else:
+                trade_pnl_curve.append(0)  # Not invested
         else:
+            # Calculate current open P/L
+            if position_direction == 'LONG':
+                current_pnl = ((price - entry_price) / entry_price) * 100
+            else:  # SHORT
+                current_pnl = ((entry_price - price) / entry_price) * 100
+            
             # Check for exit signal
             if z_kin < 0:
-                # Calculate P/L
-                if position_direction == 'LONG':
-                    pnl_pct = ((price - entry_price) / entry_price) * 100
-                else:  # SHORT
-                    pnl_pct = ((entry_price - price) / entry_price) * 100
-                
-                # Update capital
+                # Close the trade
+                pnl_pct = current_pnl
                 capital = capital * (1 + pnl_pct / 100)
                 
                 trades.append({
@@ -462,8 +464,10 @@ def backtest_strategy(prices, z_kinetic, z_slope, dates):
                 position_direction = None
                 entry_price = None
                 entry_date = None
-        
-        equity_curve.append(round(capital, 2))
+                trade_pnl_curve.append(0)  # Back to 0 after closing
+            else:
+                # Still in position, show current P/L
+                trade_pnl_curve.append(round(current_pnl, 2))
     
     # Calculate stats
     if len(trades) > 0:
@@ -478,7 +482,7 @@ def backtest_strategy(prices, z_kinetic, z_slope, dates):
     
     return {
         "trades": trades,
-        "equity_curve": equity_curve,
+        "trade_pnl_curve": trade_pnl_curve,  # Individual trade P/L (0 = not invested)
         "stats": {
             "total_trades": len(trades),
             "win_rate": round(win_rate, 1),
@@ -487,3 +491,4 @@ def backtest_strategy(prices, z_kinetic, z_slope, dates):
             "final_capital": round(capital, 2)
         }
     }
+
