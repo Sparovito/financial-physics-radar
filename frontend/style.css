@@ -694,3 +694,70 @@ body {
         color: #eba834;
     }
 }
+
+/* --- MOBILE OPTIMIZATION SPRINT --- */
+.scanner-controls {
+    padding: 20px;
+    background: #0f111a;
+    border-bottom: 1px solid #333;
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+@media (max-width: 768px) {
+
+    /* Scanner Controls Stack */
+    .scanner-controls {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+        padding: 10px !important;
+    }
+
+    .scanner-controls select,
+    .scanner-controls input[type="date"],
+    .scanner-controls button {
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    .scanner-controls>div {
+        width: 100%;
+        display: flex;
+        gap: 10px;
+    }
+
+    .scanner-controls>div>div {
+        flex: 1;
+    }
+
+    /* Table Horizontal Scroll */
+    #scanner-results,
+    #trades-list table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+
+    /* Smaller Text in Tables */
+    td,
+    th {
+        padding: 8px 4px !important;
+        font-size: 0.8rem !important;
+    }
+
+    /* Hide Delta Column on super small screens? No, user needs it. */
+
+    /* Modal Padding */
+    .modal-overlay>div {
+        width: 98% !important;
+        max-height: 95vh !important;
+        margin: 5px !important;
+    }
+
+    /* Adjust header font size */
+    h3 {
+        font-size: 1.1rem !important;
+    }
+}
