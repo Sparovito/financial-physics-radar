@@ -200,7 +200,9 @@ async def analyze_stock(req: AnalysisRequest):
             prices=price_real,
             z_kinetic=z_kin_series,
             z_slope=z_slope_series,
-            dates=dates_historical
+            dates=dates_historical,
+            start_date=req.start_date,
+            end_date=req.end_date
         )
         
         # --- STRATEGIA 2: FROZEN POTENTIAL (Richiesta User) ---
@@ -230,7 +232,9 @@ async def analyze_stock(req: AnalysisRequest):
             prices=price_real,
             z_kinetic=z_frozen_pot_score, # Sostituiamo segnale trigger
             z_slope=z_slope_series,       # Manteniamo filtro direzionale
-            dates=dates_historical
+            dates=dates_historical,
+            start_date=req.start_date,
+            end_date=req.end_date
         )
         
         # Dati Futuri (Proiezione)

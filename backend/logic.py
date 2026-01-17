@@ -412,29 +412,38 @@ def backtest_strategy(prices, z_kinetic, z_slope, dates):
     - SHORT when z_kinetic > 0 AND z_slope < 0 (momentum down)
     
     Exit Rules:
-    - Close position when z_kinetic < 0 (return to calm zone)
-    
-    Returns:
-    - trades: List of trade dictionaries
-    - trade_pnl_curve: Shows 0 when not invested, % P/L during open positions
-    - stats: Summary statistics
+def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list, initial_capital=1000.0, start_date=None, end_date=None):
     """
-    trades = []
-    trade_pnl_curve = []  # Shows individual trade P/L (0 when not invested)
-    capital = 100.0
-    
+    Esegue il backtest della strategia basata su Z-Scores.
+    Filtra le operazioni in base a start_date e end_date.
+    """
+    capital = initial_capital
     in_position = False
-    position_direction = None  # 'LONG' or 'SHORT'
     entry_price = None
     entry_date = None
+    position_direction = None # 'LONG' or 'SHORT'
     
-    n = len(prices)
+    trades = []
+    trade_pnl_curve = [] # Equity curve percentage change per step
     
-    for i in range(n):
+    # Iterate through history
+    for i, date in enumerate(dates):
+        # --- DATE FILTERING ---
+        if start_date and date < start_date:
+            trade_pnl_curve.append(0)
+            continue
+            
+        if end_date and date > end_date:
+            trade_pnl_curve.append(0)
+            # Stop entering new trades, but we might want to close existing?
+            # For simplicity, we just ignore data outside range.
+            continue
+            
         price = prices[i]
         z_kin = z_kinetic[i]
         z_sl = z_slope[i]
-        date = dates[i] if dates else str(i)
+        # The 'date' variable is already set by enumerate(dates)
+        # date = dates[i] if dates else str(i) # This line is now redundant
         
         # Skip if data is missing
         if price is None or z_kin is None or z_sl is None:
