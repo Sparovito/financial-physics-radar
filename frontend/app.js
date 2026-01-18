@@ -1396,6 +1396,7 @@ async function startBulkScan() {
                         <td style="padding:10px; font-weight:bold;">${ticker}</td>
                         <td style="padding:10px; color:#ccc;">${data.avg_abs_kin || '-'}</td>
                         <td style="padding:10px; color:#ccc;">${formatMarketCap(data.market_cap)}</td>
+                        <td style="padding:10px; color:#ccc;">${data.backtest?.trades?.length || 0}</td>
                         <td style="color:${liveStats.win_rate >= 50 ? '#00ff88' : '#888'}">${liveStats.win_rate}%</td>
                         <td style="color:${liveRet > 0 ? '#00ff88' : '#ff4444'}">${liveRet}%</td>
                         <td style="color:${frozenStats.win_rate >= 50 ? '#ff9900' : '#888'}">${frozenStats.win_rate}%</td>
@@ -1428,7 +1429,7 @@ async function startBulkScan() {
         const statsRow = `
             <tr style="border-top: 3px solid #eba834; background: rgba(235, 168, 52, 0.15); font-weight: bold; font-size: 1.05em;">
                 <td></td>
-                <td colspan="3" style="padding:15px; color:#eba834; text-align:center;">📊 MEDIA (${countStats})</td>
+                <td colspan="4" style="padding:15px; color:#eba834; text-align:center;">📊 MEDIA (${countStats})</td>
                 <td style="color:${avgWinLive >= 50 ? '#00ff88' : '#bbb'}">${avgWinLive}%</td>
                 <td style="color:${avgLiveRet > 0 ? '#00ff88' : '#ff4444'}">${avgLiveRet}%</td>
                 <td style="color:${avgWinFrozen >= 50 ? '#ff9900' : '#bbb'}">${avgWinFrozen}%</td>
