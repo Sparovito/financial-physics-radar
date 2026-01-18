@@ -765,9 +765,9 @@ function setupRadarAfterLoad() {
     slider.max = maxIdx;
     slider.value = maxIdx;
 
-    // Attiva Listener
-    slider.oninput = updateRadarFrame;
-    trailsCheck.onchange = updateRadarFrame;
+    // Attiva Listener (uses toggle mode so frozen view also updates)
+    slider.oninput = toggleRadarMode;
+    trailsCheck.onchange = toggleRadarMode;
 
     // CRITICAL: Clear loading message
     chartDiv.innerHTML = "";
@@ -1094,6 +1094,122 @@ function updateRadarFrame() {
     });
 }
 
+// Toggle between Live Radar (2D) and Frozen Line (1D)
+function toggleRadarMode() {
+    const isFrozen = document.getElementById('radar-frozen-toggle').checked;
+
+    if (isFrozen) {
+        renderFrozenLine();
+    } else {
+        // Restore normal 2D radar
+        updateRadarFrame();
+    }
+}
+
+// Render 1D Frozen Z-Score Line Chart
+function renderFrozenLine() {
+    if (!window.radarTickersData || Object.keys(window.radarTickersData).length === 0) {
+        console.warn("No radar data loaded for Frozen view");
+        return;
+    }
+
+    const data = window.radarTickersData;
+    const tickers = Object.keys(data);
+
+    // Extract frozen Z-scores for each ticker at current slider position
+    const sliderIdx = parseInt(document.getElementById('radar-slider').value);
+
+    const points = [];
+    tickers.forEach(ticker => {
+        const tickerData = data[ticker];
+        if (!tickerData || !tickerData.z_frozen || tickerData.z_frozen.length === 0) return;
+
+        // Use frozen Z-score at slider position (or last available)
+        const idx = Math.min(sliderIdx, tickerData.z_frozen.length - 1);
+        const frozenZ = tickerData.z_frozen[idx] || 0;
+
+        points.push({
+            ticker: ticker,
+            z: frozenZ
+        });
+    });
+
+    // Sort by Z-score for cleaner display
+    points.sort((a, b) => a.z - b.z);
+
+    // Create scatter plot (1D line with dots)
+    const trace = {
+        x: points.map(p => p.z),
+        y: points.map(() => 0), // All on same horizontal line
+        mode: 'markers+text',
+        type: 'scatter',
+        text: points.map(p => p.ticker),
+        textposition: 'top center',
+        textfont: { size: 10, color: '#fff' },
+        marker: {
+            size: 18,
+            color: points.map(p => p.z),
+            colorscale: [
+                [0, '#ff4444'],     // Negative = Red
+                [0.5, '#888888'],   // Zero = Gray
+                [1, '#00ff88']      // Positive = Green
+            ],
+            cmin: -3,
+            cmax: 3,
+            line: { width: 1, color: '#333' }
+        },
+        hoverinfo: 'text',
+        hovertext: points.map(p => `${p.ticker}: Z=${p.z.toFixed(2)}`)
+    };
+
+    // Zero line reference
+    const zeroLine = {
+        x: [-4, 4],
+        y: [0, 0],
+        mode: 'lines',
+        type: 'scatter',
+        line: { color: '#444', width: 2, dash: 'dash' },
+        hoverinfo: 'none',
+        showlegend: false
+    };
+
+    const layout = {
+        title: { text: '❄️ Frozen Z-Score Line', font: { color: '#00aaff', size: 16 } },
+        paper_bgcolor: '#0f111a',
+        plot_bgcolor: '#0f111a',
+        xaxis: {
+            title: 'Frozen Z-Score',
+            color: '#888',
+            gridcolor: '#333',
+            zeroline: true,
+            zerolinecolor: '#666',
+            range: [-4, 4]
+        },
+        yaxis: {
+            visible: false,
+            range: [-1, 1.5]
+        },
+        margin: { l: 50, r: 50, t: 60, b: 50 },
+        showlegend: false
+    };
+
+    const config = {
+        responsive: true,
+        displayModeBar: false
+    };
+
+    Plotly.newPlot('radar-chart', [zeroLine, trace], layout, config);
+
+    // Click handler for frozen view
+    document.getElementById('radar-chart').on('plotly_click', function (eventData) {
+        const point = eventData.points.find(p => p.data.mode === 'markers+text');
+        if (point) {
+            const ticker = point.text;
+            FOCUSED_TICKER = ticker;
+            updateAnalyzeButton();
+        }
+    });
+}
 // Update Analyze Button visibility and label
 function updateAnalyzeButton() {
     const btn = document.getElementById('btn-analyze-focused');
