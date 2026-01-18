@@ -1639,8 +1639,8 @@ function runPortfolioSimulation() {
         type: 'scatter',
         mode: 'lines+markers',
         name: `Unrealized (${unrealizedDiff >= 0 ? '+' : ''}€${unrealizedDiff.toFixed(0)})`,
-        line: { color: '#00aaff', width: 3, dash: 'dash' },
-        marker: { size: 8, color: '#00aaff' }
+        line: { color: '#ffaa00', width: 5, dash: 'dot' },
+        marker: { size: 14, color: '#ffaa00', symbol: 'diamond' }
     };
 
     Plotly.newPlot('chart-sim-equity', [traceEquityRealized, traceUnrealizedJump], {
