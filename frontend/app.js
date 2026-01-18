@@ -1543,25 +1543,28 @@ function runPortfolioSimulation() {
     }
 
     // 2. Simulation Loop
-    const equityCurve = [];
+    const equityCurve = [];        // Realized only
+    const totalEquityCurve = [];   // Realized + Unrealized
     const exposureCurve = [];
     let cumulativeRealizedProfit = 0;
 
-    // Pre-process trades for faster lookup? 
-    // Or just iterate (N_days * N_trades) might be heavy if thousands of trades.
-    // Optimization: Open/Close Event List.
+    // Track open trades for unrealized calc
+    const openTrades = new Map(); // trade -> { entryDate, pnl_pct }
+
+    // Pre-process trades for faster lookup
     const events = {};
 
     validTrades.forEach(t => {
         const entry = t.entry_date;
         let exit = t.exit_date;
-        if (!exit || exit === 'OPEN') exit = new Date().toISOString().split('T')[0];
+        const isOpen = !exit || exit === 'OPEN';
+        if (isOpen) exit = chartEndDate || new Date().toISOString().split('T')[0];
 
         if (!events[entry]) events[entry] = [];
         events[entry].push({ type: 'OPEN', trade: t });
 
         if (!events[exit]) events[exit] = [];
-        events[exit].push({ type: 'CLOSE', trade: t });
+        events[exit].push({ type: 'CLOSE', trade: t, isForced: isOpen });
     });
 
     let activeTrades = 0;
@@ -1572,22 +1575,12 @@ function runPortfolioSimulation() {
             events[date].forEach(e => {
                 if (e.type === 'OPEN') {
                     activeTrades++;
+                    openTrades.set(e.trade, { pnl_pct: e.trade.pnl_pct || 0 });
                 } else if (e.type === 'CLOSE') {
-                    // For CLOSE events, we assume exit at END of day, 
-                    // BUT "Invested Capital" chart usually shows what was held DURING the day.
-                    // If we decrement here, it might show 0 for a 1-day trade.
-                    // Better to decrement AFTER recording stats? 
-                    // Or track "Open at Start of Day".
-                    // Let's decrement immediately for calculation simplicity but handle exposure logic carefully.
-
-                    // Add Profit
-                    // Note: This logic assumes 'total_return' logic from backend
-                    // If trade is OPEN, 'pnl_pct' might be unrealized.
-                    // If exit date is today (forced), we use the current return.
-                    const ret = e.trade.pnl_pct || 0; // Simple % return
+                    const ret = e.trade.pnl_pct || 0;
                     const profit = capitalPerTrade * (ret / 100);
                     cumulativeRealizedProfit += profit;
-
+                    openTrades.delete(e.trade);
                     activeTrades--;
                 }
             });
@@ -1596,9 +1589,16 @@ function runPortfolioSimulation() {
         // Ensure non-negative active trades (safety)
         if (activeTrades < 0) activeTrades = 0;
 
+        // Calculate unrealized profit from open trades
+        let unrealizedProfit = 0;
+        openTrades.forEach((info) => {
+            unrealizedProfit += capitalPerTrade * (info.pnl_pct / 100);
+        });
+
         const currentExposure = activeTrades * capitalPerTrade;
 
         equityCurve.push({ date: date, value: cumulativeRealizedProfit });
+        totalEquityCurve.push({ date: date, value: cumulativeRealizedProfit + unrealizedProfit });
         exposureCurve.push({ date: date, value: currentExposure });
     });
 
@@ -1618,23 +1618,33 @@ function runPortfolioSimulation() {
     // 5. Render Charts
 
     // Equity Chart (Area/Line)
-    const traceEquity = {
+    const traceEquityRealized = {
         x: equityCurve.map(d => d.date),
         y: equityCurve.map(d => d.value),
         type: 'scatter',
         mode: 'lines',
         fill: 'tozeroy',
-        name: 'Profitto Cumulativo',
+        name: 'Realizzato',
         line: { color: '#00ff88', width: 2 }
     };
 
-    Plotly.newPlot('chart-sim-equity', [traceEquity], {
-        title: { text: '📈 Curva dei Profitti (Equity Realizzata)', font: { color: '#fff' } },
+    const traceEquityTotal = {
+        x: totalEquityCurve.map(d => d.date),
+        y: totalEquityCurve.map(d => d.value),
+        type: 'scatter',
+        mode: 'lines',
+        name: 'Totale (+ Unrealized)',
+        line: { color: '#00aaff', width: 2, dash: 'dash' }
+    };
+
+    Plotly.newPlot('chart-sim-equity', [traceEquityRealized, traceEquityTotal], {
+        title: { text: '📈 Curva dei Profitti', font: { color: '#fff' } },
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
         xaxis: { color: '#888', gridcolor: '#333', range: chartStartDate ? [chartStartDate, chartEndDate] : null },
         yaxis: { color: '#888', gridcolor: '#333', tickprefix: '€' },
-        margin: { l: 50, r: 20, t: 40, b: 40 }
+        margin: { l: 50, r: 20, t: 40, b: 40 },
+        legend: { font: { color: '#ccc' }, x: 0.02, y: 0.98 }
     });
 
     // Exposure Chart (Step/Bar)
