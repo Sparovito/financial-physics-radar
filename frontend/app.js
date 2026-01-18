@@ -1428,7 +1428,7 @@ async function startBulkScan() {
         const statsRow = `
             <tr style="border-top: 3px solid #eba834; background: rgba(235, 168, 52, 0.15); font-weight: bold; font-size: 1.05em;">
                 <td></td>
-                <td style="padding:15px; color:#eba834;">📊 MEDIA (${countStats})</td>
+                <td colspan="3" style="padding:15px; color:#eba834; text-align:center;">📊 MEDIA (${countStats})</td>
                 <td style="color:${avgWinLive >= 50 ? '#00ff88' : '#bbb'}">${avgWinLive}%</td>
                 <td style="color:${avgLiveRet > 0 ? '#00ff88' : '#ff4444'}">${avgLiveRet}%</td>
                 <td style="color:${avgWinFrozen >= 50 ? '#ff9900' : '#bbb'}">${avgWinFrozen}%</td>
