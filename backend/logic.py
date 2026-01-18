@@ -394,11 +394,40 @@ class MarketScanner:
             except:
                 market_cap = 0
             
-            # [NEW] Calculate Frozen Strategy P/L (Simulating the "Orange Line")
-            # We use z_pot (Frozen Kinetic) as the trigger signal
+            # [ACCURATE] Calculate TRUE Point-in-Time Frozen Potential (like Main Chart)
+            # This is slower but gives the EXACT same values as the Orange Line
+            MIN_POINTS = 100
+            SAMPLE_EVERY = 1  # Every day for accuracy
+            
+            frozen_pot_raw = []
+            frozen_dates_raw = []
+            
+            # Build point-in-time series (no look-ahead bias)
+            n_total = len(px)
+            for t in range(MIN_POINTS, n_total, SAMPLE_EVERY):
+                px_t = px.iloc[:t+1]
+                try:
+                    mech_t = ActionPath(px_t, alpha=200, beta=1.0)
+                    frozen_pot_raw.append(float(mech_t.pot_density.iloc[-1]))
+                    frozen_dates_raw.append(px.index[t].strftime('%Y-%m-%d'))
+                except:
+                    continue
+            
+            # Align with full price history (pad with 0 at start)
+            padding_size = len(hist_price) - len(frozen_pot_raw)
+            aligned_frozen_pot = [0] * padding_size + frozen_pot_raw
+            aligned_frozen_dates = [None] * padding_size + frozen_dates_raw
+            
+            # Calculate Rolling Z-Score on aligned frozen potential
+            frozen_pot_series = pd.Series(aligned_frozen_pot).fillna(0)
+            roll_fpot_mean = frozen_pot_series.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
+            roll_fpot_std = frozen_pot_series.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
+            z_frozen_pot = ((frozen_pot_series - roll_fpot_mean) / (roll_fpot_std + 1e-6)).fillna(0).tolist()
+            
+            # [NEW] Calculate Frozen Strategy P/L using TRUE frozen Z-score
             strat_res = backtest_strategy(
                  prices=hist_price,
-                 z_kinetic=hist_z_pot, # Use Frozen/Potential as Kinetic Signal
+                 z_kinetic=z_frozen_pot,  # TRUE Frozen Z-Score (point-in-time)
                  z_slope=hist_z_slope,
                  dates=hist_dates
             )
