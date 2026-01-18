@@ -10,8 +10,14 @@ async function runAnalysis() {
     const alpha = parseFloat(document.getElementById('alpha').value);
     const beta = parseFloat(document.getElementById('beta').value);
     const forecast = parseInt(document.getElementById('forecast').value);
+    const lookbackYears = parseInt(document.getElementById('lookback-years').value) || 3;
     const endDate = document.getElementById('end-date').value || null; // null if empty
     const useCache = document.getElementById('use-cache').checked;
+
+    // Calculate Start Date
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - lookbackYears);
+    const startDate = d.toISOString().split('T')[0];
 
     if (!ticker) {
         alert("Inserisci un Ticker!");
@@ -23,7 +29,7 @@ async function runAnalysis() {
     status.style.display = 'flex';
     statusText.innerText = endDate
         ? `Analisi storica (fino a ${endDate}) per ${ticker}...`
-        : `Scaricando dati per ${ticker}...`;
+        : `Scaricando ${lookbackYears} anni di dati per ${ticker}...`;
 
     try {
         // 2. Chiama API Backend
@@ -35,6 +41,7 @@ async function runAnalysis() {
                 alpha: alpha,
                 beta: beta,
                 forecast_days: forecast,
+                start_date: startDate,
                 end_date: endDate,
                 use_cache: useCache
             })
