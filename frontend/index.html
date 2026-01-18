@@ -208,9 +208,19 @@
                         <label class="label-trails">
                             <input type="checkbox" id="radar-trails"> 🌠 Scia
                         </label>
-                        <label class="label-frozen" style="margin-left:15px; color:#00aaff;">
-                            <input type="checkbox" id="radar-frozen-toggle" onchange="toggleRadarMode()"> ❄️ Frozen
-                        </label>
+                        <!-- Toggle Switch for Frozen Mode -->
+                        <div style="margin-left:20px; display:flex; align-items:center; gap:8px;">
+                            <span style="color:#00ff88; font-size:0.85rem;">🔴 Live</span>
+                            <label class="toggle-switch" style="position:relative; width:50px; height:24px;">
+                                <input type="checkbox" id="radar-frozen-toggle" onchange="toggleRadarMode()"
+                                    style="opacity:0; width:0; height:0;">
+                                <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; 
+                                    background:#444; border-radius:24px; transition:0.3s;"></span>
+                                <span class="toggle-slider" style="position:absolute; height:18px; width:18px; left:3px; bottom:3px;
+                                    background:#fff; border-radius:50%; transition:0.3s;"></span>
+                            </label>
+                            <span style="color:#00aaff; font-size:0.85rem;">❄️ Frozen</span>
+                        </div>
                     </div>
                 </div>
 

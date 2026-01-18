@@ -764,3 +764,12 @@ progress::-webkit-progress-value {
         border-radius: 8px !important;
     }
 }
+
+/* Toggle Switch for Frozen Mode */
+.toggle-switch input:checked+span {
+    background: linear-gradient(135deg, #00aaff, #0066cc) !important;
+}
+
+.toggle-switch input:checked+span+.toggle-slider {
+    transform: translateX(26px);
+}
