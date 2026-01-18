@@ -1599,6 +1599,41 @@ function runPortfolioSimulation() {
         yaxis: { color: '#888', gridcolor: '#333', tickprefix: '€' },
         margin: { l: 50, r: 20, t: 40, b: 40 }
     });
+
+    // 6. Populate Trades List
+    const listBody = document.getElementById('sim-trades-body');
+    listBody.innerHTML = '';
+
+    validTrades.forEach(t => {
+        // Assume close Today if OPEN
+        let exitDate = t.exit_date;
+        let pnlPct = t.pnl_pct;
+
+        // If trade is effectively "OPEN" (no exit date or specifically marked)
+        // logic.py returns "OPEN" as string for open trades.
+        const isOpen = (exitDate === 'OPEN' || !exitDate);
+
+        if (isOpen) {
+            exitDate = "IN CORSO";
+            // Unrealized PnL logic was handled in logic.py which populates 'pnl_pct' for OPEN trades too
+        }
+
+        const profitVal = capitalPerTrade * ((pnlPct || 0) / 100);
+        const color = (pnlPct || 0) >= 0 ? '#00ff88' : '#ff4444';
+        const directionIcon = t.direction === 'LONG' ? '🟢' : '🔴';
+
+        const tr = `
+            <tr style="border-bottom:1px solid #333;">
+                <td style="padding:10px; font-weight:bold;">${t.ticker}</td>
+                <td style="padding:10px;">${t.entry_date}</td>
+                <td style="padding:10px;">${exitDate}</td>
+                <td style="padding:10px;">${directionIcon} ${t.direction || 'N/A'}</td>
+                <td style="padding:10px; color:${color}; font-weight:bold;">${(pnlPct || 0).toFixed(2)}%</td>
+                <td style="padding:10px; color:${color}; font-weight:bold;">€ ${profitVal.toFixed(2)}</td>
+            </tr>
+        `;
+        listBody.innerHTML += tr;
+    });
 }
 
 

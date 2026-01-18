@@ -389,6 +389,29 @@
                     <div style="background:#151720; border-radius:6px; padding:10px; border:1px solid #333;">
                         <div id="chart-sim-exposure" style="width:100%; height:250px;"></div>
                     </div>
+
+                    <!-- TRADES LIST -->
+                    <div style="margin-top:20px;">
+                        <h4 style="color:#00ff88; margin-bottom:10px;">📋 Lista Operazioni Simulate</h4>
+                        <div style="width:100%; overflow-x:auto;">
+                            <table class="scanner-table"
+                                style="width:100%; border-collapse:collapse; text-align:left; font-size:0.9rem;">
+                                <thead style="background:#222; color:#ccc;">
+                                    <tr>
+                                        <th style="padding:10px;">Ticker</th>
+                                        <th style="padding:10px;">Data Ingresso</th>
+                                        <th style="padding:10px;">Data Uscita</th>
+                                        <th style="padding:10px;">Direzione</th>
+                                        <th style="padding:10px;">Risultato %</th>
+                                        <th style="padding:10px;">Profitto (€)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sim-trades-body">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
