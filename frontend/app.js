@@ -1518,6 +1518,10 @@ function runPortfolioSimulation() {
 
     if (!trades || trades.length === 0) return;
 
+    // Get the selected date range from scanner for chart limits
+    const chartStartDate = document.getElementById('scanner-start').value || null;
+    const chartEndDate = document.getElementById('scanner-end').value || new Date().toISOString().split('T')[0];
+
     // 1. Determine Timeline
     // Filter out invalid dates
     const validTrades = trades.filter(t => t.entry_date);
@@ -1628,7 +1632,7 @@ function runPortfolioSimulation() {
         title: { text: '📈 Curva dei Profitti (Equity Realizzata)', font: { color: '#fff' } },
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
-        xaxis: { color: '#888', gridcolor: '#333' },
+        xaxis: { color: '#888', gridcolor: '#333', range: chartStartDate ? [chartStartDate, chartEndDate] : null },
         yaxis: { color: '#888', gridcolor: '#333', tickprefix: '€' },
         margin: { l: 50, r: 20, t: 40, b: 40 }
     });
@@ -1648,7 +1652,7 @@ function runPortfolioSimulation() {
         title: { text: '🏦 Capitale Esposto nel Tempo (Max Drawdown Risk)', font: { color: '#fff' } },
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
-        xaxis: { color: '#888', gridcolor: '#333' },
+        xaxis: { color: '#888', gridcolor: '#333', range: chartStartDate ? [chartStartDate, chartEndDate] : null },
         yaxis: { color: '#888', gridcolor: '#333', tickprefix: '€' },
         margin: { l: 50, r: 20, t: 40, b: 40 }
     });
