@@ -271,20 +271,34 @@ async def analyze_stock(req: AnalysisRequest):
         # 1. Avg Abs Kinetic
         avg_abs_kin = ((kin - roll_kin_mean) / (roll_kin_std + 1e-6)).fillna(0).abs().mean()
         
-        # 2. Market Cap (Fast Info)
+        # 2. Market Cap (Robust Strategy: FastInfo -> Info -> TotalAssets -> Calc)
+        mkt_cap = 0
         try:
-            # .fast_info is an object, access via attribute
+            # A. Try FastInfo Attribute
             mkt_cap = md.ticker_obj.fast_info.market_cap
         except:
+            pass
+            
+        if not mkt_cap:
             try:
-                # Fallback to key access just in case
-                mkt_cap = md.ticker_obj.fast_info['market_cap']
+                # B. Try Info 'marketCap'
+                info = md.ticker_obj.info
+                mkt_cap = info.get('marketCap', 0)
+                # C. Try Info 'totalAssets' (for ETFs like SPY, QQQ)
+                if not mkt_cap:
+                    mkt_cap = info.get('totalAssets', 0)
             except:
-                try:
-                    # Fallback to .info
-                    mkt_cap = md.ticker_obj.info.get('marketCap', 0)
-                except:
-                    mkt_cap = 0
+                pass
+        
+        if not mkt_cap:
+            try:
+                # D. Manual Calc (Shares * Price)
+                shares = md.ticker_obj.fast_info.shares_outstanding
+                price = md.ticker_obj.fast_info.last_price
+                if shares and price:
+                    mkt_cap = shares * price
+            except:
+                pass
         
         return {
             "status": "ok",
