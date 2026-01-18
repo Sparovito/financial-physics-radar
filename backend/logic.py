@@ -402,8 +402,8 @@ class MarketScanner:
                  z_slope=hist_z_slope,
                  dates=hist_dates
             )
-            # Use EQUITY CURVE (Cumulative) not Trade P/L (Single) to match Main Chart logic
-            frozen_pnl_curve = strat_res['equity_curve'] 
+            # Use TRADE P/L CURVE (resets to 0 between trades) to match Orange Line
+            frozen_pnl_curve = strat_res['trade_pnl_curve'] 
 
             return {
                 "ticker": ticker,
