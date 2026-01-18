@@ -1297,6 +1297,9 @@ async function startBulkScan() {
     let totalWinFrozen = 0;
     let countStats = 0;
 
+    // Global Trade Accumulator for Portfolio Simulator
+    window.ALL_SCAN_TRADES = [];
+
     // Loop
     for (let i = 0; i < tickersToScan.length; i++) {
         if (SCAN_STOP_SIGNAL) {
@@ -1345,6 +1348,17 @@ async function startBulkScan() {
             const liveStats = data.backtest?.stats;
             const frozenStats = data.frozen_strategy?.stats;
 
+            // --- CAPTURE TRADES FOR SIMULATOR ---
+            if (data.backtest?.trades) {
+                data.backtest.trades.forEach(t => {
+                    // Enrich trade object with ticker
+                    window.ALL_SCAN_TRADES.push({
+                        ...t,
+                        ticker: ticker
+                    });
+                });
+            }
+
             if (liveStats && frozenStats) {
                 // ACCUMULATE
                 totalLiveRet += liveStats.total_return;
@@ -1384,7 +1398,7 @@ async function startBulkScan() {
         await new Promise(r => setTimeout(r, 10));
     }
 
-    // --- APPEND AVERAGE ROW ---
+    // --- APPEND AVERAGE ROW & SIMULATOR BUTTON ---
     if (countStats > 0) {
         const avgLiveRet = (totalLiveRet / countStats).toFixed(2);
         const avgFrozenRet = (totalFrozenRet / countStats).toFixed(2);
@@ -1400,7 +1414,11 @@ async function startBulkScan() {
                 <td style="color:${avgWinFrozen >= 50 ? '#ff9900' : '#bbb'}">${avgWinFrozen}%</td>
                 <td style="color:${avgFrozenRet > 0 ? '#ff9900' : '#ff4444'}">${avgFrozenRet}%</td>
                 <td style="color:#eba834;">${avgDelta}%</td>
-                <td></td>
+                <td>
+                    <button onclick="openSimulatorModal()" style="background:#00ff88; color:#000; font-weight:bold; border:none; padding:6px 10px; cursor:pointer; border-radius:4px; box-shadow:0 2px 5px rgba(0,0,0,0.5);">
+                        💰 SIMULA
+                    </button>
+                </td>
             </tr>
         `;
         tableBody.innerHTML += statsRow;
@@ -1412,9 +1430,182 @@ async function startBulkScan() {
     if (!SCAN_STOP_SIGNAL) {
         statusLabel.innerHTML = '✅ Scan Completato!';
     }
-    btnStart.style.display = 'inline-block';
-    btnStop.style.display = 'none';
-    progressBar.style.display = 'none';
+
+    // Reset Buttons
+    document.getElementById('btn-stop-scan').style.display = 'none';
+    document.getElementById('btn-start-scan').style.display = 'inline-block';
+}
+
+// --- PORTFOLIO SIMULATOR FUNCTIONS ---
+
+function openSimulatorModal() {
+    const modal = document.getElementById('simulator-modal');
+    // Check if we have trades
+    if (!window.ALL_SCAN_TRADES || window.ALL_SCAN_TRADES.length === 0) {
+        alert("Esegui prima una scansione per raccogliere i dati!");
+        return;
+    }
+
+    document.getElementById('sim-total-trades').textContent = window.ALL_SCAN_TRADES.length;
+    modal.style.display = 'flex';
+
+    // Auto-run with default capital if trades exist
+    if (window.ALL_SCAN_TRADES.length > 0) {
+        runPortfolioSimulation();
+    }
+}
+
+function closeSimulatorModal() {
+    document.getElementById('simulator-modal').style.display = 'none';
+}
+
+function runPortfolioSimulation() {
+    const capitalPerTrade = parseFloat(document.getElementById('sim-capital').value) || 100;
+    const trades = window.ALL_SCAN_TRADES;
+
+    if (!trades || trades.length === 0) return;
+
+    // 1. Determine Timeline
+    // Filter out invalid dates
+    const validTrades = trades.filter(t => t.entry_date);
+
+    // Sort by Entry Date
+    validTrades.sort((a, b) => new Date(a.entry_date) - new Date(b.entry_date));
+
+    if (validTrades.length === 0) return;
+
+    const minDate = new Date(validTrades[0].entry_date);
+    const maxDate = new Date(); // Today
+
+    // Generate Date Range Array
+    const dateRange = [];
+    let curr = new Date(minDate);
+    while (curr <= maxDate) {
+        dateRange.push(curr.toISOString().split('T')[0]);
+        curr.setDate(curr.getDate() + 1);
+    }
+
+    // 2. Simulation Loop
+    const equityCurve = [];
+    const exposureCurve = [];
+    let cumulativeRealizedProfit = 0;
+
+    // Pre-process trades for faster lookup? 
+    // Or just iterate (N_days * N_trades) might be heavy if thousands of trades.
+    // Optimization: Open/Close Event List.
+    const events = {};
+
+    validTrades.forEach(t => {
+        const entry = t.entry_date;
+        let exit = t.exit_date;
+        if (!exit || exit === 'OPEN') exit = new Date().toISOString().split('T')[0];
+
+        if (!events[entry]) events[entry] = [];
+        events[entry].push({ type: 'OPEN', trade: t });
+
+        if (!events[exit]) events[exit] = [];
+        events[exit].push({ type: 'CLOSE', trade: t });
+    });
+
+    let activeTrades = 0;
+
+    dateRange.forEach(date => {
+        // Process Daily Events
+        if (events[date]) {
+            events[date].forEach(e => {
+                if (e.type === 'OPEN') {
+                    activeTrades++;
+                } else if (e.type === 'CLOSE') {
+                    // For CLOSE events, we assume exit at END of day, 
+                    // BUT "Invested Capital" chart usually shows what was held DURING the day.
+                    // If we decrement here, it might show 0 for a 1-day trade.
+                    // Better to decrement AFTER recording stats? 
+                    // Or track "Open at Start of Day".
+                    // Let's decrement immediately for calculation simplicity but handle exposure logic carefully.
+
+                    // Add Profit
+                    // Note: This logic assumes 'total_return' logic from backend
+                    // If trade is OPEN, 'return_pct' might be unrealized.
+                    // If exit date is today (forced), we use the current return.
+                    const ret = e.trade.return_pct || 0; // Simple % return
+                    const profit = capitalPerTrade * (ret / 100);
+                    cumulativeRealizedProfit += profit;
+
+                    activeTrades--;
+                }
+            });
+        }
+
+        // Ensure non-negative active trades (safety)
+        if (activeTrades < 0) activeTrades = 0;
+
+        const currentExposure = activeTrades * capitalPerTrade;
+
+        equityCurve.push({ date: date, value: cumulativeRealizedProfit });
+        exposureCurve.push({ date: date, value: currentExposure });
+    });
+
+    // 3. Calculate Metrics
+    const maxExposure = Math.max(...exposureCurve.map(d => d.value));
+    const totalProfit = cumulativeRealizedProfit;
+    const roiOnMax = maxExposure > 0 ? (totalProfit / maxExposure) * 100 : 0;
+
+    // 4. Update UI
+    document.getElementById('sim-max-exposure').textContent = `€ ${maxExposure.toLocaleString()}`;
+    document.getElementById('sim-net-profit').textContent = `€ ${totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    document.getElementById('sim-roi').textContent = `${roiOnMax.toFixed(2)}%`;
+
+    document.getElementById('sim-net-profit').style.color = totalProfit >= 0 ? '#00ff88' : '#ff4444';
+    document.getElementById('sim-roi').style.color = roiOnMax >= 0 ? '#00ff88' : '#ff4444';
+
+    // 5. Render Charts
+
+    // Equity Chart (Area/Line)
+    const traceEquity = {
+        x: equityCurve.map(d => d.date),
+        y: equityCurve.map(d => d.value),
+        type: 'scatter',
+        mode: 'lines',
+        fill: 'tozeroy',
+        name: 'Profitto Cumulativo',
+        line: { color: '#00ff88', width: 2 }
+    };
+
+    Plotly.newPlot('chart-sim-equity', [traceEquity], {
+        title: { text: '📈 Curva dei Profitti (Equity Realizzata)', font: { color: '#fff' } },
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        xaxis: { color: '#888', gridcolor: '#333' },
+        yaxis: { color: '#888', gridcolor: '#333', tickprefix: '€' },
+        margin: { l: 50, r: 20, t: 40, b: 40 }
+    });
+
+    // Exposure Chart (Step/Bar)
+    const traceExposure = {
+        x: exposureCurve.map(d => d.date),
+        y: exposureCurve.map(d => d.value),
+        type: 'scatter',
+        mode: 'lines',
+        fill: 'tozeroy',
+        name: 'Capitale Investito',
+        line: { color: '#eba834', width: 2, shape: 'hv' } // Step-shape for capital
+    };
+
+    Plotly.newPlot('chart-sim-exposure', [traceExposure], {
+        title: { text: '🏦 Capitale Esposto nel Tempo (Max Drawdown Risk)', font: { color: '#fff' } },
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        xaxis: { color: '#888', gridcolor: '#333' },
+        yaxis: { color: '#888', gridcolor: '#333', tickprefix: '€' },
+        margin: { l: 50, r: 20, t: 40, b: 40 }
+    });
+}
+if (!SCAN_STOP_SIGNAL) {
+    statusLabel.innerHTML = '✅ Scan Completato!';
+}
+btnStart.style.display = 'inline-block';
+btnStop.style.display = 'none';
+progressBar.style.display = 'none';
 }
 
 function stopBulkScan() {
