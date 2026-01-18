@@ -1600,13 +1600,7 @@ function runPortfolioSimulation() {
         margin: { l: 50, r: 20, t: 40, b: 40 }
     });
 }
-if (!SCAN_STOP_SIGNAL) {
-    statusLabel.innerHTML = '✅ Scan Completato!';
-}
-btnStart.style.display = 'inline-block';
-btnStop.style.display = 'none';
-progressBar.style.display = 'none';
-}
+
 
 function stopBulkScan() {
     SCAN_STOP_SIGNAL = true;
