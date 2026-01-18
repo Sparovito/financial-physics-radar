@@ -402,7 +402,8 @@ class MarketScanner:
                  z_slope=hist_z_slope,
                  dates=hist_dates
             )
-            frozen_pnl_curve = strat_res['trade_pnl_curve']
+            # Use EQUITY CURVE (Cumulative) not Trade P/L (Single) to match Main Chart logic
+            frozen_pnl_curve = strat_res['equity_curve'] 
 
             return {
                 "ticker": ticker,
@@ -421,7 +422,7 @@ class MarketScanner:
                     "z_slope": [round(x, 2) if x is not None else None for x in hist_z_slope],
                     "prices": [round(x, 2) if x is not None else None for x in hist_price],
                     "z_kin_frozen": [round(x, 2) if x is not None else None for x in hist_z_pot], # Legacy name mapping
-                    "strategy_pnl": frozen_pnl_curve # The "Orange Line" content
+                    "strategy_pnl": frozen_pnl_curve # The "Orange Line" content (Cumulative)
                 }
             }
             
@@ -441,30 +442,32 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
     position_direction = None # 'LONG' or 'SHORT'
     
     trades = []
-    trade_pnl_curve = [] # Equity curve percentage change per step
+    
+    equity_curve = [] # Cumulative Strategy P/L % (Equity Curve)
     
     # Iterate through history
     for i, date in enumerate(dates):
         # --- DATE FILTERING ---
         if start_date and date < start_date:
             trade_pnl_curve.append(0)
+            equity_curve.append(0)
             continue
             
         if end_date and date > end_date:
             trade_pnl_curve.append(0)
-            # Stop entering new trades, but we might want to close existing?
-            # For simplicity, we just ignore data outside range.
+            equity_curve.append(0) # Or append last value? For now 0 to ignore.
             continue
             
         price = prices[i]
         z_kin = z_kinetic[i]
         z_sl = z_slope[i]
-        # The 'date' variable is already set by enumerate(dates)
-        # date = dates[i] if dates else str(i) # This line is now redundant
         
         # Skip if data is missing
         if price is None or z_kin is None or z_sl is None:
             trade_pnl_curve.append(0)
+            # Equity curve: keep last value or 0 if start?
+            last_eq = equity_curve[-1] if equity_curve else 0
+            equity_curve.append(last_eq)
             continue
             
         if not in_position:
@@ -474,9 +477,14 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                 entry_price = price
                 entry_date = date
                 position_direction = 'LONG' if z_sl > 0 else 'SHORT'
-                trade_pnl_curve.append(0)  # Just entered, P/L is 0
+                trade_pnl_curve.append(0)
             else:
-                trade_pnl_curve.append(0)  # Not invested
+                trade_pnl_curve.append(0)
+            
+            # Current Equity = Capital (Cash)
+            current_equity_pct = ((capital - initial_capital) / initial_capital) * 100
+            equity_curve.append(round(current_equity_pct, 2))
+
         else:
             # Calculate current open P/L
             if position_direction == 'LONG':
@@ -504,10 +512,20 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                 position_direction = None
                 entry_price = None
                 entry_date = None
-                trade_pnl_curve.append(0)  # Back to 0 after closing
+                trade_pnl_curve.append(0) 
             else:
                 # Still in position, show current P/L
                 trade_pnl_curve.append(round(current_pnl, 2))
+            
+            # Current Equity = Capital (implied)
+            # If closed just now, capital is updated. If open, projected capital.
+            if in_position:
+                temp_capital = capital * (1 + current_pnl / 100)
+                current_equity_pct = ((temp_capital - initial_capital) / initial_capital) * 100
+            else:
+                current_equity_pct = ((capital - initial_capital) / initial_capital) * 100
+            
+            equity_curve.append(round(current_equity_pct, 2))
     
     # Check for OPEN Position at the end
     if in_position:
@@ -521,12 +539,12 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
             
         trades.append({
             "entry_date": entry_date,
-            "exit_date": "OPEN", # Marker specific
+            "exit_date": "OPEN", 
             "direction": position_direction,
             "entry_price": round(entry_price, 2),
             "exit_price": round(final_price, 2),
             "pnl_pct": round(unrealized_pnl, 2),
-            "capital_after": round(capital, 2) # Capital not updated yet
+            "capital_after": round(capital, 2)
         })
     
     # Calculate stats
@@ -543,6 +561,7 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
     return {
         "trades": trades,
         "trade_pnl_curve": trade_pnl_curve,  # Individual trade P/L (0 = not invested)
+        "equity_curve": equity_curve, # Cumulative Equity P/L (Total Strategy Return)
         "stats": {
             "total_trades": len(trades),
             "win_rate": round(win_rate, 1),
