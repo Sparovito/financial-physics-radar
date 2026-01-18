@@ -1389,7 +1389,7 @@ async function startBulkScan() {
                 const deltaColor = parseFloat(delta) > 20 ? '#ff4444' : (parseFloat(delta) < -5 ? '#00ff88' : '#888');
 
                 const row = `
-                    <tr style="border-bottom:1px solid #333;">
+                    <tr class="scan-row" data-kin="${data.avg_abs_kin || 0}" data-cap="${data.market_cap || 0}" style="border-bottom:1px solid #333;">
                         <td style="padding:10px; text-align:center;">
                             <input type="checkbox" class="scan-ticker-checkbox" data-ticker="${ticker}" checked>
                         </td>
@@ -1495,8 +1495,9 @@ function runPortfolioSimulation() {
         if (content) content.style.background = 'linear-gradient(180deg, rgba(60, 20, 20, 1) 0%, #1a1d2a 100%)';
     }
 
-    // Filter tickers based on checkboxes
+    // Filter tickers based on checkboxes AND visibility
     const checkedTickers = Array.from(document.querySelectorAll('.scan-ticker-checkbox:checked'))
+        .filter(cb => cb.closest('tr').style.display !== 'none')
         .map(cb => cb.dataset.ticker);
 
     const trades = sourceTrades.filter(t => checkedTickers.includes(t.ticker));
@@ -1693,14 +1694,39 @@ function loadTickerFromScan(ticker) {
 // Toggle All Checkboxes
 function toggleAllScanRows(source) {
     const checkboxes = document.querySelectorAll('.scan-ticker-checkbox');
-    checkboxes.forEach(cb => cb.checked = source.checked);
+    checkboxes.forEach(cb => {
+        // Only toggle visible rows if we want to be smart? Or all?
+        // Standard behavior: Toggle All (even hidden). But mostly user wants visible.
+        if (cb.closest('tr').style.display !== 'none') {
+            cb.checked = source.checked;
+        }
+    });
 }
 
-// Format Market Cap
+// FORMAT MARKET CAP
 function formatMarketCap(value) {
     if (!value) return '-';
     if (value >= 1e12) return (value / 1e12).toFixed(2) + 'T';
     if (value >= 1e9) return (value / 1e9).toFixed(2) + 'B';
     if (value >= 1e6) return (value / 1e6).toFixed(2) + 'M';
     return parseInt(value).toLocaleString();
+}
+
+// APPLY FILTERS
+function applyScanFilters() {
+    const minKin = parseFloat(document.getElementById('filter-kin-min').value) || 0;
+    const minCapB = parseFloat(document.getElementById('filter-cap-min').value) || 0;
+    const minCapVal = minCapB * 1e9; // Convert Billions
+
+    const rows = document.querySelectorAll('.scan-row');
+    rows.forEach(row => {
+        const kin = parseFloat(row.dataset.kin);
+        const cap = parseFloat(row.dataset.cap);
+
+        let visible = true;
+        if (kin < minKin) visible = false;
+        if (cap < minCapVal) visible = false;
+
+        row.style.display = visible ? '' : 'none';
+    });
 }

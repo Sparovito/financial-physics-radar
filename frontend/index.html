@@ -316,6 +316,26 @@
             <progress id="scan-progress" value="0" max="100"
                 style="width:100%; height:4px; display:none; border:none; background:#222;"></progress>
 
+            <!-- FILTERS -->
+            <div
+                style="padding:10px 15px; background:#1e1e1e; border-bottom:1px solid #333; display:flex; gap:15px; flex-wrap:wrap; align-items:center;">
+                <span style="color:#888; font-size:0.8rem; font-weight:bold;">FILTRI:</span>
+
+                <!-- Kinetic Filter -->
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <label style="color:#aaa; font-size:0.8rem;">⚡ Kin ></label>
+                    <input type="number" id="filter-kin-min" step="0.1" oninput="applyScanFilters()"
+                        style="background:#333; border:1px solid #444; color:#fff; padding:4px; width:60px; border-radius:4px;">
+                </div>
+
+                <!-- Market Cap Filter -->
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <label style="color:#aaa; font-size:0.8rem;">💰 Cap (B) ></label>
+                    <input type="number" id="filter-cap-min" step="10" oninput="applyScanFilters()"
+                        style="background:#333; border:1px solid #444; color:#fff; padding:4px; width:60px; border-radius:4px;">
+                </div>
+            </div>
+
             <!-- RESULTS TABLE -->
             <div style="padding: 0; overflow-x: auto;">
                 <table class="scanner-table"
