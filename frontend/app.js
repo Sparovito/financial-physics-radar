@@ -1108,31 +1108,44 @@ function toggleRadarMode() {
 
 // Render 1D Frozen Z-Score Line Chart
 function renderFrozenLine() {
-    if (!window.radarTickersData || Object.keys(window.radarTickersData).length === 0) {
+    if (!RADAR_RESULTS_CACHE || RADAR_RESULTS_CACHE.length === 0) {
         console.warn("No radar data loaded for Frozen view");
         return;
     }
 
-    const data = window.radarTickersData;
-    const tickers = Object.keys(data);
-
-    // Extract frozen Z-scores for each ticker at current slider position
+    // Get current slider position
     const sliderIdx = parseInt(document.getElementById('radar-slider').value);
+    const dateLabel = document.getElementById('radar-date');
 
+    // Update date label
+    let currentDate = "N/A";
+    for (let r of RADAR_RESULTS_CACHE) {
+        if (r.history && r.history.dates && sliderIdx < r.history.dates.length) {
+            currentDate = r.history.dates[sliderIdx];
+            break;
+        }
+    }
+    dateLabel.innerText = currentDate;
+
+    // Extract frozen Z-scores for each ticker
     const points = [];
-    tickers.forEach(ticker => {
-        const tickerData = data[ticker];
-        if (!tickerData || !tickerData.z_frozen || tickerData.z_frozen.length === 0) return;
+    RADAR_RESULTS_CACHE.forEach(r => {
+        if (!r.history || !r.history.z_kin_frozen) return;
+        if (sliderIdx >= r.history.z_kin_frozen.length) return;
 
-        // Use frozen Z-score at slider position (or last available)
-        const idx = Math.min(sliderIdx, tickerData.z_frozen.length - 1);
-        const frozenZ = tickerData.z_frozen[idx] || 0;
+        const frozenZ = r.history.z_kin_frozen[sliderIdx];
+        if (frozenZ === null || frozenZ === undefined) return;
 
         points.push({
-            ticker: ticker,
+            ticker: r.ticker,
             z: frozenZ
         });
     });
+
+    if (points.length === 0) {
+        console.warn("No frozen data points found");
+        return;
+    }
 
     // Sort by Z-score for cleaner display
     points.sort((a, b) => a.z - b.z);
