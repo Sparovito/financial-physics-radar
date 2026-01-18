@@ -408,7 +408,13 @@ class MarketScanner:
                 px_t = px.iloc[:t+1]
                 try:
                     mech_t = ActionPath(px_t, alpha=200, beta=1.0)
-                    frozen_pot_raw.append(float(mech_t.pot_density.iloc[-1]))
+                    # Use T-24 value to avoid end-point boundary overlap/zeroing
+                    # Ensure we have enough data
+                    if len(mech_t.pot_density) >= 24:
+                        frozen_pot_raw.append(float(mech_t.pot_density.iloc[-24]))
+                    else:
+                        frozen_pot_raw.append(float(mech_t.pot_density.iloc[-1])) # Fallback
+                        
                     frozen_dates_raw.append(px.index[t].strftime('%Y-%m-%d'))
                 except:
                     continue

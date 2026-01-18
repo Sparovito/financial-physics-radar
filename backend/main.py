@@ -106,9 +106,10 @@ async def analyze_stock(req: AnalysisRequest):
                 px_t = px.iloc[:t+1]
                 try:
                     mech_t = ActionPath(px_t, alpha=req.alpha, beta=req.beta)
-                    # Save RAW DENSITY
-                    f_kin.append(round(float(mech_t.kin_density.iloc[-1]), 2))
-                    f_pot.append(round(float(mech_t.pot_density.iloc[-1]), 2))
+                    # Save RAW DENSITY (Taken at T-24 to avoid zero boundary)
+                    idx = -24 if len(mech_t.kin_density) >= 24 else -1
+                    f_kin.append(round(float(mech_t.kin_density.iloc[idx]), 2))
+                    f_pot.append(round(float(mech_t.pot_density.iloc[idx]), 2))
                     f_dates.append(px.index[t].strftime('%Y-%m-%d'))
                 except:
                     continue
