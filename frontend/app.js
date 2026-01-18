@@ -1136,50 +1136,19 @@ function renderFrozenLine() {
         const frozenZ = r.history.z_kin_frozen[sliderIdx];
         if (frozenZ === null || frozenZ === undefined) return;
 
-        // --- CALCULATE ESTIMATED TRADE P/L (Yellow Line Logic) ---
+        // --- USE REAL BACKEND STRATEGY P/L (Yellow Line) ---
+        // logic.py now computes this curve using backtest_strategy
         let tradePnl = 0;
         let inPosition = false;
-        let entryPrice = null;
-        let positionDirection = null;
 
-        if (r.history.prices) {
-            for (let j = 0; j <= sliderIdx; j++) {
-                const jPrice = r.history.prices[j];
-                const jTrigger = r.history.z_kin_frozen[j];
-                const jSlope = r.history.z_slope ? r.history.z_slope[j] : 0;
-
-                if (jPrice === null || jTrigger === null) continue;
-
-                if (!inPosition) {
-                    // Entry Signal: Frozen Potential Z > 0 (High Tension)
-                    if (jTrigger > 0) {
-                        inPosition = true;
-                        entryPrice = jPrice;
-                        // Determine direction based on Slope at entry
-                        positionDirection = jSlope > 0 ? 'LONG' : 'SHORT';
-                        tradePnl = 0;
-                    }
-                } else {
-                    // Update P/L
-                    if (positionDirection === 'LONG') {
-                        tradePnl = ((jPrice - entryPrice) / entryPrice) * 100;
-                    } else { // SHORT
-                        tradePnl = ((entryPrice - jPrice) / entryPrice) * 100;
-                    }
-
-                    // Exit Signal: Frozen Potential Z < 0 (Relaxation)
-                    if (jTrigger < 0) {
-                        inPosition = false;
-                        // Keep last P/L? or Reset? 
-                        // To show "Yellow Line" cumulative gain we'd need running total.
-                        // But for "Trade P/L" usually means current trade.
-                        // Let's reset to show "No Active Trade".
-                        // tradePnl = 0; 
-                        // Actually, let's keep it 0 if out of market to avoid confusion.
-                        tradePnl = 0;
-                    }
-                }
-            }
+        if (r.history.strategy_pnl && sliderIdx < r.history.strategy_pnl.length) {
+            tradePnl = r.history.strategy_pnl[sliderIdx];
+            // If P/L is exactly 0, it likely means NO POSITION (based on backend logic).
+            // But entry steps are also 0. 
+            // However, typically the Strategy returns 0 when out of market.
+            // Let's assume non-zero means active or result.
+            // The backend returns 0 when out of market.
+            inPosition = tradePnl !== 0;
         }
 
         points.push({

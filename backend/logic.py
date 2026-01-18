@@ -394,6 +394,16 @@ class MarketScanner:
             except:
                 market_cap = 0
             
+            # [NEW] Calculate Frozen Strategy P/L (Simulating the "Orange Line")
+            # We use z_pot (Frozen Kinetic) as the trigger signal
+            strat_res = backtest_strategy(
+                 prices=hist_price,
+                 z_kinetic=hist_z_pot, # Use Frozen/Potential as Kinetic Signal
+                 z_slope=hist_z_slope,
+                 dates=hist_dates
+            )
+            frozen_pnl_curve = strat_res['trade_pnl_curve']
+
             return {
                 "ticker": ticker,
                 "avg_abs_kin": round(float(avg_abs_kin), 2),
@@ -410,7 +420,8 @@ class MarketScanner:
                     "z_pot": [round(x, 2) if x is not None else None for x in hist_z_pot],
                     "z_slope": [round(x, 2) if x is not None else None for x in hist_z_slope],
                     "prices": [round(x, 2) if x is not None else None for x in hist_price],
-                    "z_kin_frozen": [round(x, 2) if x is not None else None for x in hist_z_pot] # Mapped to Potential Z-Score for Frozen View
+                    "z_kin_frozen": [round(x, 2) if x is not None else None for x in hist_z_pot], # Legacy name mapping
+                    "strategy_pnl": frozen_pnl_curve # The "Orange Line" content
                 }
             }
             
