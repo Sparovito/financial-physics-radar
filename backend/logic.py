@@ -409,7 +409,8 @@ class MarketScanner:
                     "z_kin": [round(x, 2) if x is not None else None for x in hist_z_kin],
                     "z_pot": [round(x, 2) if x is not None else None for x in hist_z_pot],
                     "z_slope": [round(x, 2) if x is not None else None for x in hist_z_slope],
-                    "prices": [round(x, 2) if x is not None else None for x in hist_price]
+                    "prices": [round(x, 2) if x is not None else None for x in hist_price],
+                    "z_kin_frozen": [round(x, 2) if x is not None else None for x in hist_z_pot] # Mapped to Potential Z-Score for Frozen View
                 }
             }
             
