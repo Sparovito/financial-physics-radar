@@ -1141,6 +1141,7 @@ function renderFrozenLine() {
         // logic.py now computes this curve using backtest_strategy
         let tradePnl = 0;
         let inPosition = false;
+        let currentPrice = 0;
 
         if (r.history.strategy_pnl && sliderIdx < r.history.strategy_pnl.length) {
             tradePnl = r.history.strategy_pnl[sliderIdx];
@@ -1152,11 +1153,16 @@ function renderFrozenLine() {
             inPosition = tradePnl !== 0;
         }
 
+        if (r.history.prices && sliderIdx < r.history.prices.length) {
+            currentPrice = r.history.prices[sliderIdx];
+        }
+
         points.push({
             ticker: r.ticker,
             z: frozenZ,
             pnl: tradePnl,
-            active: inPosition
+            active: inPosition,
+            price: currentPrice
         });
     });
 
@@ -1189,15 +1195,15 @@ function renderFrozenLine() {
         return 1;
     });
 
-    // Create chart label (with P/L for focused ticker)
+    // Create chart label (with P/L and Price for focused ticker)
     const labelText = points.map(p => {
         // Only show P/L info if this specific ticker is focused and in position
         if (FOCUSED_TICKER && p.ticker === FOCUSED_TICKER && p.active) {
             const sign = p.pnl > 0 ? '+' : '';
-            return `${p.ticker} [${sign}${p.pnl.toFixed(1)}%]`;
+            return `${p.ticker} [$${p.price}] [${sign}${p.pnl.toFixed(1)}%]`;
         } else if (FOCUSED_TICKER && p.ticker === FOCUSED_TICKER) {
             // Focused but not in position - show 0%
-            return `${p.ticker} [0%]`;
+            return `${p.ticker} [$${p.price}] [0%]`;
         } else {
             return p.ticker;
         }
