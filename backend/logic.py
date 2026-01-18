@@ -427,6 +427,9 @@ class MarketScanner:
             }
             
         except Exception as e:
+            import traceback
+            print(f"❌ Error analyzing {ticker}: {e}")
+            print(traceback.format_exc())
             return None
 
 # --- 5. Backtesting Strategy ---
