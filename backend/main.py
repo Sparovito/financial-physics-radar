@@ -66,7 +66,24 @@ async def analyze_stock(req: AnalysisRequest):
         full_frozen_data = None
         
         # Check Cache
+        use_cache_data = False
         if req.use_cache and req.ticker in TICKER_CACHE:
+            cached_obj = TICKER_CACHE[req.ticker]
+            cached_px = cached_obj["px"]
+            
+            # Verify Date Coverage
+            if req.start_date:
+                req_start_ts = pd.Timestamp(req.start_date)
+                # If cached data starts significantly later than requested, it's insufficient
+                if cached_px.index[0] > req_start_ts + pd.Timedelta(days=10):
+                    print(f"⚠️ Cache miss (Storia insufficiente): Cached({cached_px.index[0].date()}) > Req({req.start_date})")
+                    use_cache_data = False
+                else:
+                    use_cache_data = True
+            else:
+                use_cache_data = True
+
+        if use_cache_data:
             print(f"⚡ CACHE HIT: Uso dati in memoria per {req.ticker}")
             cached_obj = TICKER_CACHE[req.ticker]
             px = cached_obj["px"]
