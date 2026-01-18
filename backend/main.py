@@ -273,14 +273,18 @@ async def analyze_stock(req: AnalysisRequest):
         
         # 2. Market Cap (Fast Info)
         try:
-            # .fast_info is faster and more reliable for basic stats
-            mkt_cap = md.ticker_obj.fast_info['market_cap']
+            # .fast_info is an object, access via attribute
+            mkt_cap = md.ticker_obj.fast_info.market_cap
         except:
             try:
-                # Fallback to .info if fast_info fails
-                mkt_cap = md.ticker_obj.info.get('marketCap', 0)
+                # Fallback to key access just in case
+                mkt_cap = md.ticker_obj.fast_info['market_cap']
             except:
-                mkt_cap = 0
+                try:
+                    # Fallback to .info
+                    mkt_cap = md.ticker_obj.info.get('marketCap', 0)
+                except:
+                    mkt_cap = 0
         
         return {
             "status": "ok",
