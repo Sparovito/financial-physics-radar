@@ -294,6 +294,15 @@
                 <input type="date" id="scanner-end"
                     style="padding:10px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.9rem;">
 
+                <!-- Parallelism Selector -->
+                <select id="scan-parallel" title="Richieste Parallele"
+                    style="padding:10px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.9rem;">
+                    <option value="1">⚡ x1 (Lento)</option>
+                    <option value="4" selected>⚡ x4 (Default)</option>
+                    <option value="6">⚡ x6 (Veloce)</option>
+                    <option value="8">⚡ x8 (Turbo)</option>
+                </select>
+
                 <!-- Start Button -->
                 <button id="btn-start-scan" onclick="startBulkScan()"
                     style="background:linear-gradient(135deg, #00ff88, #00cc66); color:#000; padding:10px 20px; border:none; border-radius:6px; font-weight:bold; font-size:0.95rem; cursor:pointer; white-space:nowrap;">

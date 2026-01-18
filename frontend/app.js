@@ -1310,28 +1310,20 @@ async function startBulkScan() {
     window.ALL_SCAN_TRADES_FROZEN = [];
     window.ALL_SCAN_TRADES = []; // Fallback/Reference
 
-    // Loop
-    for (let i = 0; i < tickersToScan.length; i++) {
-        if (SCAN_STOP_SIGNAL) {
-            statusLabel.innerHTML = '🛑 Scan Interrotto.';
-            break;
-        }
+    // Get Parallelism Level
+    const parallelism = parseInt(document.getElementById('scan-parallel').value) || 4;
 
-        const ticker = tickersToScan[i];
-        statusLabel.innerHTML = `Analisi ${ticker} (${i + 1}/${tickersToScan.length})...`;
-        progressBar.value = i + 1;
+    // Helper: Analyze a single ticker and return result
+    async function analyzeTicker(ticker) {
+        if (SCAN_STOP_SIGNAL) return null;
 
         try {
             const alpha = parseFloat(document.getElementById('alpha').value) || 200;
             const beta = parseFloat(document.getElementById('beta').value) || 1.0;
-
-            // Get Dates
             const startDate = document.getElementById('scanner-start').value || "2023-01-01";
             let endDate = document.getElementById('scanner-end').value;
             if (endDate === "") endDate = null;
 
-            // Use cache because "Frozen" calc is heavy. 
-            // If cache miss, first one will be slow, but subsequent scans fast.
             const response = await fetch(`${API_URL}/analyze`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1347,19 +1339,39 @@ async function startBulkScan() {
                 })
             });
 
-            if (!response.ok) {
-                console.error(`Error scanning ${ticker}`);
-                continue;
-            }
-
+            if (!response.ok) return null;
             const data = await response.json();
+            return { ticker, data };
+        } catch (e) {
+            console.error(`Error analyzing ${ticker}:`, e);
+            return null;
+        }
+    }
 
-            // Extract Stats
-            const liveStats = data.backtest?.stats;
-            const frozenStats = data.frozen_strategy?.stats;
+    // Process in batches
+    let processed = 0;
+    for (let i = 0; i < tickersToScan.length; i += parallelism) {
+        if (SCAN_STOP_SIGNAL) {
+            statusLabel.innerHTML = '🛑 Scan Interrotto.';
+            break;
+        }
 
-            // --- CAPTURE TRADES FOR SIMULATOR ---
-            // --- CAPTURE TRADES FOR SIMULATOR ---
+        // Create batch
+        const batch = tickersToScan.slice(i, i + parallelism);
+        statusLabel.innerHTML = `⚡ Analisi batch ${Math.floor(i / parallelism) + 1}/${Math.ceil(tickersToScan.length / parallelism)} (${batch.join(', ')})...`;
+
+        // Execute batch in parallel
+        const results = await Promise.all(batch.map(t => analyzeTicker(t)));
+
+        // Process results
+        for (const result of results) {
+            if (!result) continue;
+
+            const { ticker, data } = result;
+            processed++;
+            progressBar.value = processed;
+
+            // Capture trades
             if (data.backtest?.trades) {
                 data.backtest.trades.forEach(t => {
                     window.ALL_SCAN_TRADES_LIVE.push({ ...t, ticker: ticker });
@@ -1370,11 +1382,12 @@ async function startBulkScan() {
                     window.ALL_SCAN_TRADES_FROZEN.push({ ...t, ticker: ticker });
                 });
             }
-            // Default to LIVE for legacy compatibility
             window.ALL_SCAN_TRADES = window.ALL_SCAN_TRADES_LIVE;
 
+            const liveStats = data.backtest?.stats;
+            const frozenStats = data.frozen_strategy?.stats;
+
             if (liveStats && frozenStats) {
-                // ACCUMULATE
                 totalLiveRet += liveStats.total_return;
                 totalFrozenRet += frozenStats.total_return;
                 totalWinLive += liveStats.win_rate;
@@ -1384,8 +1397,6 @@ async function startBulkScan() {
                 const liveRet = liveStats.total_return;
                 const frozenRet = frozenStats.total_return;
                 const delta = (liveRet - frozenRet).toFixed(2);
-
-                // Color Logic
                 const deltaColor = parseFloat(delta) > 20 ? '#ff4444' : (parseFloat(delta) < -5 ? '#00ff88' : '#888');
 
                 const row = `
@@ -1402,20 +1413,17 @@ async function startBulkScan() {
                         <td style="color:${frozenStats.win_rate >= 50 ? '#ff9900' : '#888'}">${frozenStats.win_rate}%</td>
                         <td style="color:${frozenRet > 0 ? '#ff9900' : '#ff4444'}">${frozenRet}%</td>
                         <td style="color:${deltaColor}; font-weight:bold;">${delta}%</td>
-                         <td>
+                        <td>
                             <button onclick="loadTickerFromScan('${ticker}')" style="background:#333; color:#fff; border:none; padding:4px 8px; cursor:pointer; font-size:0.8em; border-radius:4px;">🔍 Vedi</button>
                         </td>
                     </tr>
                 `;
                 tableBody.innerHTML += row;
             }
-
-        } catch (e) {
-            console.error(e);
         }
 
-        // Small delay to prevent UI freeze and allow stop button click
-        await new Promise(r => setTimeout(r, 10));
+        // Small delay between batches
+        await new Promise(r => setTimeout(r, 50));
     }
 
     // --- APPEND AVERAGE ROW & SIMULATOR BUTTON ---
