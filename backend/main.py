@@ -271,11 +271,16 @@ async def analyze_stock(req: AnalysisRequest):
         # 1. Avg Abs Kinetic
         avg_abs_kin = ((kin - roll_kin_mean) / (roll_kin_std + 1e-6)).fillna(0).abs().mean()
         
-        # 2. Market Cap
+        # 2. Market Cap (Fast Info)
         try:
-            mkt_cap = md.ticker_obj.info.get('marketCap', 0)
+            # .fast_info is faster and more reliable for basic stats
+            mkt_cap = md.ticker_obj.fast_info['market_cap']
         except:
-            mkt_cap = 0
+            try:
+                # Fallback to .info if fast_info fails
+                mkt_cap = md.ticker_obj.info.get('marketCap', 0)
+            except:
+                mkt_cap = 0
         
         return {
             "status": "ok",
