@@ -1483,8 +1483,14 @@ function runPortfolioSimulation() {
 
     // Select Source Data
     let sourceTrades = window.ALL_SCAN_TRADES_LIVE;
+    const content = document.getElementById('sim-modal-content');
+
     if (mode === 'FROZEN') {
         sourceTrades = window.ALL_SCAN_TRADES_FROZEN;
+        if (content) content.style.background = '#1a1d2a'; // Reset
+    } else {
+        // LIVE/IDEAL -> Warning Background
+        if (content) content.style.background = 'linear-gradient(180deg, rgba(60, 20, 20, 1) 0%, #1a1d2a 100%)';
     }
 
     // Filter tickers based on checkboxes
