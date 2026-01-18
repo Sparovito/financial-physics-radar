@@ -43,7 +43,7 @@ trap cleanup SIGINT
 # 2. Avvia Backend (API) su porta 8000
 echo "🚀 Avvio Backend Server (API)..."
 cd backend
-python -m uvicorn main:app --workers 8 --host 0.0.0.0 --port 8000 &
+python -m uvicorn main:app --workers 4 --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
 cd ..
 echo "   -> API attiva su http://localhost:8000"
