@@ -447,6 +447,12 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
     
     # Iterate through history
     for i, date in enumerate(dates):
+        # --- HANDLE PADDING/NONE DATES ---
+        if date is None:
+            trade_pnl_curve.append(0)
+            equity_curve.append(0)
+            continue
+
         # --- DATE FILTERING ---
         if start_date and date < start_date:
             trade_pnl_curve.append(0)
@@ -455,7 +461,9 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
             
         if end_date and date > end_date:
             trade_pnl_curve.append(0)
-            equity_curve.append(0) # Or append last value? For now 0 to ignore.
+            # Use last valid equity or 0? 0 implies "not in stats range".
+            # Consistency with other skips:
+            equity_curve.append(0) 
             continue
             
         price = prices[i]
