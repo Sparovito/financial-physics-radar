@@ -1136,9 +1136,57 @@ function renderFrozenLine() {
         const frozenZ = r.history.z_kin_frozen[sliderIdx];
         if (frozenZ === null || frozenZ === undefined) return;
 
+        // --- CALCULATE ESTIMATED TRADE P/L (Yellow Line Logic) ---
+        let tradePnl = 0;
+        let inPosition = false;
+        let entryPrice = null;
+        let positionDirection = null;
+
+        if (r.history.prices) {
+            for (let j = 0; j <= sliderIdx; j++) {
+                const jPrice = r.history.prices[j];
+                const jTrigger = r.history.z_kin_frozen[j];
+                const jSlope = r.history.z_slope ? r.history.z_slope[j] : 0;
+
+                if (jPrice === null || jTrigger === null) continue;
+
+                if (!inPosition) {
+                    // Entry Signal: Frozen Potential Z > 0 (High Tension)
+                    if (jTrigger > 0) {
+                        inPosition = true;
+                        entryPrice = jPrice;
+                        // Determine direction based on Slope at entry
+                        positionDirection = jSlope > 0 ? 'LONG' : 'SHORT';
+                        tradePnl = 0;
+                    }
+                } else {
+                    // Update P/L
+                    if (positionDirection === 'LONG') {
+                        tradePnl = ((jPrice - entryPrice) / entryPrice) * 100;
+                    } else { // SHORT
+                        tradePnl = ((entryPrice - jPrice) / entryPrice) * 100;
+                    }
+
+                    // Exit Signal: Frozen Potential Z < 0 (Relaxation)
+                    if (jTrigger < 0) {
+                        inPosition = false;
+                        // Keep last P/L? or Reset? 
+                        // To show "Yellow Line" cumulative gain we'd need running total.
+                        // But for "Trade P/L" usually means current trade.
+                        // Let's reset to show "No Active Trade".
+                        // tradePnl = 0; 
+                        // Actually, let's keep it 0 if out of market to avoid confusion.
+                        tradePnl = 0;
+                    }
+                }
+            }
+        }
+
         points.push({
             ticker: r.ticker,
-            z: frozenZ
+            z: frozenZ,
+            pnl: tradePnl,
+            active: inPosition
         });
     });
 
@@ -1171,20 +1219,37 @@ function renderFrozenLine() {
         return 1;
     });
 
+    // Create chart label with P/L
+    const labelText = points.map(p => {
+        if (p.active) {
+            const sign = p.pnl > 0 ? '+' : '';
+            return `${p.ticker} [${sign}${p.pnl.toFixed(1)}%]`;
+        } else {
+            return p.ticker;
+        }
+    });
+
+    // Color labels based on P/L (or Focus)
+    const labelColors = points.map(p => {
+        // Focus Logic overrides color or not? 
+        // Let's mix: if focused, show P/L color. If unfocused, dim.
+        if (FOCUSED_TICKER && p.ticker !== FOCUSED_TICKER) return 'rgba(255,255,255,0.2)';
+
+        if (!p.active) return '#fff';
+        return p.pnl > 0 ? '#00ff88' : '#ff4444';
+    });
+
     // Create scatter plot (1D line with dots)
     const trace = {
         x: points.map(p => p.z),
         y: points.map(() => 0), // All on same horizontal line
         mode: 'markers+text',
         type: 'scatter',
-        text: points.map(p => `${p.ticker} [${p.z.toFixed(2)}]`),
+        text: labelText,
         textposition: 'top center',
         textfont: {
             size: 10,
-            color: points.map(p => {
-                if (!FOCUSED_TICKER) return '#fff';
-                return p.ticker === FOCUSED_TICKER ? '#eba834' : 'rgba(255,255,255,0.3)';
-            })
+            color: labelColors
         },
         marker: {
             size: sizes,
