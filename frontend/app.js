@@ -1305,7 +1305,10 @@ async function startBulkScan() {
     let countStats = 0;
 
     // Global Trade Accumulator for Portfolio Simulator
-    window.ALL_SCAN_TRADES = [];
+    // Global Trade Accumulator for Portfolio Simulator
+    window.ALL_SCAN_TRADES_LIVE = [];
+    window.ALL_SCAN_TRADES_FROZEN = [];
+    window.ALL_SCAN_TRADES = []; // Fallback/Reference
 
     // Loop
     for (let i = 0; i < tickersToScan.length; i++) {
@@ -1356,15 +1359,19 @@ async function startBulkScan() {
             const frozenStats = data.frozen_strategy?.stats;
 
             // --- CAPTURE TRADES FOR SIMULATOR ---
+            // --- CAPTURE TRADES FOR SIMULATOR ---
             if (data.backtest?.trades) {
                 data.backtest.trades.forEach(t => {
-                    // Enrich trade object with ticker
-                    window.ALL_SCAN_TRADES.push({
-                        ...t,
-                        ticker: ticker
-                    });
+                    window.ALL_SCAN_TRADES_LIVE.push({ ...t, ticker: ticker });
                 });
             }
+            if (data.frozen_strategy?.trades) {
+                data.frozen_strategy.trades.forEach(t => {
+                    window.ALL_SCAN_TRADES_FROZEN.push({ ...t, ticker: ticker });
+                });
+            }
+            // Default to LIVE for legacy compatibility
+            window.ALL_SCAN_TRADES = window.ALL_SCAN_TRADES_LIVE;
 
             if (liveStats && frozenStats) {
                 // ACCUMULATE
@@ -1472,12 +1479,24 @@ function closeSimulatorModal() {
 
 function runPortfolioSimulation() {
     const capitalPerTrade = parseFloat(document.getElementById('sim-capital').value) || 100;
+    const mode = document.getElementById('sim-mode').value; // LIVE or FROZEN
+
+    // Select Source Data
+    let sourceTrades = window.ALL_SCAN_TRADES_LIVE;
+    if (mode === 'FROZEN') {
+        sourceTrades = window.ALL_SCAN_TRADES_FROZEN;
+    }
 
     // Filter tickers based on checkboxes
     const checkedTickers = Array.from(document.querySelectorAll('.scan-ticker-checkbox:checked'))
         .map(cb => cb.dataset.ticker);
 
-    const trades = window.ALL_SCAN_TRADES.filter(t => checkedTickers.includes(t.ticker));
+    const trades = sourceTrades.filter(t => checkedTickers.includes(t.ticker));
+
+    // Update Trade Count UI
+    if (document.getElementById('sim-total-trades')) {
+        document.getElementById('sim-total-trades').innerText = trades.length;
+    }
 
     if (!trades || trades.length === 0) return;
 
