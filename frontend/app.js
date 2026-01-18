@@ -1628,16 +1628,22 @@ function runPortfolioSimulation() {
         line: { color: '#00ff88', width: 2 }
     };
 
-    const traceEquityTotal = {
-        x: totalEquityCurve.map(d => d.date),
-        y: totalEquityCurve.map(d => d.value),
+    // Final Jump (Unrealized) - Only the last segment
+    const lastRealizedPoint = equityCurve[equityCurve.length - 1];
+    const lastTotalPoint = totalEquityCurve[totalEquityCurve.length - 1];
+    const unrealizedDiff = lastTotalPoint.value - lastRealizedPoint.value;
+
+    const traceUnrealizedJump = {
+        x: [lastRealizedPoint.date, lastRealizedPoint.date],
+        y: [lastRealizedPoint.value, lastTotalPoint.value],
         type: 'scatter',
-        mode: 'lines',
-        name: 'Totale (+ Unrealized)',
-        line: { color: '#00aaff', width: 2, dash: 'dash' }
+        mode: 'lines+markers',
+        name: `Unrealized (${unrealizedDiff >= 0 ? '+' : ''}€${unrealizedDiff.toFixed(0)})`,
+        line: { color: '#00aaff', width: 3, dash: 'dash' },
+        marker: { size: 8, color: '#00aaff' }
     };
 
-    Plotly.newPlot('chart-sim-equity', [traceEquityRealized, traceEquityTotal], {
+    Plotly.newPlot('chart-sim-equity', [traceEquityRealized, traceUnrealizedJump], {
         title: { text: '📈 Curva dei Profitti', font: { color: '#fff' } },
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
