@@ -626,6 +626,7 @@ async function runRadarScan() {
     // Category mapping to tickers.js keys
     const categoryMap = {
         "ALL": null, // Special: all tickers
+        "HIGHLIGHTS": "⭐ Highlights",
         "US_MEGA": "🏛️ US Mega Cap",
         "US_TECH": "💻 US Tech",
         "US_FINANCE": "🏦 US Finance",
