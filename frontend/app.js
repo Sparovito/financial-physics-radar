@@ -1189,13 +1189,12 @@ function renderFrozenLine() {
         return 1;
     });
 
-    // Create chart label with P/L
-    // Create chart label with P/L (ONLY IF FOCUSED)
+    // Create chart label (with Z-Score for focused ticker)
     const labelText = points.map(p => {
-        // Only show P/L info if this specific ticker is focused
-        if (FOCUSED_TICKER && p.ticker === FOCUSED_TICKER && p.active) {
-            const sign = p.pnl > 0 ? '+' : '';
-            return `${p.ticker} [${sign}${p.pnl.toFixed(1)}%]`;
+        // Only show Z-Score info if this specific ticker is focused
+        if (FOCUSED_TICKER && p.ticker === FOCUSED_TICKER) {
+            const sign = p.z > 0 ? '+' : '';
+            return `${p.ticker} [Z: ${sign}${p.z.toFixed(2)}]`;
         } else {
             return p.ticker;
         }
