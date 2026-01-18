@@ -1177,7 +1177,7 @@ function renderFrozenLine() {
         y: points.map(() => 0), // All on same horizontal line
         mode: 'markers+text',
         type: 'scatter',
-        text: points.map(p => p.ticker),
+        text: points.map(p => `${p.ticker} [${p.z.toFixed(2)}]`),
         textposition: 'top center',
         textfont: {
             size: 10,
