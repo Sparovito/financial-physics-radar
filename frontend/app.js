@@ -1383,6 +1383,9 @@ async function startBulkScan() {
 
                 const row = `
                     <tr style="border-bottom:1px solid #333;">
+                        <td style="padding:10px; text-align:center;">
+                            <input type="checkbox" class="scan-ticker-checkbox" data-ticker="${ticker}" checked>
+                        </td>
                         <td style="padding:10px; font-weight:bold;">${ticker}</td>
                         <td style="color:${liveStats.win_rate >= 50 ? '#00ff88' : '#888'}">${liveStats.win_rate}%</td>
                         <td style="color:${liveRet > 0 ? '#00ff88' : '#ff4444'}">${liveRet}%</td>
@@ -1415,6 +1418,7 @@ async function startBulkScan() {
 
         const statsRow = `
             <tr style="border-top: 3px solid #eba834; background: rgba(235, 168, 52, 0.15); font-weight: bold; font-size: 1.05em;">
+                <td></td>
                 <td style="padding:15px; color:#eba834;">📊 MEDIA (${countStats})</td>
                 <td style="color:${avgWinLive >= 50 ? '#00ff88' : '#bbb'}">${avgWinLive}%</td>
                 <td style="color:${avgLiveRet > 0 ? '#00ff88' : '#ff4444'}">${avgLiveRet}%</td>
@@ -1468,7 +1472,12 @@ function closeSimulatorModal() {
 
 function runPortfolioSimulation() {
     const capitalPerTrade = parseFloat(document.getElementById('sim-capital').value) || 100;
-    const trades = window.ALL_SCAN_TRADES;
+
+    // Filter tickers based on checkboxes
+    const checkedTickers = Array.from(document.querySelectorAll('.scan-ticker-checkbox:checked'))
+        .map(cb => cb.dataset.ticker);
+
+    const trades = window.ALL_SCAN_TRADES.filter(t => checkedTickers.includes(t.ticker));
 
     if (!trades || trades.length === 0) return;
 
@@ -1652,4 +1661,10 @@ function loadTickerFromScan(ticker) {
     closeScannerModal();
     document.getElementById('ticker').value = ticker;
     runAnalysis();
+}
+
+// Toggle All Checkboxes
+function toggleAllScanRows(source) {
+    const checkboxes = document.querySelectorAll('.scan-ticker-checkbox');
+    checkboxes.forEach(cb => cb.checked = source.checked);
 }
