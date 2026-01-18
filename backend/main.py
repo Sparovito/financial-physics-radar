@@ -302,6 +302,9 @@ async def analyze_stock(req: AnalysisRequest):
         if mkt_cap is None:
             mkt_cap = 0
         
+        # DEBUG LOG
+        print(f"📊 {req.ticker} Market Cap = {mkt_cap}")
+        
         return {
             "status": "ok",
             "ticker": req.ticker,

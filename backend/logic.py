@@ -33,16 +33,16 @@ class MarketData:
             else:
                 ssl._create_default_https_context = _create_unverified_https_context
 
-            ticker_obj = yf.Ticker(self.ticker)
+            self.ticker_obj = yf.Ticker(self.ticker)
             
             if self.start_date:
-                self.data = ticker_obj.history(start=self.start_date, end=self.end_date)
+                self.data = self.ticker_obj.history(start=self.start_date, end=self.end_date)
             else:
-                self.data = ticker_obj.history(period="2y")
+                self.data = self.ticker_obj.history(period="2y")
                 
             if self.data.empty:
                  print("Dati vuoti, tento periodo max...")
-                 self.data = ticker_obj.history(period="1y")
+                 self.data = self.ticker_obj.history(period="1y")
 
             # Post-processing se abbiamo dati
             if not self.data.empty:
@@ -381,9 +381,23 @@ class MarketScanner:
             # Snapshot Attuale (Ultimo valore valido)
             price = px.iloc[-1]
             change = (px.iloc[-1] - px.iloc[-2]) / px.iloc[-2] * 100
+
+            # [NEW: User Request] Market Quality Metrics
+            # 1. Average Kinetic Strength (Volatility/Energy)
+            avg_abs_kin = z_kin_series.abs().mean()
+            
+            # 2. Market Cap (Size)
+            try:
+                # Note: This might slow down scanning slightly due to extra request
+                info = md.ticker_obj.info
+                market_cap = info.get('marketCap', 0)
+            except:
+                market_cap = 0
             
             return {
                 "ticker": ticker,
+                "avg_abs_kin": round(float(avg_abs_kin), 2),
+                "market_cap": market_cap,
                 # Valori attuali (per default view - usa ultimi valori validi)
                 "z_kinetic": round(float(z_kin_series.iloc[-1]), 2),
                 "z_potential": round(float(z_pot_series.iloc[-1]), 2),
