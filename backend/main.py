@@ -106,10 +106,9 @@ async def analyze_stock(req: AnalysisRequest):
                 px_t = px.iloc[:t+1]
                 try:
                     mech_t = ActionPath(px_t, alpha=req.alpha, beta=req.beta)
-                    # Save RAW DENSITY (Taken at T-24 to avoid zero boundary)
-                    idx = -24 if len(mech_t.kin_density) >= 24 else -1
-                    f_kin.append(round(float(mech_t.kin_density.iloc[idx]), 2))
-                    f_pot.append(round(float(mech_t.pot_density.iloc[idx]), 2))
+                    # Save RAW DENSITY
+                    f_kin.append(round(float(mech_t.kin_density.iloc[-1]), 2))
+                    f_pot.append(round(float(mech_t.pot_density.iloc[-1]), 2))
                     f_dates.append(px.index[t].strftime('%Y-%m-%d'))
                 except:
                     continue
@@ -204,7 +203,11 @@ async def analyze_stock(req: AnalysisRequest):
         kin = mechanics.kin_density
         roll_kin_mean = kin.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
         roll_kin_std = kin.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
-        z_kin_series = ((kin - roll_kin_mean) / (roll_kin_std + 1e-6)).fillna(0).values.tolist()
+        z_kin_series = ((kin - roll_kin_mean) / (roll_kin_std + 1e-6)).fillna(0)
+        # [MOD] Shift Kinetic by 24 days as requested (Legacy Kinetic only)
+        # This does NOT affect Frozen Potential strategy
+        z_kin_series = z_kin_series.shift(24).fillna(0)
+        z_kin_series = z_kin_series.values.tolist()
         
         slope = mechanics.dX
         roll_slope_mean = slope.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
