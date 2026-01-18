@@ -1220,8 +1220,10 @@ function renderFrozenLine() {
     });
 
     // Create chart label with P/L
+    // Create chart label with P/L (ONLY IF FOCUSED)
     const labelText = points.map(p => {
-        if (p.active) {
+        // Only show P/L info if this specific ticker is focused
+        if (FOCUSED_TICKER && p.ticker === FOCUSED_TICKER && p.active) {
             const sign = p.pnl > 0 ? '+' : '';
             return `${p.ticker} [${sign}${p.pnl.toFixed(1)}%]`;
         } else {
