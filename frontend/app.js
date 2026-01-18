@@ -1415,7 +1415,7 @@ const searchInput = document.getElementById('modal-search-input');
 const mainInput = document.getElementById('ticker');
 const categoriesContainer = document.getElementById('categories-list');
 const tickersContainer = document.getElementById('tickers-grid');
-let currentCategory = "Highlights"; // Default
+let currentCategory = "⭐ Highlights"; // Default matching tickers.js key
 
 searchInput.oninput = (e) => {
     const text = e.target.value;

@@ -315,8 +315,11 @@ body {
 
 .category-item:hover,
 .category-item.active {
-    background: rgba(0, 204, 150, 0.1);
-    color: var(--accent-color);
+    background: rgba(235, 168, 52, 0.2);
+    /* Gold tint */
+    color: #eba834;
+    /* Gold */
+    font-weight: bold;
 }
 
 .tickers-grid {
