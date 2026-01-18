@@ -1525,9 +1525,9 @@ function runPortfolioSimulation() {
 
                     // Add Profit
                     // Note: This logic assumes 'total_return' logic from backend
-                    // If trade is OPEN, 'return_pct' might be unrealized.
+                    // If trade is OPEN, 'pnl_pct' might be unrealized.
                     // If exit date is today (forced), we use the current return.
-                    const ret = e.trade.return_pct || 0; // Simple % return
+                    const ret = e.trade.pnl_pct || 0; // Simple % return
                     const profit = capitalPerTrade * (ret / 100);
                     cumulativeRealizedProfit += profit;
 
