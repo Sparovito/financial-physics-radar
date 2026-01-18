@@ -776,8 +776,8 @@ function setupRadarAfterLoad() {
     FOCUSED_TICKER = null;
     updateAnalyzeButton();
 
-    // Render Iniziale
-    updateRadarFrame();
+    // Render Iniziale (rispetta lo stato del toggle)
+    toggleRadarMode();
 }
 
 // Funzione Core per il "Time Travel"
