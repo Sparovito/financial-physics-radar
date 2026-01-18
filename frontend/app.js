@@ -1150,6 +1150,27 @@ function renderFrozenLine() {
     // Sort by Z-score for cleaner display
     points.sort((a, b) => a.z - b.z);
 
+    // Focus Mode Logic
+    const opacities = points.map(p => {
+        if (!FOCUSED_TICKER) return 1;
+        return p.ticker === FOCUSED_TICKER ? 1 : 0.2; // Dim others
+    });
+
+    const sizes = points.map(p => {
+        if (!FOCUSED_TICKER) return 18;
+        return p.ticker === FOCUSED_TICKER ? 25 : 15; // Enlarge focused
+    });
+
+    const borderColors = points.map(p => {
+        if (p.ticker === FOCUSED_TICKER) return '#eba834'; // Gold border for focused
+        return '#333';
+    });
+
+    const borderWidths = points.map(p => {
+        if (p.ticker === FOCUSED_TICKER) return 3;
+        return 1;
+    });
+
     // Create scatter plot (1D line with dots)
     const trace = {
         x: points.map(p => p.z),
@@ -1158,10 +1179,17 @@ function renderFrozenLine() {
         type: 'scatter',
         text: points.map(p => p.ticker),
         textposition: 'top center',
-        textfont: { size: 10, color: '#fff' },
+        textfont: {
+            size: 10,
+            color: points.map(p => {
+                if (!FOCUSED_TICKER) return '#fff';
+                return p.ticker === FOCUSED_TICKER ? '#eba834' : 'rgba(255,255,255,0.3)';
+            })
+        },
         marker: {
-            size: 18,
+            size: sizes,
             color: points.map(p => p.z),
+            opacity: opacities,
             colorscale: [
                 [0, '#ff4444'],     // Negative = Red
                 [0.5, '#888888'],   // Zero = Gray
@@ -1169,7 +1197,10 @@ function renderFrozenLine() {
             ],
             cmin: -3,
             cmax: 3,
-            line: { width: 1, color: '#333' }
+            line: {
+                width: borderWidths,
+                color: borderColors
+            }
         },
         hoverinfo: 'text',
         hovertext: points.map(p => `${p.ticker}: Z=${p.z.toFixed(2)}`)
@@ -1218,8 +1249,16 @@ function renderFrozenLine() {
         const point = eventData.points.find(p => p.data.mode === 'markers+text');
         if (point) {
             const ticker = point.text;
-            FOCUSED_TICKER = ticker;
+
+            // Toggle Focus
+            if (FOCUSED_TICKER === ticker) {
+                FOCUSED_TICKER = null; // Deselect if already selected
+            } else {
+                FOCUSED_TICKER = ticker;
+            }
+
             updateAnalyzeButton();
+            renderFrozenLine(); // Re-render to apply opacity/size changes
         }
     });
 }
