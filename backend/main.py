@@ -271,34 +271,36 @@ async def analyze_stock(req: AnalysisRequest):
         # 1. Avg Abs Kinetic
         avg_abs_kin = ((kin - roll_kin_mean) / (roll_kin_std + 1e-6)).fillna(0).abs().mean()
         
-        # 2. Market Cap (Robust Strategy: FastInfo -> Info -> TotalAssets -> Calc)
-        mkt_cap = 0
+        # 2. Market Cap (Based on Diagnostic: fast_info.market_cap can be None for ETFs/Crypto)
+        mkt_cap = None
+        
+        # A. Try FastInfo (works for stocks like AAPL, NVDA)
         try:
-            # A. Try FastInfo Attribute
             mkt_cap = md.ticker_obj.fast_info.market_cap
         except:
             pass
-            
-        if not mkt_cap:
+        
+        # B. Fallback to Slow Info (works for ETFs like SPY, Crypto like BTC-USD)
+        if mkt_cap is None:
             try:
-                # B. Try Info 'marketCap'
                 info = md.ticker_obj.info
-                mkt_cap = info.get('marketCap', 0)
-                # C. Try Info 'totalAssets' (for ETFs like SPY, QQQ)
-                if not mkt_cap:
-                    mkt_cap = info.get('totalAssets', 0)
+                mkt_cap = info.get('marketCap') or info.get('totalAssets')
             except:
                 pass
         
-        if not mkt_cap:
+        # C. Final Fallback: Calc from shares * price (for futures like GC=F)
+        if mkt_cap is None:
             try:
-                # D. Manual Calc (Shares * Price)
-                shares = md.ticker_obj.fast_info.shares_outstanding
+                shares = md.ticker_obj.fast_info.shares
                 price = md.ticker_obj.fast_info.last_price
                 if shares and price:
                     mkt_cap = shares * price
             except:
                 pass
+        
+        # Ensure numeric or 0
+        if mkt_cap is None:
+            mkt_cap = 0
         
         return {
             "status": "ok",
