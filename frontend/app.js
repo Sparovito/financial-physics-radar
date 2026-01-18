@@ -1394,6 +1394,8 @@ async function startBulkScan() {
                             <input type="checkbox" class="scan-ticker-checkbox" data-ticker="${ticker}" checked>
                         </td>
                         <td style="padding:10px; font-weight:bold;">${ticker}</td>
+                        <td style="padding:10px; color:#ccc;">${data.avg_abs_kin || '-'}</td>
+                        <td style="padding:10px; color:#ccc;">${formatMarketCap(data.market_cap)}</td>
                         <td style="color:${liveStats.win_rate >= 50 ? '#00ff88' : '#888'}">${liveStats.win_rate}%</td>
                         <td style="color:${liveRet > 0 ? '#00ff88' : '#ff4444'}">${liveRet}%</td>
                         <td style="color:${frozenStats.win_rate >= 50 ? '#ff9900' : '#888'}">${frozenStats.win_rate}%</td>
@@ -1692,4 +1694,13 @@ function loadTickerFromScan(ticker) {
 function toggleAllScanRows(source) {
     const checkboxes = document.querySelectorAll('.scan-ticker-checkbox');
     checkboxes.forEach(cb => cb.checked = source.checked);
+}
+
+// Format Market Cap
+function formatMarketCap(value) {
+    if (!value) return '-';
+    if (value >= 1e12) return (value / 1e12).toFixed(2) + 'T';
+    if (value >= 1e9) return (value / 1e9).toFixed(2) + 'B';
+    if (value >= 1e6) return (value / 1e6).toFixed(2) + 'M';
+    return parseInt(value).toLocaleString();
 }

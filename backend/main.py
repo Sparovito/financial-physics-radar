@@ -267,9 +267,22 @@ async def analyze_stock(req: AnalysisRequest):
         # Componenti Fourier
         fourier_comps = fourier.get_components()
         
+        # [NEW] Market Metrics
+        # 1. Avg Abs Kinetic
+        avg_abs_kin = ((kin - roll_kin_mean) / (roll_kin_std + 1e-6)).fillna(0).abs().mean()
+        
+        # 2. Market Cap
+        try:
+            mkt_cap = md.ticker_obj.info.get('marketCap', 0)
+        except:
+            mkt_cap = 0
+        
         return {
             "status": "ok",
             "ticker": req.ticker,
+            "avg_abs_kin": round(float(avg_abs_kin), 2),
+            "market_cap": mkt_cap,
+            "dates": dates_historical,
             "dates": dates_historical,
             "prices": price_real,
             "min_action": price_min_action,
