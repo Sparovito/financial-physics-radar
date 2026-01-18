@@ -445,7 +445,7 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
     position_direction = None # 'LONG' or 'SHORT'
     
     trades = []
-    
+    trade_pnl_curve = [] # Individual trade P/L (0 = not invested)
     equity_curve = [] # Cumulative Strategy P/L % (Equity Curve)
     
     # Iterate through history
