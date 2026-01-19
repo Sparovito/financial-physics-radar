@@ -94,6 +94,9 @@ async def analyze_stock(req: AnalysisRequest):
             volume_series = cached_obj.get("volume", None)
             if volume_series is None:
                 volume_series = pd.Series([0]*len(px), index=px.index)
+            
+            # [NEW] Load Market Cap
+            mkt_cap = cached_obj.get("mkt_cap", 0)
         else:
             # Scarica storia COMPLETA
             print(f"🌐 API FETCH: Scarico dati freschi per {req.ticker}...")
@@ -105,6 +108,34 @@ async def analyze_stock(req: AnalysisRequest):
                 volume_series = md.df_full['Volume']
             else:
                 volume_series = pd.Series([0]*len(px), index=px.index)
+
+            # [NEW] Calculate Market Cap Logic (Moved here to avoid UnboundLocalError)
+            mkt_cap = None
+            try:
+                mkt_cap = md.ticker_obj.fast_info.market_cap
+            except:
+                pass
+            
+            if mkt_cap is None:
+                try:
+                    info = md.ticker_obj.info
+                    mkt_cap = info.get('marketCap') or info.get('totalAssets')
+                except:
+                    pass
+            
+            if mkt_cap is None:
+                try:
+                    shares = md.ticker_obj.fast_info.shares
+                    price = md.ticker_obj.fast_info.last_price
+                    if shares and price:
+                        mkt_cap = shares * price
+                except:
+                    pass
+            
+            if mkt_cap is None:
+                mkt_cap = 0
+            
+            print(f"📊 {req.ticker} Market Cap = {mkt_cap}")
 
             # [NEW] Calculate Cumulative Direction (ZigZag) - HOURLY AGGREGATED
             try:
@@ -178,11 +209,9 @@ async def analyze_stock(req: AnalysisRequest):
             TICKER_CACHE[req.ticker] = {
                 "px": px,
                 "frozen": full_frozen_data,
-            TICKER_CACHE[req.ticker] = {
-                "px": px,
-                "frozen": full_frozen_data,
                 "zigzag": zigzag_series,
-                "volume": volume_series
+                "volume": volume_series,
+                "mkt_cap": mkt_cap
             }
 
         # --- SIMULATION TIME TRAVEL (Slicing istantaneo) ---
@@ -195,7 +224,6 @@ async def analyze_stock(req: AnalysisRequest):
             # Troviamo l'indice fin dove arrivare nei dati frozen
             target_date_str = req.end_date
             
-            # Slice ZigZag (Series)
             # Slice ZigZag (Series)
             if zigzag_series is not None:
                 zigzag_series = zigzag_series[zigzag_series.index <= end_ts]
@@ -343,39 +371,8 @@ async def analyze_stock(req: AnalysisRequest):
         # 1. Avg Abs Kinetic
         avg_abs_kin = ((kin - roll_kin_mean) / (roll_kin_std + 1e-6)).fillna(0).abs().mean()
         
-        # 2. Market Cap (Based on Diagnostic: fast_info.market_cap can be None for ETFs/Crypto)
-        mkt_cap = None
-        
-        # A. Try FastInfo (works for stocks like AAPL, NVDA)
-        try:
-            mkt_cap = md.ticker_obj.fast_info.market_cap
-        except:
-            pass
-        
-        # B. Fallback to Slow Info (works for ETFs like SPY, Crypto like BTC-USD)
-        if mkt_cap is None:
-            try:
-                info = md.ticker_obj.info
-                mkt_cap = info.get('marketCap') or info.get('totalAssets')
-            except:
-                pass
-        
-        # C. Final Fallback: Calc from shares * price (for futures like GC=F)
-        if mkt_cap is None:
-            try:
-                shares = md.ticker_obj.fast_info.shares
-                price = md.ticker_obj.fast_info.last_price
-                if shares and price:
-                    mkt_cap = shares * price
-            except:
-                pass
-        
-        # Ensure numeric or 0
-        if mkt_cap is None:
-            mkt_cap = 0
-        
-        # DEBUG LOG
-        print(f"📊 {req.ticker} Market Cap = {mkt_cap}")
+        # Market Cap already loaded from cache or calculated above
+        # (Legacy block removed)
         
         return {
             "status": "ok",
