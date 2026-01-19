@@ -676,19 +676,36 @@ function openTradesModal() {
     document.getElementById('trades-modal').style.display = 'flex';
 }
 
+// Global storage for previous trades (for detecting changes between simulations)
+window.PREV_TRADES = window.PREV_TRADES || { LIVE: [], FROZEN: [], SUM: [] };
+
 function renderTradesList() {
     const listDiv = document.getElementById('trades-list');
+    const viewMode = window.CURRENT_TRADES_VIEW;
     let trades;
-    if (window.CURRENT_TRADES_VIEW === 'LIVE') {
+    if (viewMode === 'LIVE') {
         trades = window.TRADES_LIVE;
-    } else if (window.CURRENT_TRADES_VIEW === 'FROZEN') {
+    } else if (viewMode === 'FROZEN') {
         trades = window.TRADES_FROZEN;
     } else {
         trades = window.TRADES_SUM;
     }
 
+    // Get previous trades for comparison
+    const prevTrades = window.PREV_TRADES[viewMode] || [];
+
+    // Build lookup map by entry_date for fast comparison
+    const prevTradesMap = {};
+    prevTrades.forEach((t, idx) => {
+        if (t && t.entry_date) {
+            prevTradesMap[t.entry_date] = t;
+        }
+    });
+
     if (!trades || trades.length === 0) {
         listDiv.innerHTML = '<p style="color: #888; text-align: center; margin-top: 20px;">Nessuna operazione disponibile per questa strategia.</p>';
+        // Save current as previous for next comparison
+        window.PREV_TRADES[viewMode] = [];
         return;
     }
 
@@ -705,7 +722,7 @@ function renderTradesList() {
     // Trades are typically oldest to newest. Reverse for newest first?
     const tradesReversed = [...trades].reverse();
 
-    tradesReversed.forEach(t => {
+    tradesReversed.forEach((t, idx) => {
         const isOpen = t.exit_date === 'OPEN';
 
         // Custom styling for OPEN trades
@@ -725,18 +742,41 @@ function renderTradesList() {
         const pnlSign = t.pnl_pct >= 0 ? '+' : '';
         const typeEmoji = t.direction === 'LONG' ? '🟢' : '🔴';
 
-        // Snapshot Warning: Detect if trade data changed retroactively
-        // This happens when Z-values recalculated with new data differ from entry snapshot
-        let snapshotWarning = '';
+        // === COMPLETE CHANGE DETECTION ===
+        // Compare with previous trade data to detect retroactive changes
+        let warningMessages = [];
         let rowWarningStyle = '';
+
+        // 1. Check Z-ROC snapshot mismatch (direction flip based on recalculated Z)
         if (t.entry_z_value !== undefined && t.entry_z_roc !== undefined) {
-            // Check if this is a Frozen/SUM strategy (has Z-ROC based direction)
-            // Direction would flip if Z-ROC sign changed
             const expectedDir = t.entry_z_roc >= 0 ? 'LONG' : 'SHORT';
             if (expectedDir !== t.direction) {
-                snapshotWarning = '<span style="color:#ff4444; font-size:0.75em; display:block;">⚠️ DATI MODIFICATI</span>';
-                rowWarningStyle = 'background: rgba(255,68,68,0.15); border-left: 3px solid #ff4444;';
+                warningMessages.push('Z-ROC invertito');
             }
+        }
+
+        // 2. Compare with previous version of this trade (by matching entry_date)
+        const prevTrade = prevTradesMap[t.entry_date];
+        if (prevTrade) {
+            // Direction changed
+            if (prevTrade.direction !== t.direction) {
+                warningMessages.push(`Dir: ${prevTrade.direction}→${t.direction}`);
+            }
+            // Exit date changed
+            if (prevTrade.exit_date !== t.exit_date) {
+                warningMessages.push(`Exit: ${prevTrade.exit_date}→${t.exit_date}`);
+            }
+            // Entry price changed (significant)
+            if (Math.abs(prevTrade.entry_price - t.entry_price) > 0.01) {
+                warningMessages.push(`Entry$: ${prevTrade.entry_price}→${t.entry_price}`);
+            }
+        }
+
+        // 3. Build warning display
+        let snapshotWarning = '';
+        if (warningMessages.length > 0) {
+            snapshotWarning = '<span style="color:#ff4444; font-size:0.7em; display:block;">⚠️ ' + warningMessages.join(' | ') + '</span>';
+            rowWarningStyle = 'background: rgba(255,68,68,0.2); border-left: 3px solid #ff4444;';
         }
 
         const finalRowStyle = isOpen ? rowStyle : (rowWarningStyle || rowStyle);
@@ -752,6 +792,9 @@ function renderTradesList() {
             </td>
         </tr>`;
     });
+
+    // Save current trades as "previous" for next comparison
+    window.PREV_TRADES[viewMode] = JSON.parse(JSON.stringify(trades));
 
     html += '</table>';
     listDiv.innerHTML = html;
