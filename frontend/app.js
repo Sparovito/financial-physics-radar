@@ -549,6 +549,7 @@ function renderCharts(data) {
     // Backtest / Strategy traces
     if (traceBacktest) traces.push(traceBacktest);
     if (traceFrozenStrat) traces.push(traceFrozenStrat);
+    if (traceFrozenSumStrat) traces.push(traceFrozenSumStrat);
 
     // Kinetic Z Trace
     if (showKineticZ) {
