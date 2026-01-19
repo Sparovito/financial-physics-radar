@@ -110,6 +110,41 @@
             </button>
         </div>
 
+        <!-- CHART VISIBILITY TOGGLES -->
+        <div
+            style="margin-top: 15px; padding: 12px; background: linear-gradient(135deg, #1a1d2a 0%, #252836 100%); border-radius: 8px; border: 1px solid #444;">
+            <label style="color: #eba834; font-size: 0.9rem; margin-bottom: 8px; display: block;">🎛️ Visibilità
+                Grafici</label>
+
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem;">
+                    <input type="checkbox" id="show-price" checked
+                        style="width: 16px; height: 16px; accent-color: #00e5ff;">
+                    <span style="color: #fff;">📈 Prezzo</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem;">
+                    <input type="checkbox" id="show-energy" checked
+                        style="width: 16px; height: 16px; accent-color: #9966ff;">
+                    <span style="color: #fff;">⚡ Energia</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem;">
+                    <input type="checkbox" id="show-frozen" checked
+                        style="width: 16px; height: 16px; accent-color: #00e5ff;">
+                    <span style="color: #fff;">❄️ Frozen</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem;">
+                    <input type="checkbox" id="show-indicators" checked
+                        style="width: 16px; height: 16px; accent-color: #ff9966;">
+                    <span style="color: #fff;">📊 Indicatori</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem;">
+                    <input type="checkbox" id="show-zigzag" checked
+                        style="width: 16px; height: 16px; accent-color: #ffcc00;">
+                    <span style="color: #fff;">🔀 ZigZag</span>
+                </label>
+            </div>
+        </div>
+
         <div id="fourier-stats"
             style="margin-top: 15px; padding: 12px; background: #1a1d2a; border-radius: 6px; font-size: 0.8rem; color: #888;">
             <!-- Tabella cicli verrà inserita qui -->

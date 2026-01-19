@@ -115,6 +115,9 @@ function shiftDate(days) {
 }
 
 function renderCharts(data) {
+    // Cache data for toggle re-renders
+    window.LAST_ANALYSIS_DATA = data;
+
     // Safety Check for updated backend
     if (!data.indicators) {
         console.warn("Backend missing 'indicators' field. Using empty arrays.");
@@ -402,19 +405,42 @@ function renderCharts(data) {
         displayModeBar: !isMobile
     };
 
-    // Build traces array
-    const traces = [
-        tracePrice, tracePath, traceFund, traceForecast,
-        traceKinetic, tracePotential,
-        traceSlope, traceZ, traceZRoc,
-        traceFrozenKin, traceFrozenPot  // Frozen (point-in-time) values
-    ];
+    // --- READ VISIBILITY TOGGLES ---
+    const showPrice = document.getElementById('show-price')?.checked ?? true;
+    const showEnergy = document.getElementById('show-energy')?.checked ?? true;
+    const showFrozen = document.getElementById('show-frozen')?.checked ?? true;
+    const showIndicators = document.getElementById('show-indicators')?.checked ?? true;
+    const showZigZag = document.getElementById('show-zigzag')?.checked ?? true;
 
+    // Build traces array based on toggles
+    const traces = [];
+
+    // Price group
+    if (showPrice) {
+        traces.push(tracePrice, tracePath, traceFund, traceForecast);
+    }
+
+    // Energy group
+    if (showEnergy) {
+        traces.push(traceKinetic, tracePotential);
+    }
+
+    // Frozen group
+    if (showFrozen) {
+        traces.push(traceFrozenKin, traceFrozenPot);
+    }
+
+    // Indicators group
+    if (showIndicators) {
+        traces.push(traceSlope, traceZ, traceZRoc);
+    }
+
+    // Backtest / Strategy traces
     if (traceBacktest) traces.push(traceBacktest);
     if (traceFrozenStrat) traces.push(traceFrozenStrat);
 
-    // [NEW] ZigZag Indicator Trace (Always visible)
-    if (data.indicators && data.indicators.zigzag) {
+    // ZigZag Indicator Trace
+    if (showZigZag && data.indicators && data.indicators.zigzag) {
         const traceZigZag = {
             x: data.dates,
             y: data.indicators.zigzag,
@@ -1992,3 +2018,17 @@ function applyScanFilters() {
         row.style.display = visible ? '' : 'none';
     });
 }
+
+// --- CHART VISIBILITY TOGGLE LISTENERS ---
+// Re-render chart when toggles change (uses cached data)
+['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+        el.addEventListener('change', () => {
+            // If we have cached data, re-render without API call
+            if (window.LAST_ANALYSIS_DATA) {
+                renderCharts(window.LAST_ANALYSIS_DATA);
+            }
+        });
+    }
+});
