@@ -431,7 +431,7 @@ async def analyze_stock(req: AnalysisRequest):
         # --- STRATEGIA 3: FROZEN SUM (Nuovo Indicatore Filtrato) ---
         # Allineiamo frozen_z_sum (già filtrato con Butterworth) alla lunghezza di price_real
         padding_sum = len(price_real) - len(frozen_z_sum)
-        aligned_frozen_sum = [0] * padding_sum + frozen_z_sum
+        aligned_frozen_sum = [-999] * padding_sum + frozen_z_sum  # -999 = no data, prevents false entry
         
         backtest_result_frozen_sum = backtest_strategy(
             prices=price_real,
