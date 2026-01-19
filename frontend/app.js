@@ -299,54 +299,84 @@ function renderCharts(data) {
         ? `Analisi: ${data.ticker} (${extendedName})`
         : `Analisi: ${data.ticker}`;
 
-    // --- LAYOUT COMBINATO (Adjust domains based on backtest visibility) ---
-    const layout = {
-        // Grid rimosso per garantire il rispetto dei domini manuali
+    // --- DYNAMIC DOMAIN CALCULATION ---
+    // Calculate visible panels and redistribute space
+    const visiblePanels = [];
+    if (showPrice) visiblePanels.push('price');
+    if (showEnergy) visiblePanels.push('energy');
+    if (showFrozen) visiblePanels.push('frozen');
+    if (showZigZag && data.indicators?.zigzag) visiblePanels.push('zigzag');
+    if (showIndicators) visiblePanels.push('indicators');
+    if (showBacktest) visiblePanels.push('backtest');
 
+    const panelCount = visiblePanels.length;
+    const gap = 0.02; // Gap between panels
+    const totalGap = gap * (panelCount - 1);
+    const availableSpace = 1 - totalGap;
+
+    // Price gets 40% of available space, others share the rest
+    const priceWeight = showPrice ? 0.4 : 0;
+    const otherWeight = (1 - priceWeight) / (panelCount - (showPrice ? 1 : 0) || 1);
+
+    // Calculate domains
+    const domains = {};
+    let currentTop = 1;
+
+    visiblePanels.forEach((panel, i) => {
+        const weight = panel === 'price' ? priceWeight : otherWeight;
+        const height = availableSpace * weight;
+        const bottom = currentTop - height;
+        domains[panel] = [Math.max(0, bottom), currentTop];
+        currentTop = bottom - gap;
+    });
+
+    // Default domains if panel not visible (still needed for axis definition)
+    const defaultDomain = [0, 0]; // Hidden
+
+    // --- LAYOUT COMBINATO ---
+    const layout = {
         // --- Asse X Condiviso ---
         xaxis: {
-            anchor: showBacktest ? 'y5' : 'y3', // TODO: Anchor to lowest axis 
+            anchor: 'y',
             domain: [0, 1],
             gridcolor: '#333'
         },
 
-        // --- Configurazione Assi Y (Domini RE-LAYOUT) ---
-        // WITH FROZEN PANEL:
-        // Price (y1): Top
-        // Energy (y2): Below Price
-        // Frozen (y6): Below Energy
-        // Indicators (y3): Below Frozen
-        // Backtest (y5): Bottom (if enabled)
-
+        // --- Configurazione Assi Y (Dynamic Domains) ---
         yaxis: {
-            domain: showBacktest ? [0.70, 1] : [0.65, 1],
+            domain: domains.price || defaultDomain,
             gridcolor: '#333',
-            title: 'Prezzo (€)',
-            tickfont: { color: '#e0e0e0' }
+            title: showPrice ? 'Prezzo (€)' : '',
+            tickfont: { color: '#e0e0e0' },
+            visible: showPrice
         },
         yaxis2: {
-            domain: showBacktest ? [0.58, 0.68] : [0.52, 0.62],
+            domain: domains.energy || defaultDomain,
             gridcolor: '#333333',
-            title: 'Energy',
-            tickfont: { color: '#9966ff' }
+            title: showEnergy ? 'Energy' : '',
+            tickfont: { color: '#9966ff' },
+            visible: showEnergy
         },
         yaxis6: { // FROZEN PANEL
-            domain: showBacktest ? [0.46, 0.56] : [0.39, 0.49],
+            domain: domains.frozen || defaultDomain,
             gridcolor: '#333333',
-            title: 'Frozen',
-            tickfont: { color: '#00e5ff' }
+            title: showFrozen ? 'Frozen' : '',
+            tickfont: { color: '#00e5ff' },
+            visible: showFrozen
         },
-        yaxis7: { // [NEW] ZIGZAG PANEL
-            domain: showBacktest ? [0.34, 0.44] : [0.26, 0.36],
+        yaxis7: { // ZIGZAG PANEL
+            domain: domains.zigzag || defaultDomain,
             gridcolor: '#333333',
-            title: 'ZigZag',
-            tickfont: { color: '#ffcc00' }
+            title: showZigZag ? 'ZigZag' : '',
+            tickfont: { color: '#ffcc00' },
+            visible: showZigZag
         },
         yaxis3: {
-            domain: showBacktest ? [0.22, 0.32] : [0.13, 0.23],
+            domain: domains.indicators || defaultDomain,
             gridcolor: '#333333',
-            title: 'Ind.',
-            tickfont: { color: '#ff9966' }
+            title: showIndicators ? 'Ind.' : '',
+            tickfont: { color: '#ff9966' },
+            visible: showIndicators
         },
         yaxis4: {
             // Z-Score Axis (Right side of Indicators panel)
@@ -354,7 +384,15 @@ function renderCharts(data) {
             side: 'right',
             gridcolor: 'rgba(0,0,0,0)',
             tickfont: { color: '#00ffff' },
-            showgrid: false
+            showgrid: false,
+            visible: showIndicators
+        },
+        yaxis5: {
+            domain: domains.backtest || defaultDomain,
+            gridcolor: '#333333',
+            title: showBacktest ? 'P/L %' : '',
+            tickfont: { color: '#00ff88' },
+            visible: showBacktest
         },
 
         title: { text: titleText, font: { color: '#fff' } },
@@ -2021,10 +2059,16 @@ function applyScanFilters() {
 
 // --- CHART VISIBILITY TOGGLE LISTENERS ---
 // Re-render chart when toggles change (uses cached data)
-['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag'].forEach(id => {
+['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag', 'show-backtest'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
-        el.addEventListener('change', () => {
+        el.addEventListener('change', (e) => {
+            // Update icon opacity
+            const icon = el.parentElement.querySelector('.toggle-icon');
+            if (icon) {
+                icon.style.opacity = el.checked ? '1' : '0.3';
+            }
+
             // If we have cached data, re-render without API call
             if (window.LAST_ANALYSIS_DATA) {
                 renderCharts(window.LAST_ANALYSIS_DATA);
