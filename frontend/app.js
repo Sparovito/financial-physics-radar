@@ -1721,8 +1721,10 @@ async function startBulkScan() {
     // --- ACCUMULATORS FOR AVERAGE ---
     let totalLiveRet = 0;
     let totalFrozenRet = 0;
+    let totalSumRet = 0;
     let totalWinLive = 0;
     let totalWinFrozen = 0;
+    let totalWinSum = 0;
     let countStats = 0;
 
     // Global Trade Accumulator for Portfolio Simulator
@@ -1807,16 +1809,23 @@ async function startBulkScan() {
 
             const liveStats = data.backtest?.stats;
             const frozenStats = data.frozen_strategy?.stats;
+            const sumStats = data.frozen_sum_strategy?.stats;
 
             if (liveStats && frozenStats) {
                 totalLiveRet += liveStats.total_return;
                 totalFrozenRet += frozenStats.total_return;
                 totalWinLive += liveStats.win_rate;
                 totalWinFrozen += frozenStats.win_rate;
+                if (sumStats) {
+                    totalSumRet += sumStats.total_return;
+                    totalWinSum += sumStats.win_rate;
+                }
                 countStats++;
 
                 const liveRet = liveStats.total_return;
                 const frozenRet = frozenStats.total_return;
+                const sumRet = sumStats ? sumStats.total_return : 0;
+                const sumWin = sumStats ? sumStats.win_rate : 0;
                 const delta = (liveRet - frozenRet).toFixed(2);
                 const deltaColor = parseFloat(delta) > 20 ? '#ff4444' : (parseFloat(delta) < -5 ? '#00ff88' : '#888');
 
@@ -1833,6 +1842,8 @@ async function startBulkScan() {
                         <td style="color:${liveRet > 0 ? '#00ff88' : '#ff4444'}">${liveRet}%</td>
                         <td style="color:${frozenStats.win_rate >= 50 ? '#ff9900' : '#888'}">${frozenStats.win_rate}%</td>
                         <td style="color:${frozenRet > 0 ? '#ff9900' : '#ff4444'}">${frozenRet}%</td>
+                        <td style="color:${sumWin >= 50 ? '#ff4444' : '#888'}">${sumWin}%</td>
+                        <td style="color:${sumRet > 0 ? '#ff4444' : '#888'}">${sumRet}%</td>
                         <td style="color:${deltaColor}; font-weight:bold;">${delta}%</td>
                         <td>
                             <button onclick="loadTickerFromScan('${ticker}')" style="background:#333; color:#fff; border:none; padding:4px 8px; cursor:pointer; font-size:0.8em; border-radius:4px;">🔍 Vedi</button>
@@ -1851,8 +1862,10 @@ async function startBulkScan() {
     if (countStats > 0) {
         const avgLiveRet = (totalLiveRet / countStats).toFixed(2);
         const avgFrozenRet = (totalFrozenRet / countStats).toFixed(2);
+        const avgSumRet = (totalSumRet / countStats).toFixed(2);
         const avgWinLive = (totalWinLive / countStats).toFixed(1);
         const avgWinFrozen = (totalWinFrozen / countStats).toFixed(1);
+        const avgWinSum = (totalWinSum / countStats).toFixed(1);
         const avgDelta = (avgLiveRet - avgFrozenRet).toFixed(2);
 
         const statsRow = `
@@ -1863,6 +1876,8 @@ async function startBulkScan() {
                 <td style="color:${avgLiveRet > 0 ? '#00ff88' : '#ff4444'}">${avgLiveRet}%</td>
                 <td style="color:${avgWinFrozen >= 50 ? '#ff9900' : '#bbb'}">${avgWinFrozen}%</td>
                 <td style="color:${avgFrozenRet > 0 ? '#ff9900' : '#ff4444'}">${avgFrozenRet}%</td>
+                <td style="color:${avgWinSum >= 50 ? '#ff4444' : '#bbb'}">${avgWinSum}%</td>
+                <td style="color:${avgSumRet > 0 ? '#ff4444' : '#888'}">${avgSumRet}%</td>
                 <td style="color:#eba834;">${avgDelta}%</td>
                 <td>
                     <button onclick="openSimulatorModal()" style="background:#00ff88; color:#000; font-weight:bold; border:none; padding:6px 10px; cursor:pointer; border-radius:4px; box-shadow:0 2px 5px rgba(0,0,0,0.5);">
