@@ -130,6 +130,23 @@
                         <!-- UNIQUE ID NOW -->
                         <span class="toggle-icon" data-active="true" style="font-size: 1.5rem; opacity: 1;">💰</span>
                     </label>
+
+                    <!-- SEPARATOR -->
+                    <div style="width: 30px; height: 1px; background: #444; margin: 4px 0;"></div>
+
+                    <!-- ANNOTATION MODE BUTTONS -->
+                    <div title="Aggiungi linea VERDE (compra)" onclick="setAnnotationMode('green')" id="btn-anno-green"
+                        style="cursor: pointer; font-size: 1.3rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
+                        🟢
+                    </div>
+                    <div title="Aggiungi linea ROSSA (vendi)" onclick="setAnnotationMode('red')" id="btn-anno-red"
+                        style="cursor: pointer; font-size: 1.3rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
+                        🔴
+                    </div>
+                    <div title="Cancella annotazioni" onclick="setAnnotationMode('clear')" id="btn-anno-clear"
+                        style="cursor: pointer; font-size: 1.3rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
+                        🗑️
+                    </div>
                 </div>
 
                 <!-- Center Handle -->

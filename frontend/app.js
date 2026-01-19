@@ -493,7 +493,14 @@ function renderCharts(data) {
         traces.push(traceZigZag);
     }
 
+    // Add saved annotation shapes to layout
+    loadAnnotations();
+    layout.shapes = getAnnotationShapes();
+
     Plotly.newPlot('chart-combined', traces, layout, config);
+
+    // Setup click handler for annotations
+    setupChartClickHandler();
 
     // Display backtest stats if available
     const statsDiv = document.getElementById('backtest-stats');
@@ -2108,3 +2115,129 @@ function toggleSidebar() {
         window.dispatchEvent(new Event('resize'));
     }, 320);
 }
+
+// ============================================
+// VERTICAL ANNOTATION SYSTEM (Clickable Lines)
+// ============================================
+
+// Global state for annotation mode
+window.ANNOTATION_MODE = null; // 'green', 'red', or null
+window.CHART_ANNOTATIONS = []; // [{x: date, color: 'green'|'red'}, ...]
+
+// Load annotations from localStorage
+function loadAnnotations() {
+    try {
+        const ticker = document.getElementById('ticker')?.value || 'DEFAULT';
+        const saved = localStorage.getItem(`annotations_${ticker}`);
+        window.CHART_ANNOTATIONS = saved ? JSON.parse(saved) : [];
+    } catch (e) {
+        window.CHART_ANNOTATIONS = [];
+    }
+}
+
+// Save annotations to localStorage
+function saveAnnotations() {
+    try {
+        const ticker = document.getElementById('ticker')?.value || 'DEFAULT';
+        localStorage.setItem(`annotations_${ticker}`, JSON.stringify(window.CHART_ANNOTATIONS));
+    } catch (e) {
+        console.warn('Could not save annotations');
+    }
+}
+
+// Set annotation mode (called by buttons)
+function setAnnotationMode(mode) {
+    const btnGreen = document.getElementById('btn-anno-green');
+    const btnRed = document.getElementById('btn-anno-red');
+    const btnClear = document.getElementById('btn-anno-clear');
+
+    // Reset all button styles
+    [btnGreen, btnRed, btnClear].forEach(btn => {
+        if (btn) btn.style.background = 'transparent';
+    });
+
+    if (mode === 'clear') {
+        // Clear all annotations for current ticker
+        window.CHART_ANNOTATIONS = [];
+        saveAnnotations();
+        window.ANNOTATION_MODE = null;
+
+        // Re-render chart to remove shapes
+        if (window.LAST_ANALYSIS_DATA) {
+            renderCharts(window.LAST_ANALYSIS_DATA);
+        }
+        return;
+    }
+
+    // Toggle mode
+    if (window.ANNOTATION_MODE === mode) {
+        window.ANNOTATION_MODE = null; // Deactivate
+    } else {
+        window.ANNOTATION_MODE = mode;
+        // Highlight active button
+        const activeBtn = mode === 'green' ? btnGreen : btnRed;
+        if (activeBtn) activeBtn.style.background = 'rgba(255,255,255,0.15)';
+    }
+
+    console.log('Annotation mode:', window.ANNOTATION_MODE);
+}
+
+// Convert annotations to Plotly shapes
+function getAnnotationShapes() {
+    return window.CHART_ANNOTATIONS.map(anno => ({
+        type: 'line',
+        x0: anno.x,
+        x1: anno.x,
+        y0: 0,
+        y1: 1,
+        yref: 'paper', // Full height
+        line: {
+            color: anno.color === 'green' ? '#00ff88' : '#ff4444',
+            width: 2,
+            dash: 'solid'
+        },
+        layer: 'below'
+    }));
+}
+
+// Setup click handler for the chart (called after Plotly.newPlot)
+function setupChartClickHandler() {
+    const chartDiv = document.getElementById('chart-combined');
+    if (!chartDiv) return;
+
+    // Remove existing handler to avoid duplicates
+    chartDiv.removeAllListeners?.('plotly_click');
+
+    chartDiv.on('plotly_click', function (data) {
+        if (!window.ANNOTATION_MODE) return;
+
+        // Get X coordinate (date)
+        const clickX = data.points[0]?.x;
+        if (!clickX) return;
+
+        // Check if annotation already exists at this X (remove if so)
+        const existingIndex = window.CHART_ANNOTATIONS.findIndex(a => a.x === clickX);
+        if (existingIndex >= 0) {
+            // Remove existing annotation
+            window.CHART_ANNOTATIONS.splice(existingIndex, 1);
+        } else {
+            // Add new annotation
+            window.CHART_ANNOTATIONS.push({
+                x: clickX,
+                color: window.ANNOTATION_MODE
+            });
+        }
+
+        saveAnnotations();
+
+        // Update chart shapes without full re-render
+        const currentLayout = chartDiv.layout || {};
+        currentLayout.shapes = getAnnotationShapes();
+        Plotly.relayout(chartDiv, { shapes: currentLayout.shapes });
+    });
+}
+
+// Initialize annotations when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    loadAnnotations();
+});
