@@ -96,15 +96,40 @@ async def analyze_stock(req: AnalysisRequest):
             md = MarketData(req.ticker, start_date=req.start_date, end_date=None)
             px = md.fetch()
 
-            # [NEW] Calculate Cumulative Direction (ZigZag)
+            # [NEW] Calculate Cumulative Direction (ZigZag) - HOURLY AGGREGATED
             try:
-                # md.df_full was saved in logic.py
-                d_open = md.df_full['Open']
-                d_close = md.df_full['Close']
-                diff = d_close - d_open
-                # Sign: +1, -1, 0
-                signs = diff.apply(lambda x: 1 if x > 0 else -1 if x < 0 else 0)
-                zigzag_series = signs.cumsum()
+                # Fetch hourly data for more granular ZigZag
+                print(f"📊 Fetching hourly data for ZigZag...")
+                hourly_data = md.ticker_obj.history(period="2y", interval="1h")
+                
+                if not hourly_data.empty and 'Open' in hourly_data.columns and 'Close' in hourly_data.columns:
+                    # Calculate hourly direction (+1, -1, 0)
+                    hourly_diff = hourly_data['Close'] - hourly_data['Open']
+                    hourly_signs = hourly_diff.apply(lambda x: 1 if x > 0 else -1 if x < 0 else 0)
+                    
+                    # Group by date and sum all hourly directions
+                    hourly_signs.index = pd.to_datetime(hourly_signs.index).date
+                    daily_net = hourly_signs.groupby(hourly_signs.index).sum()
+                    
+                    # Align with px dates and cumsum
+                    zigzag_values = []
+                    cumsum = 0
+                    for date in px.index:
+                        date_key = date.date()
+                        if date_key in daily_net.index:
+                            cumsum += daily_net[date_key]
+                        zigzag_values.append(cumsum)
+                    
+                    zigzag_series = pd.Series(zigzag_values, index=px.index)
+                    print(f"✅ ZigZag calcolato su {len(hourly_data)} candele orarie")
+                else:
+                    # Fallback to daily if hourly not available
+                    print("⚠️ Hourly data not available, using daily fallback")
+                    d_open = md.df_full['Open']
+                    d_close = md.df_full['Close']
+                    diff = d_close - d_open
+                    signs = diff.apply(lambda x: 1 if x > 0 else -1 if x < 0 else 0)
+                    zigzag_series = signs.cumsum()
             except Exception as e:
                 print(f"⚠️ Errore calcolo ZigZag: {e}")
                 zigzag_series = pd.Series([0]*len(px), index=px.index)
