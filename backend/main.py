@@ -153,14 +153,7 @@ async def analyze_stock(req: AnalysisRequest):
                         f_kin.append(round(float(mech_t.kin_density.iloc[lag_idx]), 2))
                     else:
                         f_kin.append(0.0)
-                    
-                    # [MOD] Potential Density: Max of last 30 days
-                    lookback = 30
-                    if len(mech_t.pot_density) >= lookback:
-                        max_val = mech_t.pot_density.iloc[-lookback:].max()
-                        f_pot.append(round(float(max_val), 2))
-                    else:
-                        f_pot.append(round(float(mech_t.pot_density.max()), 2))
+                    f_pot.append(round(float(mech_t.pot_density.iloc[-1]), 2))
                     f_dates.append(px.index[t].strftime('%Y-%m-%d'))
                 except:
                     continue
@@ -371,8 +364,8 @@ async def analyze_stock(req: AnalysisRequest):
             "avg_abs_kin": round(float(avg_abs_kin), 2),
             "market_cap": mkt_cap,
             "dates": dates_historical,
-            "dates": dates_historical,
             "prices": price_real,
+            "volume": md.df_full['Volume'].fillna(0).tolist() if hasattr(md, 'df_full') and 'Volume' in md.df_full.columns else [0]*len(price_real),
             "min_action": price_min_action,
             "fundamentals": fundamentals,
             "energy": {
