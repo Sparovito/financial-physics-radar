@@ -305,6 +305,7 @@ function renderCharts(data) {
     const showFrozen = document.getElementById('show-frozen')?.checked ?? true;
     const showIndicators = document.getElementById('show-indicators')?.checked ?? true;
     const showZigZag = document.getElementById('show-zigzag')?.checked ?? true;
+    // showBacktest is already defined above
 
     // --- DYNAMIC DOMAIN CALCULATION ---
     // Calculate visible panels and redistribute space
@@ -2076,3 +2077,33 @@ function applyScanFilters() {
         });
     }
 });
+
+
+// --- SIDEBAR TOGGLE ---
+function toggleSidebar() {
+    const container = document.getElementById('toggle-sidebar-container');
+    const toggles = document.getElementById('chart-toggles');
+    const btn = document.getElementById('btn-collapse-toggles');
+
+    if (!container || !toggles || !btn) return;
+
+    // Check current state (using clientWidth or a class)
+    const isCollapsed = toggles.style.display === 'none';
+
+    if (isCollapsed) {
+        // EXPAND
+        toggles.style.display = 'flex';
+        btn.innerText = '◀';
+        container.style.width = 'auto';
+    } else {
+        // COLLAPSE
+        toggles.style.display = 'none';
+        btn.innerText = '▶';
+        container.style.width = '30px'; // Slim width for button only
+    }
+
+    // Trigger resize for chart (Plotly needs to know container changed)
+    setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+    }, 320);
+}

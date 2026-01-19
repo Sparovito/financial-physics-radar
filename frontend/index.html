@@ -117,38 +117,50 @@
 
     <!-- Main Charts Area -->
     <div class="main-content">
-        <div style="display: flex; gap: 10px; height: 100%;">
-            <!-- Toggle Panel (Left of Chart) -->
-            <div id="chart-toggles"
-                style="display: flex; flex-direction: column; gap: 8px; padding: 10px; background: #1a1d2a; border-radius: 8px; border: 1px solid #333; min-width: 50px; justify-content: center; align-items: center;">
-                <label title="📈 Prezzo" style="cursor: pointer;">
-                    <input type="checkbox" id="show-price" checked style="display: none;">
-                    <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">📈</span>
-                </label>
-                <label title="⚡ Energia" style="cursor: pointer;">
-                    <input type="checkbox" id="show-energy" checked style="display: none;">
-                    <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">⚡</span>
-                </label>
-                <label title="❄️ Frozen" style="cursor: pointer;">
-                    <input type="checkbox" id="show-frozen" checked style="display: none;">
-                    <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">❄️</span>
-                </label>
-                <label title="📊 Indicatori" style="cursor: pointer;">
-                    <input type="checkbox" id="show-indicators" checked style="display: none;">
-                    <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">📊</span>
-                </label>
-                <label title="🔀 ZigZag" style="cursor: pointer;">
-                    <input type="checkbox" id="show-zigzag" checked style="display: none;">
-                    <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">🔀</span>
-                </label>
-                <label title="💰 Strategie" style="cursor: pointer;">
-                    <input type="checkbox" id="show-backtest" checked style="display: none;">
-                    <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">💰</span>
-                </label>
+        <div style="display: flex; gap: 0px; height: 100%; position: relative;">
+            <!-- COLLAPSIBLE TOGGLE SIDEBAR -->
+            <div id="toggle-sidebar-container"
+                style="display: flex; flex-direction: column; align-items: stretch; transition: all 0.3s ease; width: auto;">
+
+                <!-- Collapse Button -->
+                <button id="btn-collapse-toggles" onclick="toggleSidebar()"
+                    style="background: #252836; border: 1px solid #444; color: #888; cursor: pointer; padding: 2px; border-radius: 4px 4px 0 0; margin-bottom: 0; width: 100%; font-size: 0.8rem;">
+                    ◀
+                </button>
+
+                <!-- Toggle Panel (Left of Chart) -->
+                <div id="chart-toggles"
+                    style="display: flex; flex-direction: column; gap: 8px; padding: 10px; background: #1a1d2a; border: 1px solid #333; border-top: none; min-width: 50px; justify-content: flex-start; align-items: center; border-radius: 0 0 8px 8px; height: 100%; overflow: hidden;">
+                    <label title="📈 Prezzo" style="cursor: pointer;">
+                        <input type="checkbox" id="show-price" checked style="display: none;">
+                        <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">📈</span>
+                    </label>
+                    <label title="⚡ Energia" style="cursor: pointer;">
+                        <input type="checkbox" id="show-energy" checked style="display: none;">
+                        <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">⚡</span>
+                    </label>
+                    <label title="❄️ Frozen" style="cursor: pointer;">
+                        <input type="checkbox" id="show-frozen" checked style="display: none;">
+                        <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">❄️</span>
+                    </label>
+                    <label title="📊 Indicatori" style="cursor: pointer;">
+                        <input type="checkbox" id="show-indicators" checked style="display: none;">
+                        <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">📊</span>
+                    </label>
+                    <label title="🔀 ZigZag" style="cursor: pointer;">
+                        <input type="checkbox" id="show-zigzag" checked style="display: none;">
+                        <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">🔀</span>
+                    </label>
+                    <label title="💰 Strategie" style="cursor: pointer;">
+                        <input type="checkbox" id="show-backtest" checked style="display: none;">
+                        <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">💰</span>
+                    </label>
+                </div>
             </div>
 
             <!-- Chart Area -->
-            <div class="chart-container" style="position: relative; flex: 1;">
+            <div class="chart-container"
+                style="position: relative; flex: 1; margin-left: 10px; transition: margin 0.3s ease;">
                 <button onclick="toggleFullScreen('chart-combined')" class="btn-fullscreen"
                     title="Full Screen">⛶</button>
                 <div id="chart-combined"></div>
