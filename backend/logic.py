@@ -568,7 +568,10 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                 in_position = True
                 entry_price = price
                 entry_date = date
-                position_direction = 'LONG' if z_sl > 0 else 'SHORT'
+                # Direction based on Z-ROC (Rate of Change of Z-Score) - 100% causal
+                z_prev = z_kinetic[i-1] if i > 0 and z_kinetic[i-1] is not None else 0
+                z_roc = z_kin - z_prev
+                position_direction = 'LONG' if z_roc >= 0 else 'SHORT'
                 trade_pnl_curve.append(0)
             else:
                 trade_pnl_curve.append(0)
