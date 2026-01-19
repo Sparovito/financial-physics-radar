@@ -62,18 +62,22 @@ class MarketData:
         if isinstance(self.data.columns, pd.MultiIndex):
              self.data.columns = self.data.columns.get_level_values(0)
              
-        if 'Close' not in self.data.columns:
-             self.data.columns = [c.capitalize() for c in self.data.columns]
+        # Normalize columns (Capitalize)
+        self.data.columns = [c.capitalize() for c in self.data.columns]
         
-        if 'Close' in self.data.columns:
-             self.data = self.data['Close']
-        else:
-             self.data = self.data.iloc[:, 0]
-
         if self.data.index.tz is not None:
              self.data.index = self.data.index.tz_localize(None)
 
         self.data = self.data.dropna()
+        
+        # [NEW] Save FULL DataFrame for advanced indicators logic
+        self.df_full = self.data.copy()
+
+        if 'Close' in self.data.columns:
+             self.data = self.data['Close']
+        else:
+             self.data = self.data.iloc[:, 0]
+             
         self.data.name = self.ticker
         print(f"Caricati {len(self.data)} punti dati reali.")
         return self.data

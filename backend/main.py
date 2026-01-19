@@ -88,11 +88,26 @@ async def analyze_stock(req: AnalysisRequest):
             cached_obj = TICKER_CACHE[req.ticker]
             px = cached_obj["px"]
             full_frozen_data = cached_obj.get("frozen", None)
+            # Load ZigZag Series
+            zigzag_series = cached_obj.get("zigzag", None)
         else:
             # Scarica storia COMPLETA
             print(f"🌐 API FETCH: Scarico dati freschi per {req.ticker}...")
             md = MarketData(req.ticker, start_date=req.start_date, end_date=None)
             px = md.fetch()
+
+            # [NEW] Calculate Cumulative Direction (ZigZag)
+            try:
+                # md.df_full was saved in logic.py
+                d_open = md.df_full['Open']
+                d_close = md.df_full['Close']
+                diff = d_close - d_open
+                # Sign: +1, -1, 0
+                signs = diff.apply(lambda x: 1 if x > 0 else -1 if x < 0 else 0)
+                zigzag_series = signs.cumsum()
+            except Exception as e:
+                print(f"⚠️ Errore calcolo ZigZag: {e}")
+                zigzag_series = pd.Series([0]*len(px), index=px.index)
             
             # --- PRE-CALCOLO FROZEN HISTORY (Heavy Computation) ---
             print(f"🧊 Pre-calcolo Frozen History completa (può richiedere tempo)...")
@@ -127,7 +142,8 @@ async def analyze_stock(req: AnalysisRequest):
             # Salva tutto in cache
             TICKER_CACHE[req.ticker] = {
                 "px": px,
-                "frozen": full_frozen_data
+                "frozen": full_frozen_data,
+                "zigzag": zigzag_series
             }
 
         # --- SIMULATION TIME TRAVEL (Slicing istantaneo) ---
@@ -139,6 +155,10 @@ async def analyze_stock(req: AnalysisRequest):
             # Slice Frozen Data
             # Troviamo l'indice fin dove arrivare nei dati frozen
             target_date_str = req.end_date
+            
+            # Slice ZigZag (Series)
+            if zigzag_series is not None:
+                zigzag_series = zigzag_series[zigzag_series.index <= end_ts]
             
             # Filtro rapido liste (date frozen sono già sorted)
             trunc_dates = []
@@ -165,6 +185,9 @@ async def analyze_stock(req: AnalysisRequest):
             frozen_dates = full_frozen_data["dates"]
             frozen_z_kin = full_frozen_data["kin"]
             frozen_z_pot = full_frozen_data["pot"]
+        
+        # Prepare ZigZag List
+        zigzag_line = zigzag_series.values.tolist() if zigzag_series is not None else []
         
         # 2. Calcola Minima Azione (Live su dati tranciati)
         mechanics = ActionPath(px, alpha=req.alpha, beta=req.beta)
@@ -331,7 +354,8 @@ async def analyze_stock(req: AnalysisRequest):
                 "slope": slope_line,
                 "z_residuo": z_residuo_line,
                 "roc": roc_line,
-                "z_roc": z_roc_line
+                "z_roc": z_roc_line,
+                "zigzag": zigzag_line   # [NEW] Cumulative Direction
             },
             "backtest": backtest_result,                  # Strategia Live
             "frozen_strategy": backtest_result_frozen,    # Strategia Frozen (NEW)

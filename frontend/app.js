@@ -280,6 +280,20 @@ function renderCharts(data) {
             };
             frozenStats = data.frozen_strategy.stats;
         }
+
+        // [NEW] ZigZag Indicator Trace
+        if (data.indicators.zigzag) {
+            const traceZigZag = {
+                x: data.dates,
+                y: data.indicators.zigzag,
+                name: '⚡ ZigZag Cumulativo',
+                type: 'scatter',
+                line: { color: '#ffcc00', width: 2 }, // Yellow Gold
+                xaxis: 'x',
+                yaxis: 'y7'
+            };
+            traces.push(traceZigZag);
+        }
     }
 
     // --- DETECT MOBILE ---
@@ -316,25 +330,31 @@ function renderCharts(data) {
         // Backtest (y5): Bottom (if enabled)
 
         yaxis: {
-            domain: showBacktest ? [0.65, 1] : [0.60, 1],
+            domain: showBacktest ? [0.70, 1] : [0.65, 1],
             gridcolor: '#333',
             title: 'Prezzo (€)',
             tickfont: { color: '#e0e0e0' }
         },
         yaxis2: {
-            domain: showBacktest ? [0.50, 0.62] : [0.45, 0.55],
+            domain: showBacktest ? [0.58, 0.68] : [0.52, 0.62],
             gridcolor: '#333333',
             title: 'Energy',
             tickfont: { color: '#9966ff' }
         },
-        yaxis6: { // NEW FROZEN PANEL
-            domain: showBacktest ? [0.35, 0.47] : [0.30, 0.40],
+        yaxis6: { // FROZEN PANEL
+            domain: showBacktest ? [0.46, 0.56] : [0.39, 0.49],
             gridcolor: '#333333',
-            title: 'Density (Frozen)',
+            title: 'Frozen',
             tickfont: { color: '#00e5ff' }
         },
+        yaxis7: { // [NEW] ZIGZAG PANEL
+            domain: showBacktest ? [0.34, 0.44] : [0.26, 0.36],
+            gridcolor: '#333333',
+            title: 'ZigZag',
+            tickfont: { color: '#ffcc00' }
+        },
         yaxis3: {
-            domain: showBacktest ? [0.20, 0.32] : [0.15, 0.25],
+            domain: showBacktest ? [0.22, 0.32] : [0.13, 0.23],
             gridcolor: '#333333',
             title: 'Ind.',
             tickfont: { color: '#ff9966' }
