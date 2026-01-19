@@ -62,6 +62,26 @@
 
         <!-- CONFIGURATION PARAMETERS (Moved Here) -->
         <div style="margin-top: 20px; border-top: 1px solid #333; padding-top: 15px;">
+            <!-- 5. Simula Data Storica (Moved Top) -->
+            <div class="control-group"
+                style="background: linear-gradient(135deg, #1a1d2a 0%, #252836 100%); padding: 12px; border-radius: 8px; border: 1px solid #444; margin-bottom: 15px;">
+                <label style="color: #eba834;">🕐 Simula Data Storica</label>
+                <div style="display: flex; gap: 5px; align-items: center; margin-top: 6px;">
+                    <button onclick="shiftDate(-1)"
+                        style="padding: 8px 12px; background: #2d3342; border: 1px solid #555; color: #eba834; border-radius: 4px; cursor: pointer; font-weight: bold;">◀</button>
+                    <input type="date" id="end-date"
+                        style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #555; background: #1a1d2a; color: #fff;">
+                    <button onclick="shiftDate(1)"
+                        style="padding: 8px 12px; background: #2d3342; border: 1px solid #555; color: #eba834; border-radius: 4px; cursor: pointer; font-weight: bold;">▶</button>
+                </div>
+                <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="use-cache" checked style="width: auto;">
+                    <label for="use-cache" style="margin:0; font-size: 0.9em; cursor: pointer;">⚡ Modalità Veloce
+                        (Cache)</label>
+                </div>
+                <small style="color: #888;">Lascia vuoto per dati attuali. Usa le frecce per navigare.</small>
+            </div>
+
             <!-- 1. Storia (Anni) -->
             <div class="control-group">
                 <label>Storia (Anni)</label>
@@ -90,25 +110,7 @@
                 <small>Giorni di proiezione futura</small>
             </div>
 
-            <!-- 5. Simula Data Storica -->
-            <div class="control-group"
-                style="background: linear-gradient(135deg, #1a1d2a 0%, #252836 100%); padding: 12px; border-radius: 8px; border: 1px solid #444; margin-top: 10px;">
-                <label style="color: #eba834;">🕐 Simula Data Storica</label>
-                <div style="display: flex; gap: 5px; align-items: center; margin-top: 6px;">
-                    <button onclick="shiftDate(-1)"
-                        style="padding: 8px 12px; background: #2d3342; border: 1px solid #555; color: #eba834; border-radius: 4px; cursor: pointer; font-weight: bold;">◀</button>
-                    <input type="date" id="end-date"
-                        style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #555; background: #1a1d2a; color: #fff;">
-                    <button onclick="shiftDate(1)"
-                        style="padding: 8px 12px; background: #2d3342; border: 1px solid #555; color: #eba834; border-radius: 4px; cursor: pointer; font-weight: bold;">▶</button>
-                </div>
-                <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="use-cache" checked style="width: auto;">
-                    <label for="use-cache" style="margin:0; font-size: 0.9em; cursor: pointer;">⚡ Modalità Veloce
-                        (Cache)</label>
-                </div>
-                <small style="color: #888;">Lascia vuoto per dati attuali. Usa le frecce per navigare.</small>
-            </div>
+
         </div>
 
 
