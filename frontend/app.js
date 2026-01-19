@@ -280,20 +280,20 @@ function renderCharts(data) {
             };
             frozenStats = data.frozen_strategy.stats;
         }
+    }
 
-        // [NEW] ZigZag Indicator Trace
-        if (data.indicators.zigzag) {
-            const traceZigZag = {
-                x: data.dates,
-                y: data.indicators.zigzag,
-                name: '⚡ ZigZag Cumulativo',
-                type: 'scatter',
-                line: { color: '#ffcc00', width: 2 }, // Yellow Gold
-                xaxis: 'x',
-                yaxis: 'y7'
-            };
-            traces.push(traceZigZag);
-        }
+    // [NEW] ZigZag Indicator Trace (Always visible, independent of Backtest toggle)
+    if (data.indicators && data.indicators.zigzag) {
+        const traceZigZag = {
+            x: data.dates,
+            y: data.indicators.zigzag,
+            name: '⚡ ZigZag Cumulativo',
+            type: 'scatter',
+            line: { color: '#ffcc00', width: 2 }, // Yellow Gold
+            xaxis: 'x',
+            yaxis: 'y7'
+        };
+        traces.push(traceZigZag);
     }
 
     // --- DETECT MOBILE ---
