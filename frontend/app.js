@@ -758,8 +758,8 @@ function renderTradesList() {
             if (originalTrade.direction !== t.direction) {
                 warningMessages.push(`Dir: ${originalTrade.direction}→${t.direction}`);
             }
-            // Exit date changed from original
-            if (originalTrade.exit_date !== t.exit_date) {
+            // Exit date changed from original (ignore OPEN→date, that's normal closure)
+            if (originalTrade.exit_date !== t.exit_date && originalTrade.exit_date !== 'OPEN') {
                 warningMessages.push(`Exit: ${originalTrade.exit_date}→${t.exit_date}`);
             }
             // Entry price changed significantly from original
