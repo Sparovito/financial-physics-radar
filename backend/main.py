@@ -439,7 +439,8 @@ async def analyze_stock(req: AnalysisRequest):
             z_slope=z_slope_series,        # Manteniamo filtro direzionale
             dates=dates_historical,
             start_date=req.start_date,
-            end_date=req.end_date
+            end_date=req.end_date,
+            threshold=-0.3  # Entry/Exit a -0.3 invece di 0
         )
         
         # Dati Futuri (Proiezione)

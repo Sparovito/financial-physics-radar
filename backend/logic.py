@@ -466,10 +466,11 @@ class MarketScanner:
             return None
 
 # --- 5. Backtesting Strategy ---
-def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list, initial_capital=1000.0, start_date=None, end_date=None):
+def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list, initial_capital=1000.0, start_date=None, end_date=None, threshold=0.0):
     """
     Esegue il backtest della strategia basata su Z-Scores.
     Filtra le operazioni in base a start_date e end_date.
+    threshold: soglia per entry/exit (default 0).
     """
     capital = initial_capital
     in_position = False
@@ -516,7 +517,7 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
             
         if not in_position:
             # Check for entry signal
-            if z_kin > 0:
+            if z_kin > threshold:
                 in_position = True
                 entry_price = price
                 entry_date = date
@@ -537,7 +538,7 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                 current_pnl = ((entry_price - price) / entry_price) * 100
             
             # Check for exit signal
-            if z_kin < 0:
+            if z_kin < threshold:
                 # Close the trade
                 pnl_pct = current_pnl
                 capital = capital * (1 + pnl_pct / 100)
