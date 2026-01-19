@@ -86,6 +86,21 @@
             🧪 SCANNER STRATEGIE
         </button>
 
+        <!-- BACKTEST RESULTS (Restored) -->
+        <div style="margin-top: 15px;">
+            <div id="backtest-stats"
+                style="padding: 10px; background: rgba(0,255,136,0.1); border-radius: 6px; border-left: 3px solid #00ff88; font-size: 0.85rem; color: #00ff88; min-height: 20px;">
+                <!-- Stats will be populated by JS -->
+            </div>
+
+            <button id="btn-view-trades" onclick="openTradesModal()"
+                style="margin-top: 10px; width: 100%; padding: 10px; background: transparent; border: 1px solid #00ff88; color: #00ff88; border-radius: 6px; cursor: pointer; font-weight: 500; display: none; transition: all 0.2s;"
+                onmouseover="this.style.background='rgba(0,255,136,0.15)'"
+                onmouseout="this.style.background='transparent'">
+                📋 Vedi Operazioni
+            </button>
+        </div>
+
 
 
         <div id="fourier-stats"
