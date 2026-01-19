@@ -2093,12 +2093,12 @@ function toggleSidebar() {
     if (isCollapsed) {
         // EXPAND
         toggles.style.display = 'flex';
-        btn.innerText = '◀';
+        btn.innerText = '❮';
         container.style.width = 'auto';
     } else {
         // COLLAPSE
         toggles.style.display = 'none';
-        btn.innerText = '▶';
+        btn.innerText = '❯';
         container.style.width = '30px'; // Slim width for button only
     }
 
