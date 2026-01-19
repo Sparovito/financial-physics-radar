@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 import numpy as np
 import pandas as pd
+from scipy.signal import butter, filtfilt
 import os
 import sys
 
@@ -250,6 +251,17 @@ async def analyze_stock(req: AnalysisRequest):
             roll_fsum_mean = f_sum_series.rolling(window=252, min_periods=20).mean()
             roll_fsum_std = f_sum_series.rolling(window=252, min_periods=20).std()
             z_frozen_sum = ((f_sum_series - roll_fsum_mean) / (roll_fsum_std + 1e-6)).fillna(0).tolist()
+            
+            # [NEW] Apply Zero-Phase Low-Pass Filter (Butterworth)
+            # This smooths the signal without introducing lag
+            try:
+                # Filter parameters: order=2, cutoff=0.05 (normalized frequency)
+                # Lower cutoff = more smoothing. Range [0.01, 0.1] typical.
+                b, a = butter(N=2, Wn=0.05, btype='low')
+                z_frozen_sum_filtered = filtfilt(b, a, z_frozen_sum).tolist()
+                z_frozen_sum = z_frozen_sum_filtered
+            except Exception as e:
+                print(f"⚠️ Filter failed (keeping raw): {e}")
             
             # Round for JSON
             z_frozen_sum = [round(x, 2) for x in z_frozen_sum]
