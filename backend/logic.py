@@ -673,4 +673,4 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
             "stats": backtest_stats
         }
     }
-```
+
