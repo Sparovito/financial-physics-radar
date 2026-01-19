@@ -676,8 +676,8 @@ function openTradesModal() {
     document.getElementById('trades-modal').style.display = 'flex';
 }
 
-// Global storage for previous trades (for detecting changes between simulations)
-window.PREV_TRADES = window.PREV_TRADES || { LIVE: [], FROZEN: [], SUM: [] };
+// Global storage for ORIGINAL trades (baseline - saved once, never overwritten)
+window.ORIGINAL_TRADES = window.ORIGINAL_TRADES || { LIVE: null, FROZEN: null, SUM: null };
 
 function renderTradesList() {
     const listDiv = document.getElementById('trades-list');
@@ -691,23 +691,27 @@ function renderTradesList() {
         trades = window.TRADES_SUM;
     }
 
-    // Get previous trades for comparison
-    const prevTrades = window.PREV_TRADES[viewMode] || [];
-
-    // Build lookup map by entry_date for fast comparison
-    const prevTradesMap = {};
-    prevTrades.forEach((t, idx) => {
-        if (t && t.entry_date) {
-            prevTradesMap[t.entry_date] = t;
-        }
-    });
-
     if (!trades || trades.length === 0) {
         listDiv.innerHTML = '<p style="color: #888; text-align: center; margin-top: 20px;">Nessuna operazione disponibile per questa strategia.</p>';
-        // Save current as previous for next comparison
-        window.PREV_TRADES[viewMode] = [];
         return;
     }
+
+    // Save ORIGINAL trades only once (baseline for all future comparisons)
+    if (window.ORIGINAL_TRADES[viewMode] === null) {
+        window.ORIGINAL_TRADES[viewMode] = JSON.parse(JSON.stringify(trades));
+        console.log(`📌 Baseline ${viewMode} salvato:`, trades.length, 'trades');
+    }
+
+    // Get original trades for comparison (baseline)
+    const originalTrades = window.ORIGINAL_TRADES[viewMode] || [];
+
+    // Build lookup map by entry_date for fast comparison
+    const originalTradesMap = {};
+    originalTrades.forEach((t, idx) => {
+        if (t && t.entry_date) {
+            originalTradesMap[t.entry_date] = t;
+        }
+    });
 
     let html = '<table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">';
     html += `<tr style="color: #888; border-bottom: 1px solid #333;">
@@ -747,20 +751,20 @@ function renderTradesList() {
         let warningMessages = [];
         let rowWarningStyle = '';
 
-        // Compare with previous version of this trade (by matching entry_date)
-        const prevTrade = prevTradesMap[t.entry_date];
-        if (prevTrade) {
-            // Direction changed
-            if (prevTrade.direction !== t.direction) {
-                warningMessages.push(`Dir: ${prevTrade.direction}→${t.direction}`);
+        // Compare with ORIGINAL version of this trade (by matching entry_date)
+        const originalTrade = originalTradesMap[t.entry_date];
+        if (originalTrade) {
+            // Direction changed from original
+            if (originalTrade.direction !== t.direction) {
+                warningMessages.push(`Dir: ${originalTrade.direction}→${t.direction}`);
             }
-            // Exit date changed
-            if (prevTrade.exit_date !== t.exit_date) {
-                warningMessages.push(`Exit: ${prevTrade.exit_date}→${t.exit_date}`);
+            // Exit date changed from original
+            if (originalTrade.exit_date !== t.exit_date) {
+                warningMessages.push(`Exit: ${originalTrade.exit_date}→${t.exit_date}`);
             }
-            // Entry price changed (significant)
-            if (Math.abs(prevTrade.entry_price - t.entry_price) > 0.01) {
-                warningMessages.push(`Entry$: ${prevTrade.entry_price}→${t.entry_price}`);
+            // Entry price changed significantly from original
+            if (Math.abs(originalTrade.entry_price - t.entry_price) > 0.01) {
+                warningMessages.push(`Entry$: ${originalTrade.entry_price}→${t.entry_price}`);
             }
         }
 
@@ -784,9 +788,6 @@ function renderTradesList() {
             </td>
         </tr>`;
     });
-
-    // Save current trades as "previous" for next comparison
-    window.PREV_TRADES[viewMode] = JSON.parse(JSON.stringify(trades));
 
     html += '</table>';
     listDiv.innerHTML = html;
