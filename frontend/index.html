@@ -86,28 +86,7 @@
             🧪 SCANNER STRATEGIE
         </button>
 
-        <!-- BACKTEST SECTION -->
-        <div
-            style="margin-top: 20px; padding: 12px; background: linear-gradient(135deg, #1a1d2a 0%, #252836 100%); border-radius: 8px; border: 1px solid #333;">
-            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.95rem;">
-                <input type="checkbox" id="show-backtest" checked
-                    style="width: 18px; height: 18px; accent-color: #00ff88;">
-                <span style="color: #fff;">📈 Backtest Strategia</span>
-            </label>
-            <small style="display: block; margin-top: 6px; color: #666; font-size: 0.75rem;">Simula trading basato su
-                Z-Score</small>
 
-            <div id="backtest-stats"
-                style="margin-top: 12px; padding: 10px; background: rgba(0,255,136,0.1); border-radius: 6px; border-left: 3px solid #00ff88; font-size: 0.85rem; color: #00ff88;">
-                <!-- Stats will be populated by JS -->
-            </div>
-
-            <button id="btn-view-trades" onclick="openTradesModal()"
-                style="margin-top: 10px; width: 100%; padding: 10px; background: transparent; border: 1px solid #00ff88; color: #00ff88; border-radius: 6px; cursor: pointer; font-weight: 500; display: none; transition: all 0.2s;"
-                onmouseover="this.style.background='rgba(0,255,136,0.15)'"
-                onmouseout="this.style.background='transparent'">
-                📋 Vedi Operazioni
-        </div>
 
         <div id="fourier-stats"
             style="margin-top: 15px; padding: 12px; background: #1a1d2a; border-radius: 6px; font-size: 0.8rem; color: #888;">
@@ -118,412 +97,423 @@
     <!-- Main Charts Area -->
     <div class="main-content">
         <div style="display: flex; gap: 0px; height: 100%; position: relative;">
-            <!-- COLLAPSIBLE TOGGLE SIDEBAR -->
-            <div id="toggle-sidebar-container"
-                style="display: flex; flex-direction: column; align-items: center; transition: all 0.3s ease; width: auto; justify-content: center;">
+            <div style="display: flex; gap: 0px; height: 100%; position: relative;">
+                <!-- COLLAPSIBLE TOGGLE SIDEBAR -->
+                <div id="toggle-sidebar-container"
+                    style="display: flex; flex-direction: row; align-items: center; height: 100%; margin-right: 5px;">
 
-                <!-- Collapse Button -->
-                <button id="btn-collapse-toggles" onclick="toggleSidebar()"
-                    style="background: transparent; border: none; color: #888; cursor: pointer; padding: 4px; margin-bottom: 5px; font-size: 1.2rem; transition: color 0.2s;">
-                    ❮
-                </button>
+                    <!-- Toggle Panel (Hidden when collapsed) -->
+                    <div id="chart-toggles"
+                        style="display: flex; flex-direction: column; gap: 12px; padding: 12px 8px; background: #1a1d2a; border: 1px solid #333; border-radius: 12px; justify-content: center; align-items: center; transition: all 0.3s ease;">
 
-                <!-- Toggle Panel (Left of Chart) -->
-                <div id="chart-toggles"
-                    style="display: flex; flex-direction: column; gap: 12px; padding: 10px 6px; background: #1a1d2a; border: 1px solid #333; min-width: 40px; justify-content: center; align-items: center; border-radius: 8px; height: auto; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
-                    <label title="📈 Prezzo" style="cursor: pointer; display: flex; justify-content: center;">
-                        <input type="checkbox" id="show-price" checked style="display: none;">
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">📈</span>
-                    </label>
-                    <label title="⚡ Energia" style="cursor: pointer; display: flex; justify-content: center;">
-                        <input type="checkbox" id="show-energy" checked style="display: none;">
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">⚡</span>
-                    </label>
-                    <label title="❄️ Frozen" style="cursor: pointer; display: flex; justify-content: center;">
-                        <input type="checkbox" id="show-frozen" checked style="display: none;">
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">❄️</span>
-                    </label>
-                    <label title="📊 Indicatori" style="cursor: pointer; display: flex; justify-content: center;">
-                        <input type="checkbox" id="show-indicators" checked style="display: none;">
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">📊</span>
-                    </label>
-                    <label title="🔀 ZigZag" style="cursor: pointer; display: flex; justify-content: center;">
-                        <input type="checkbox" id="show-zigzag" checked style="display: none;">
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">🔀</span>
-                    </label>
-                    <label title="💰 Strategie" style="cursor: pointer; display: flex; justify-content: center;">
-                        <input type="checkbox" id="show-backtest" checked style="display: none;">
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.4rem; opacity: 1;">💰</span>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Chart Area -->
-            <div class="chart-container"
-                style="position: relative; flex: 1; margin-left: 10px; transition: margin 0.3s ease;">
-                <button onclick="toggleFullScreen('chart-combined')" class="btn-fullscreen"
-                    title="Full Screen">⛶</button>
-                <div id="chart-combined"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Status Toast -->
-    <div class="status-bar" id="status-bar">
-        <div class="spinner"></div>
-        <span id="status-text">Elaborazione in corso...</span>
-    </div>
-
-    <!-- TICKER SELECTION MODAL -->
-    <div id="ticker-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Seleziona Asset</h3>
-                <span class="close-modal">&times;</span>
-            </div>
-
-            <div class="modal-search">
-                <input type="text" id="modal-search-input" placeholder="Cerca nome o simbolo (es. Apple, BTC)...">
-            </div>
-
-            <div class="modal-body">
-                <div class="categories-list" id="categories-list">
-                    <!-- JS Injects Categories Here -->
-                </div>
-                <div class="tickers-grid" id="tickers-grid">
-                    <!-- JS Injects Tickers Here -->
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- RADAR MODAL -->
-    <div id="radar-modal" class="modal">
-        <div class="modal-content" style="width: 90%; height: 90vh; max-width: 1200px;">
-            <div class="modal-header">
-                <h3>📡 Market Radar (Z-Score Energetici)</h3>
-                <span class="close-modal" onclick="closeRadar()">&times;</span>
-            </div>
-            <div id="radar-fullscreen-area"
-                style="display: flex; flex-direction: column; flex: 1; position: relative; background: #0f111a; height: 100%;">
-
-                <!-- CONTROLS BAR (Inputs + Timeline) -->
-                <div class="radar-controls">
-                    <div class="radar-inputs">
-                        <select id="radar-category" class="radar-select">
-                            <option value="ALL">🌍 Tutto il Mercato</option>
-                            <option value="HIGHLIGHTS">⭐ Highlights</option>
-                            <optgroup label="🇺🇸 USA">
-                                <option value="US_MEGA">🏛️ US Mega Cap</option>
-                                <option value="US_TECH">💻 US Tech</option>
-                                <option value="US_FINANCE">🏦 US Finance</option>
-                                <option value="US_HEALTH">🏥 US Healthcare</option>
-                                <option value="US_INDUSTRIAL">🏭 US Industrials</option>
-                                <option value="US_CONSUMER">🛒 US Consumer</option>
-                                <option value="US_ENERGY">⚡ US Energy</option>
-                                <option value="US_MIDCAP">📈 US Mid Cap</option>
-                            </optgroup>
-                            <optgroup label="🇪🇺 Europa">
-                                <option value="UK">🇬🇧 UK (FTSE)</option>
-                                <option value="DE">🇩🇪 Germania (DAX)</option>
-                                <option value="FR">🇫🇷 Francia (CAC)</option>
-                                <option value="IT">🇮🇹 Italia (MIB)</option>
-                                <option value="EU_ALL">🇪🇺 Tutta Europa</option>
-                            </optgroup>
-                            <optgroup label="🌏 Asia">
-                                <option value="JP">🇯🇵 Giappone</option>
-                                <option value="CN">🇨🇳 Cina / HK</option>
-                                <option value="KR">🇰🇷 Korea</option>
-                                <option value="TW">🇹🇼 Taiwan</option>
-                                <option value="IN">🇮🇳 India</option>
-                            </optgroup>
-                            <optgroup label="📊 Altri">
-                                <option value="ETF">📊 Major ETFs</option>
-                                <option value="CRYPTO">🪙 Crypto</option>
-                                <option value="COMMODITIES">🛢️ Commodities</option>
-                            </optgroup>
-                        </select>
-                        <button onclick="runRadarScan()" class="btn-scan">SCANSIONA</button>
+                        <label title="📈 Prezzo" style="cursor: pointer;">
+                            <input type="checkbox" id="show-price" checked style="display: none;">
+                            <span class="toggle-icon" data-active="true"
+                                style="font-size: 1.5rem; opacity: 1;">📈</span>
+                        </label>
+                        <label title="⚡ Energia" style="cursor: pointer;">
+                            <input type="checkbox" id="show-energy" checked style="display: none;">
+                            <span class="toggle-icon" data-active="true" style="font-size: 1.5rem; opacity: 1;">⚡</span>
+                        </label>
+                        <label title="❄️ Frozen" style="cursor: pointer;">
+                            <input type="checkbox" id="show-frozen" checked style="display: none;">
+                            <span class="toggle-icon" data-active="true"
+                                style="font-size: 1.5rem; opacity: 1;">❄️</span>
+                        </label>
+                        <label title="📊 Indicatori" style="cursor: pointer;">
+                            <input type="checkbox" id="show-indicators" checked style="display: none;">
+                            <span class="toggle-icon" data-active="true"
+                                style="font-size: 1.5rem; opacity: 1;">📊</span>
+                        </label>
+                        <label title="🔀 ZigZag" style="cursor: pointer;">
+                            <input type="checkbox" id="show-zigzag" checked style="display: none;">
+                            <span class="toggle-icon" data-active="true"
+                                style="font-size: 1.5rem; opacity: 1;">🔀</span>
+                        </label>
+                        <label title="💰 Strategie" style="cursor: pointer;">
+                            <input type="checkbox" id="show-backtest" checked style="display: none;">
+                            <!-- UNIQUE ID NOW -->
+                            <span class="toggle-icon" data-active="true"
+                                style="font-size: 1.5rem; opacity: 1;">💰</span>
+                        </label>
                     </div>
 
-                    <div class="timeline-group">
-                        <label class="label-timeline">⏳ Timeline:</label>
-                        <input type="range" id="radar-slider" min="0" max="755" value="755">
-                        <span id="radar-date">Today</span>
-                        <label class="label-trails">
-                            <input type="checkbox" id="radar-trails"> 🌠 Scia
-                        </label>
-                        <!-- Toggle Switch for Frozen Mode -->
-                        <div style="margin-left:20px; display:flex; align-items:center; gap:8px;">
-                            <span style="color:#00ff88; font-size:0.85rem;">🔴 Live</span>
-                            <label class="toggle-switch" style="position:relative; width:50px; height:24px;">
-                                <input type="checkbox" id="radar-frozen-toggle" onchange="toggleRadarMode()"
-                                    style="opacity:0; width:0; height:0;">
-                                <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; 
-                                    background:#444; border-radius:24px; transition:0.3s;"></span>
-                                <span class="toggle-slider" style="position:absolute; height:18px; width:18px; left:3px; bottom:3px;
-                                    background:#fff; border-radius:50%; transition:0.3s;"></span>
+                    <!-- Center Handle -->
+                    <div id="sidebar-handle" onclick="toggleSidebar()"
+                        style="cursor: pointer; width: 14px; height: 50px; background: #252836; border: 1px solid #444; border-left: none; border-radius: 0 6px 6px 0; display: flex; align-items: center; justify-content: center; margin-left: -1px; z-index: 10;">
+                        <span id="collapse-arrow"
+                            style="font-size: 1.2rem; color: #888; font-family: monospace; line-height: 1;">‹</span>
+                    </div>
+                </div>
+
+                <!-- Chart Area -->
+                <div class="chart-container"
+                    style="position: relative; flex: 1; margin-left: 10px; transition: margin 0.3s ease;">
+                    <button onclick="toggleFullScreen('chart-combined')" class="btn-fullscreen"
+                        title="Full Screen">⛶</button>
+                    <div id="chart-combined"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Toast -->
+        <div class="status-bar" id="status-bar">
+            <div class="spinner"></div>
+            <span id="status-text">Elaborazione in corso...</span>
+        </div>
+
+        <!-- TICKER SELECTION MODAL -->
+        <div id="ticker-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Seleziona Asset</h3>
+                    <span class="close-modal">&times;</span>
+                </div>
+
+                <div class="modal-search">
+                    <input type="text" id="modal-search-input" placeholder="Cerca nome o simbolo (es. Apple, BTC)...">
+                </div>
+
+                <div class="modal-body">
+                    <div class="categories-list" id="categories-list">
+                        <!-- JS Injects Categories Here -->
+                    </div>
+                    <div class="tickers-grid" id="tickers-grid">
+                        <!-- JS Injects Tickers Here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RADAR MODAL -->
+        <div id="radar-modal" class="modal">
+            <div class="modal-content" style="width: 90%; height: 90vh; max-width: 1200px;">
+                <div class="modal-header">
+                    <h3>📡 Market Radar (Z-Score Energetici)</h3>
+                    <span class="close-modal" onclick="closeRadar()">&times;</span>
+                </div>
+                <div id="radar-fullscreen-area"
+                    style="display: flex; flex-direction: column; flex: 1; position: relative; background: #0f111a; height: 100%;">
+
+                    <!-- CONTROLS BAR (Inputs + Timeline) -->
+                    <div class="radar-controls">
+                        <div class="radar-inputs">
+                            <select id="radar-category" class="radar-select">
+                                <option value="ALL">🌍 Tutto il Mercato</option>
+                                <option value="HIGHLIGHTS">⭐ Highlights</option>
+                                <optgroup label="🇺🇸 USA">
+                                    <option value="US_MEGA">🏛️ US Mega Cap</option>
+                                    <option value="US_TECH">💻 US Tech</option>
+                                    <option value="US_FINANCE">🏦 US Finance</option>
+                                    <option value="US_HEALTH">🏥 US Healthcare</option>
+                                    <option value="US_INDUSTRIAL">🏭 US Industrials</option>
+                                    <option value="US_CONSUMER">🛒 US Consumer</option>
+                                    <option value="US_ENERGY">⚡ US Energy</option>
+                                    <option value="US_MIDCAP">📈 US Mid Cap</option>
+                                </optgroup>
+                                <optgroup label="🇪🇺 Europa">
+                                    <option value="UK">🇬🇧 UK (FTSE)</option>
+                                    <option value="DE">🇩🇪 Germania (DAX)</option>
+                                    <option value="FR">🇫🇷 Francia (CAC)</option>
+                                    <option value="IT">🇮🇹 Italia (MIB)</option>
+                                    <option value="EU_ALL">🇪🇺 Tutta Europa</option>
+                                </optgroup>
+                                <optgroup label="🌏 Asia">
+                                    <option value="JP">🇯🇵 Giappone</option>
+                                    <option value="CN">🇨🇳 Cina / HK</option>
+                                    <option value="KR">🇰🇷 Korea</option>
+                                    <option value="TW">🇹🇼 Taiwan</option>
+                                    <option value="IN">🇮🇳 India</option>
+                                </optgroup>
+                                <optgroup label="📊 Altri">
+                                    <option value="ETF">📊 Major ETFs</option>
+                                    <option value="CRYPTO">🪙 Crypto</option>
+                                    <option value="COMMODITIES">🛢️ Commodities</option>
+                                </optgroup>
+                            </select>
+                            <button onclick="runRadarScan()" class="btn-scan">SCANSIONA</button>
+                        </div>
+
+                        <div class="timeline-group">
+                            <label class="label-timeline">⏳ Timeline:</label>
+                            <input type="range" id="radar-slider" min="0" max="755" value="755">
+                            <span id="radar-date">Today</span>
+                            <label class="label-trails">
+                                <input type="checkbox" id="radar-trails"> 🌠 Scia
                             </label>
-                            <span style="color:#00aaff; font-size:0.85rem;">❄️ Frozen</span>
+                            <!-- Toggle Switch for Frozen Mode -->
+                            <div style="margin-left:20px; display:flex; align-items:center; gap:8px;">
+                                <span style="color:#00ff88; font-size:0.85rem;">🔴 Live</span>
+                                <label class="toggle-switch" style="position:relative; width:50px; height:24px;">
+                                    <input type="checkbox" id="radar-frozen-toggle" onchange="toggleRadarMode()"
+                                        style="opacity:0; width:0; height:0;">
+                                    <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; 
+                                    background:#444; border-radius:24px; transition:0.3s;"></span>
+                                    <span class="toggle-slider" style="position:absolute; height:18px; width:18px; left:3px; bottom:3px;
+                                    background:#fff; border-radius:50%; transition:0.3s;"></span>
+                                </label>
+                                <span style="color:#00aaff; font-size:0.85rem;">❄️ Frozen</span>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- RADAR CHART -->
-                <div id="radar-chart" style="flex: 1; width:100%; min-height: 0; background: #0f111a;"></div>
+                    <!-- RADAR CHART -->
+                    <div id="radar-chart" style="flex: 1; width:100%; min-height: 0; background: #0f111a;"></div>
 
-                <!-- ANALYZE FOCUSED TICKER BUTTON (Hidden by default) -->
-                <button id="btn-analyze-focused" onclick="analyzeFocusedTicker()"
-                    style="display:none; position:absolute; bottom:80px; left:50%; transform:translateX(-50%); 
+                    <!-- ANALYZE FOCUSED TICKER BUTTON (Hidden by default) -->
+                    <button id="btn-analyze-focused" onclick="analyzeFocusedTicker()"
+                        style="display:none; position:absolute; bottom:80px; left:50%; transform:translateX(-50%); 
                            background:#eba834; color:#111; border:none; padding:10px 25px; border-radius:25px;
                            font-weight:bold; font-size:1rem; cursor:pointer; z-index:10001; box-shadow: 0 4px 15px rgba(0,0,0,0.4);">
-                    📊 ANALIZZA <span id="focused-ticker-label"></span>
-                </button>
-
-                <!-- Fullscreen Button (Absolute in top-right) -->
-                <button onclick="toggleFullScreen('radar-fullscreen-area')" class="btn-fullscreen"
-                    title="Full Screen">⛶</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- TRADES MODAL -->
-    <div id="trades-modal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; 
-        background: rgba(0,0,0,0.85); z-index:20000; justify-content:center; align-items:center;">
-        <div
-            style="background: #1a1d2a; border-radius: 10px; max-width: 700px; width: 90%; max-height: 80vh; overflow: auto; position: relative;">
-            <div
-                style="position: sticky; top: 0; background: #1a1d2a; padding: 15px 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
-                <h3 style="margin: 0; color: #fff;">📋 Operazioni</h3>
-
-                <!-- TOGGLE SWITCH -->
-                <div style="display:flex; gap: 5px; background: #0f111a; padding: 4px; border-radius: 6px;">
-                    <button id="btn-trades-live" onclick="switchTradesView('LIVE')"
-                        style="background: #00ff88; color: #000; padding: 6px 15px; border:none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.85em;">
-                        LIVE (Green)
+                        📊 ANALIZZA <span id="focused-ticker-label"></span>
                     </button>
-                    <button id="btn-trades-frozen" onclick="switchTradesView('FROZEN')"
-                        style="background: transparent; color: #888; padding: 6px 15px; border:none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.85em;">
-                        FROZEN (Orange)
-                    </button>
-                </div>
 
-                <button onclick="closeTradesModal()"
-                    style="background: none; border: none; color: #888; font-size: 1.5rem; cursor: pointer;">&times;</button>
-            </div>
-            <div id="trades-list" style="padding: 15px;">
-                <!-- Trades will be populated by JS -->
+                    <!-- Fullscreen Button (Absolute in top-right) -->
+                    <button onclick="toggleFullScreen('radar-fullscreen-area')" class="btn-fullscreen"
+                        title="Full Screen">⛶</button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- SCANNER MODAL -->
-    <div id="scanner-modal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; 
+        <!-- TRADES MODAL -->
+        <div id="trades-modal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; 
         background: rgba(0,0,0,0.85); z-index:20000; justify-content:center; align-items:center;">
-        <div
-            style="background: #1a1d2a; border-radius: 10px; max-width: 900px; width: 95%; max-height: 90vh; overflow: auto; display:flex; flex-direction:column;">
-
-            <!-- HEADER -->
             <div
-                style="padding: 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
-                <h3 style="margin: 0; color: #eba834;">🔬 Scanner Strategie (Massivo)</h3>
-                <button onclick="closeScannerModal()"
-                    style="background:none; border:none; color:#888; font-size:1.5rem; cursor:pointer;">&times;</button>
-            </div>
+                style="background: #1a1d2a; border-radius: 10px; max-width: 700px; width: 90%; max-height: 80vh; overflow: auto; position: relative;">
+                <div
+                    style="position: sticky; top: 0; background: #1a1d2a; padding: 15px 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0; color: #fff;">📋 Operazioni</h3>
 
-            <!-- CONTROLS - True Inline Desktop Layout -->
-            <div class="scanner-controls"
-                style="padding: 15px 20px; background: #0f111a; border-bottom: 1px solid #333; display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
+                    <!-- TOGGLE SWITCH -->
+                    <div style="display:flex; gap: 5px; background: #0f111a; padding: 4px; border-radius: 6px;">
+                        <button id="btn-trades-live" onclick="switchTradesView('LIVE')"
+                            style="background: #00ff88; color: #000; padding: 6px 15px; border:none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.85em;">
+                            LIVE (Green)
+                        </button>
+                        <button id="btn-trades-frozen" onclick="switchTradesView('FROZEN')"
+                            style="background: transparent; color: #888; padding: 6px 15px; border:none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.85em;">
+                            FROZEN (Orange)
+                        </button>
+                    </div>
 
-                <!-- Category Dropdown -->
-                <select id="scanner-category"
-                    style="padding:10px 15px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.95rem; min-width:160px;">
-                    <!-- Populated by JS -->
-                </select>
-
-                <!-- Date Start -->
-                <input type="date" id="scanner-start" value="2023-01-01"
-                    style="padding:10px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.9rem;">
-
-                <!-- Arrow -->
-                <span style="color:#666;">→</span>
-
-                <!-- Date End -->
-                <input type="date" id="scanner-end"
-                    style="padding:10px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.9rem;">
-
-                <!-- Parallelism Selector -->
-                <select id="scan-parallel" title="Richieste Parallele"
-                    style="padding:10px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.9rem;">
-                    <option value="1">⚡ x1 (Lento)</option>
-                    <option value="4" selected>⚡ x4 (Default)</option>
-                    <option value="6">⚡ x6 (Veloce)</option>
-                </select>
-
-                <!-- Start Button -->
-                <button id="btn-start-scan" onclick="startBulkScan()"
-                    style="background:linear-gradient(135deg, #00ff88, #00cc66); color:#000; padding:10px 20px; border:none; border-radius:6px; font-weight:bold; font-size:0.95rem; cursor:pointer; white-space:nowrap;">
-                    🚀 AVVIA SCAN
-                </button>
-
-                <!-- Stop Button (Hidden by default) -->
-                <button id="btn-stop-scan" onclick="stopBulkScan()"
-                    style="display:none; background:#ff4444; color:#fff; padding:10px 20px; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">
-                    ⏹️ STOP
-                </button>
-
-                <!-- Status (inline on desktop) -->
-                <div style="flex:1; text-align:right; min-width:150px;">
-                    <span id="scan-status" style="color:#eba834; font-weight:500;">📊 Pronto.</span>
+                    <button onclick="closeTradesModal()"
+                        style="background: none; border: none; color: #888; font-size: 1.5rem; cursor: pointer;">&times;</button>
                 </div>
-            </div>
-
-            <!-- Progress Bar -->
-            <progress id="scan-progress" value="0" max="100"
-                style="width:100%; height:4px; display:none; border:none; background:#222;"></progress>
-
-            <!-- FILTERS -->
-            <div
-                style="padding:10px 15px; background:#1e1e1e; border-bottom:1px solid #333; display:flex; gap:15px; flex-wrap:wrap; align-items:center;">
-                <span style="color:#888; font-size:0.8rem; font-weight:bold;">FILTRI:</span>
-
-                <!-- Kinetic Filter -->
-                <div style="display:flex; align-items:center; gap:5px;">
-                    <label style="color:#aaa; font-size:0.8rem;">⚡ Kin ></label>
-                    <input type="number" id="filter-kin-min" step="0.1" oninput="applyScanFilters()"
-                        style="background:#333; border:1px solid #444; color:#fff; padding:4px; width:60px; border-radius:4px;">
+                <div id="trades-list" style="padding: 15px;">
+                    <!-- Trades will be populated by JS -->
                 </div>
-
-                <!-- Market Cap Filter -->
-                <div style="display:flex; align-items:center; gap:5px;">
-                    <label style="color:#aaa; font-size:0.8rem;">💰 Cap (B) ></label>
-                    <input type="number" id="filter-cap-min" step="10" oninput="applyScanFilters()"
-                        style="background:#333; border:1px solid #444; color:#fff; padding:4px; width:60px; border-radius:4px;">
-                </div>
-            </div>
-
-            <!-- RESULTS TABLE -->
-            <div style="padding: 0; overflow-x: auto;">
-                <table class="scanner-table"
-                    style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
-                    <thead style="background: #222; color: #ccc;">
-                        <tr>
-                            <th style="padding:12px; width:40px; text-align:center;">
-                                <input type="checkbox" id="scan-select-all" checked onclick="toggleAllScanRows(this)">
-                            </th>
-                            <th style="padding:12px;">Ticker</th>
-                            <th style="padding:12px; color:#aaa;" title="Forza Cinetica Media">⚡ Kin</th>
-                            <th style="padding:12px; color:#aaa;">💰 Cap</th>
-                            <th style="padding:12px; color:#aaa;"># Trades</th>
-                            <th style="padding:12px; color:#00ff88;">✅ Win% (Live)</th>
-                            <th style="padding:12px; color:#00ff88;">📈 ROI (Live)</th>
-                            <th style="padding:12px; color:#ff9900;">✅ Win% (Frozen)</th>
-                            <th style="padding:12px; color:#ff9900;">📉 ROI (Frozen)</th>
-                            <th style="padding:12px;">Delta ROI</th>
-                            <th style="padding:12px;">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="scanner-results">
-                        <!-- Rows -->
-                    </tbody>
-                </table>
             </div>
         </div>
-        <!-- SIMULATOR MODAL (Popup of Popup) -->
-        <div id="simulator-modal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; 
-        background: rgba(0,0,0,0.95); z-index:21000; justify-content:center; align-items:center;">
-            <div id="sim-modal-content"
-                style="background: #1a1d2a; border-radius: 10px; max-width: 1000px; width: 95%; max-height: 95vh; overflow: auto; display:flex; flex-direction:column; transition: background 0.5s;">
+
+        <!-- SCANNER MODAL -->
+        <div id="scanner-modal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; 
+        background: rgba(0,0,0,0.85); z-index:20000; justify-content:center; align-items:center;">
+            <div
+                style="background: #1a1d2a; border-radius: 10px; max-width: 900px; width: 95%; max-height: 90vh; overflow: auto; display:flex; flex-direction:column;">
 
                 <!-- HEADER -->
                 <div
-                    style="padding: 15px 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
-                    <h3 style="margin: 0; color: #00ff88;">💰 Simulatore di Portafoglio</h3>
-                    <button onclick="closeSimulatorModal()"
+                    style="padding: 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0; color: #eba834;">🔬 Scanner Strategie (Massivo)</h3>
+                    <button onclick="closeScannerModal()"
                         style="background:none; border:none; color:#888; font-size:1.5rem; cursor:pointer;">&times;</button>
                 </div>
 
-                <!-- INPUTS -->
-                <div
-                    style="padding: 20px; border-bottom: 1px solid #333; display:flex; gap:15px; align-items:center; flex-wrap:wrap; background:#0f111a;">
-                    <div style="display:flex; flex-direction:column; gap:5px;">
-                        <label style="color:#888; font-size:0.8rem;">Capitale per Trade (€/$)</label>
-                        <input type="number" id="sim-capital" value="100"
-                            style="padding:10px; background:#222; color:#fff; border:1px solid #444; border-radius:4px; font-weight:bold; width:150px;">
-                    </div>
+                <!-- CONTROLS - True Inline Desktop Layout -->
+                <div class="scanner-controls"
+                    style="padding: 15px 20px; background: #0f111a; border-bottom: 1px solid #333; display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
 
-                    <div style="display:flex; flex-direction:column; gap:5px;">
-                        <label style="color:#888; font-size:0.8rem;">Modalità</label>
-                        <select id="sim-mode" onchange="runPortfolioSimulation()"
-                            style="padding:10px; background:#222; color:#fff; border:1px solid #444; border-radius:4px; font-weight:bold; width:180px;">
-                            <option value="FROZEN" selected>❄️ Frozen (Honest)</option>
-                            <option value="LIVE">🚀 Live (Ideal!)</option>
-                        </select>
-                    </div>
-                    <button onclick="runPortfolioSimulation()"
-                        style="background:linear-gradient(135deg, #00ff88, #00cc66); color:#000; padding:12px 25px; border:none; border-radius:6px; font-weight:bold; cursor:pointer; margin-top:15px;">
-                        CALCOLA EQUITY
+                    <!-- Category Dropdown -->
+                    <select id="scanner-category"
+                        style="padding:10px 15px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.95rem; min-width:160px;">
+                        <!-- Populated by JS -->
+                    </select>
+
+                    <!-- Date Start -->
+                    <input type="date" id="scanner-start" value="2023-01-01"
+                        style="padding:10px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.9rem;">
+
+                    <!-- Arrow -->
+                    <span style="color:#666;">→</span>
+
+                    <!-- Date End -->
+                    <input type="date" id="scanner-end"
+                        style="padding:10px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.9rem;">
+
+                    <!-- Parallelism Selector -->
+                    <select id="scan-parallel" title="Richieste Parallele"
+                        style="padding:10px; background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:6px; font-size:0.9rem;">
+                        <option value="1">⚡ x1 (Lento)</option>
+                        <option value="4" selected>⚡ x4 (Default)</option>
+                        <option value="6">⚡ x6 (Veloce)</option>
+                    </select>
+
+                    <!-- Start Button -->
+                    <button id="btn-start-scan" onclick="startBulkScan()"
+                        style="background:linear-gradient(135deg, #00ff88, #00cc66); color:#000; padding:10px 20px; border:none; border-radius:6px; font-weight:bold; font-size:0.95rem; cursor:pointer; white-space:nowrap;">
+                        🚀 AVVIA SCAN
                     </button>
-                    <div style="flex:1; text-align:right; margin-top:10px;">
-                        <span style="color:#888; font-size:0.9rem;">Trades Totali: <b id="sim-total-trades"
-                                style="color:#fff;">0</b></span>
+
+                    <!-- Stop Button (Hidden by default) -->
+                    <button id="btn-stop-scan" onclick="stopBulkScan()"
+                        style="display:none; background:#ff4444; color:#fff; padding:10px 20px; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">
+                        ⏹️ STOP
+                    </button>
+
+                    <!-- Status (inline on desktop) -->
+                    <div style="flex:1; text-align:right; min-width:150px;">
+                        <span id="scan-status" style="color:#eba834; font-weight:500;">📊 Pronto.</span>
                     </div>
                 </div>
 
-                <!-- RESULTS -->
-                <div style="padding:20px; display:flex; flex-direction:column; gap:20px;">
-                    <!-- Summary Metrics -->
-                    <div style="display:flex; gap:20px; flex-wrap:wrap;">
-                        <div style="flex:1; background:#222; padding:15px; border-radius:6px; text-align:center;">
-                            <div style="color:#888; font-size:0.8rem;">Max Capitale Esposto</div>
-                            <div id="sim-max-exposure" style="font-size:1.2rem; font-weight:bold; color:#eba834;">-
+                <!-- Progress Bar -->
+                <progress id="scan-progress" value="0" max="100"
+                    style="width:100%; height:4px; display:none; border:none; background:#222;"></progress>
+
+                <!-- FILTERS -->
+                <div
+                    style="padding:10px 15px; background:#1e1e1e; border-bottom:1px solid #333; display:flex; gap:15px; flex-wrap:wrap; align-items:center;">
+                    <span style="color:#888; font-size:0.8rem; font-weight:bold;">FILTRI:</span>
+
+                    <!-- Kinetic Filter -->
+                    <div style="display:flex; align-items:center; gap:5px;">
+                        <label style="color:#aaa; font-size:0.8rem;">⚡ Kin ></label>
+                        <input type="number" id="filter-kin-min" step="0.1" oninput="applyScanFilters()"
+                            style="background:#333; border:1px solid #444; color:#fff; padding:4px; width:60px; border-radius:4px;">
+                    </div>
+
+                    <!-- Market Cap Filter -->
+                    <div style="display:flex; align-items:center; gap:5px;">
+                        <label style="color:#aaa; font-size:0.8rem;">💰 Cap (B) ></label>
+                        <input type="number" id="filter-cap-min" step="10" oninput="applyScanFilters()"
+                            style="background:#333; border:1px solid #444; color:#fff; padding:4px; width:60px; border-radius:4px;">
+                    </div>
+                </div>
+
+                <!-- RESULTS TABLE -->
+                <div style="padding: 0; overflow-x: auto;">
+                    <table class="scanner-table"
+                        style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
+                        <thead style="background: #222; color: #ccc;">
+                            <tr>
+                                <th style="padding:12px; width:40px; text-align:center;">
+                                    <input type="checkbox" id="scan-select-all" checked
+                                        onclick="toggleAllScanRows(this)">
+                                </th>
+                                <th style="padding:12px;">Ticker</th>
+                                <th style="padding:12px; color:#aaa;" title="Forza Cinetica Media">⚡ Kin</th>
+                                <th style="padding:12px; color:#aaa;">💰 Cap</th>
+                                <th style="padding:12px; color:#aaa;"># Trades</th>
+                                <th style="padding:12px; color:#00ff88;">✅ Win% (Live)</th>
+                                <th style="padding:12px; color:#00ff88;">📈 ROI (Live)</th>
+                                <th style="padding:12px; color:#ff9900;">✅ Win% (Frozen)</th>
+                                <th style="padding:12px; color:#ff9900;">📉 ROI (Frozen)</th>
+                                <th style="padding:12px;">Delta ROI</th>
+                                <th style="padding:12px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scanner-results">
+                            <!-- Rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- SIMULATOR MODAL (Popup of Popup) -->
+            <div id="simulator-modal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; 
+        background: rgba(0,0,0,0.95); z-index:21000; justify-content:center; align-items:center;">
+                <div id="sim-modal-content"
+                    style="background: #1a1d2a; border-radius: 10px; max-width: 1000px; width: 95%; max-height: 95vh; overflow: auto; display:flex; flex-direction:column; transition: background 0.5s;">
+
+                    <!-- HEADER -->
+                    <div
+                        style="padding: 15px 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin: 0; color: #00ff88;">💰 Simulatore di Portafoglio</h3>
+                        <button onclick="closeSimulatorModal()"
+                            style="background:none; border:none; color:#888; font-size:1.5rem; cursor:pointer;">&times;</button>
+                    </div>
+
+                    <!-- INPUTS -->
+                    <div
+                        style="padding: 20px; border-bottom: 1px solid #333; display:flex; gap:15px; align-items:center; flex-wrap:wrap; background:#0f111a;">
+                        <div style="display:flex; flex-direction:column; gap:5px;">
+                            <label style="color:#888; font-size:0.8rem;">Capitale per Trade (€/$)</label>
+                            <input type="number" id="sim-capital" value="100"
+                                style="padding:10px; background:#222; color:#fff; border:1px solid #444; border-radius:4px; font-weight:bold; width:150px;">
+                        </div>
+
+                        <div style="display:flex; flex-direction:column; gap:5px;">
+                            <label style="color:#888; font-size:0.8rem;">Modalità</label>
+                            <select id="sim-mode" onchange="runPortfolioSimulation()"
+                                style="padding:10px; background:#222; color:#fff; border:1px solid #444; border-radius:4px; font-weight:bold; width:180px;">
+                                <option value="FROZEN" selected>❄️ Frozen (Honest)</option>
+                                <option value="LIVE">🚀 Live (Ideal!)</option>
+                            </select>
+                        </div>
+                        <button onclick="runPortfolioSimulation()"
+                            style="background:linear-gradient(135deg, #00ff88, #00cc66); color:#000; padding:12px 25px; border:none; border-radius:6px; font-weight:bold; cursor:pointer; margin-top:15px;">
+                            CALCOLA EQUITY
+                        </button>
+                        <div style="flex:1; text-align:right; margin-top:10px;">
+                            <span style="color:#888; font-size:0.9rem;">Trades Totali: <b id="sim-total-trades"
+                                    style="color:#fff;">0</b></span>
+                        </div>
+                    </div>
+
+                    <!-- RESULTS -->
+                    <div style="padding:20px; display:flex; flex-direction:column; gap:20px;">
+                        <!-- Summary Metrics -->
+                        <div style="display:flex; gap:20px; flex-wrap:wrap;">
+                            <div style="flex:1; background:#222; padding:15px; border-radius:6px; text-align:center;">
+                                <div style="color:#888; font-size:0.8rem;">Max Capitale Esposto</div>
+                                <div id="sim-max-exposure" style="font-size:1.2rem; font-weight:bold; color:#eba834;">-
+                                </div>
+                            </div>
+                            <div style="flex:1; background:#222; padding:15px; border-radius:6px; text-align:center;">
+                                <div style="color:#888; font-size:0.8rem;">Profitto Netto Totale</div>
+                                <div id="sim-net-profit" style="font-size:1.2rem; font-weight:bold; color:#00ff88;">-
+                                </div>
+                            </div>
+                            <div style="flex:1; background:#222; padding:15px; border-radius:6px; text-align:center;">
+                                <div style="color:#888; font-size:0.8rem;">Rendimento su Max Esposizione</div>
+                                <div id="sim-roi" style="font-size:1.2rem; font-weight:bold; color:#00ff88;">-</div>
                             </div>
                         </div>
-                        <div style="flex:1; background:#222; padding:15px; border-radius:6px; text-align:center;">
-                            <div style="color:#888; font-size:0.8rem;">Profitto Netto Totale</div>
-                            <div id="sim-net-profit" style="font-size:1.2rem; font-weight:bold; color:#00ff88;">-</div>
-                        </div>
-                        <div style="flex:1; background:#222; padding:15px; border-radius:6px; text-align:center;">
-                            <div style="color:#888; font-size:0.8rem;">Rendimento su Max Esposizione</div>
-                            <div id="sim-roi" style="font-size:1.2rem; font-weight:bold; color:#00ff88;">-</div>
-                        </div>
-                    </div>
 
-                    <!-- Charts -->
-                    <div style="background:#151720; border-radius:6px; padding:10px; border:1px solid #333;">
-                        <div id="chart-sim-equity" style="width:100%; height:300px;"></div>
-                    </div>
-                    <div style="background:#151720; border-radius:6px; padding:10px; border:1px solid #333;">
-                        <div id="chart-sim-exposure" style="width:100%; height:250px;"></div>
-                    </div>
+                        <!-- Charts -->
+                        <div style="background:#151720; border-radius:6px; padding:10px; border:1px solid #333;">
+                            <div id="chart-sim-equity" style="width:100%; height:300px;"></div>
+                        </div>
+                        <div style="background:#151720; border-radius:6px; padding:10px; border:1px solid #333;">
+                            <div id="chart-sim-exposure" style="width:100%; height:250px;"></div>
+                        </div>
 
-                    <!-- TRADES LIST -->
-                    <div style="margin-top:20px;">
-                        <h4 style="color:#00ff88; margin-bottom:10px;">📋 Lista Operazioni Simulate</h4>
-                        <div style="width:100%; overflow-x:auto;">
-                            <table class="scanner-table"
-                                style="width:100%; border-collapse:collapse; text-align:left; font-size:0.9rem;">
-                                <thead style="background:#222; color:#ccc;">
-                                    <tr>
-                                        <th style="padding:10px;">Ticker</th>
-                                        <th style="padding:10px;">Data Ingresso</th>
-                                        <th style="padding:10px;">Data Uscita</th>
-                                        <th style="padding:10px;">Direzione</th>
-                                        <th style="padding:10px;">Risultato %</th>
-                                        <th style="padding:10px;">Profitto (€)</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="sim-trades-body">
-                                    <!-- Populated by JS -->
-                                </tbody>
-                            </table>
+                        <!-- TRADES LIST -->
+                        <div style="margin-top:20px;">
+                            <h4 style="color:#00ff88; margin-bottom:10px;">📋 Lista Operazioni Simulate</h4>
+                            <div style="width:100%; overflow-x:auto;">
+                                <table class="scanner-table"
+                                    style="width:100%; border-collapse:collapse; text-align:left; font-size:0.9rem;">
+                                    <thead style="background:#222; color:#ccc;">
+                                        <tr>
+                                            <th style="padding:10px;">Ticker</th>
+                                            <th style="padding:10px;">Data Ingresso</th>
+                                            <th style="padding:10px;">Data Uscita</th>
+                                            <th style="padding:10px;">Direzione</th>
+                                            <th style="padding:10px;">Risultato %</th>
+                                            <th style="padding:10px;">Profitto (€)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="sim-trades-body">
+                                        <!-- Populated by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-        <script src="tickers.js?v=6"></script>
-        <script src="app.js?v=7"></script>
+            <script src="tickers.js?v=6"></script>
+            <script src="app.js?v=7"></script>
 </body>
 
 </html>

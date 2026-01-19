@@ -527,9 +527,11 @@ function renderCharts(data) {
     window.TRADES_FROZEN = (data.frozen_strategy && data.frozen_strategy.trades) ? data.frozen_strategy.trades : [];
 
     if (window.TRADES_LIVE.length > 0 || window.TRADES_FROZEN.length > 0) {
-        document.getElementById('btn-view-trades').style.display = 'block';
+        const btnTrades = document.getElementById('btn-view-trades');
+        if (btnTrades) btnTrades.style.display = 'block';
     } else {
-        document.getElementById('btn-view-trades').style.display = 'none';
+        const btnTrades = document.getElementById('btn-view-trades');
+        if (btnTrades) btnTrades.style.display = 'none';
     }
 
     // Refresh Trades Modal if open (Live Update while scrolling)
@@ -2080,26 +2082,24 @@ function applyScanFilters() {
 
 
 // --- SIDEBAR TOGGLE ---
+// --- SIDEBAR TOGGLE ---
 function toggleSidebar() {
-    const container = document.getElementById('toggle-sidebar-container');
     const toggles = document.getElementById('chart-toggles');
-    const btn = document.getElementById('btn-collapse-toggles');
+    const arrow = document.getElementById('collapse-arrow');
 
-    if (!container || !toggles || !btn) return;
+    if (!toggles || !arrow) return;
 
-    // Check current state (using clientWidth or a class)
+    // Check current state
     const isCollapsed = toggles.style.display === 'none';
 
     if (isCollapsed) {
         // EXPAND
         toggles.style.display = 'flex';
-        btn.innerText = '❮';
-        container.style.width = 'auto';
+        arrow.innerText = '‹'; // Left to collapse
     } else {
         // COLLAPSE
         toggles.style.display = 'none';
-        btn.innerText = '❯';
-        container.style.width = '30px'; // Slim width for button only
+        arrow.innerText = '›'; // Right to expand
     }
 
     // Trigger resize for chart (Plotly needs to know container changed)
