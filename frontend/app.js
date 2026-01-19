@@ -407,7 +407,7 @@ function renderCharts(data) {
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
         font: { color: '#aaa', size: isMobile ? 10 : 12 },
-        showlegend: true,
+        showlegend: !isMobile,
         legend: isMobile ? {
             orientation: 'h',
             x: 0,
@@ -429,22 +429,7 @@ function renderCharts(data) {
     };
 
     // Add yaxis5 for backtest if visible
-    if (showBacktest) {
-        layout.yaxis5 = {
-            domain: [0, 0.15],
-            gridcolor: '#333333',
-            title: 'Trade P/L %',
-            tickfont: { color: '#00ff88' },
-            zeroline: true,
-            zerolinecolor: '#666',
-            zerolinewidth: 2
-        };
-    }
 
-    // FORCE HEIGHT ON MOBILE (Use viewport height)
-    if (isMobile) {
-        layout.height = window.innerHeight - 80;
-    }
     layout.autosize = true;
 
     const config = {
