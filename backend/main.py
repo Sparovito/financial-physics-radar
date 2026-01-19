@@ -428,6 +428,20 @@ async def analyze_stock(req: AnalysisRequest):
             end_date=req.end_date
         )
         
+        # --- STRATEGIA 3: FROZEN SUM (Nuovo Indicatore Filtrato) ---
+        # Allineiamo frozen_z_sum (già filtrato con Butterworth) alla lunghezza di price_real
+        padding_sum = len(price_real) - len(frozen_z_sum)
+        aligned_frozen_sum = [0] * padding_sum + frozen_z_sum
+        
+        backtest_result_frozen_sum = backtest_strategy(
+            prices=price_real,
+            z_kinetic=aligned_frozen_sum,  # Segnale: Frozen Sum Z (Filtrato)
+            z_slope=z_slope_series,        # Manteniamo filtro direzionale
+            dates=dates_historical,
+            start_date=req.start_date,
+            end_date=req.end_date
+        )
+        
         # Dati Futuri (Proiezione)
         # Nota: future_idx potrebbe contenere timestamp o interi, convertiamo
         try:
@@ -475,7 +489,8 @@ async def analyze_stock(req: AnalysisRequest):
                 "zigzag": zigzag_line   # [NEW] Cumulative Direction
             },
             "backtest": backtest_result,                  # Strategia Live
-            "frozen_strategy": backtest_result_frozen,    # Strategia Frozen (NEW)
+            "frozen_strategy": backtest_result_frozen,    # Strategia Frozen Pot
+            "frozen_sum_strategy": backtest_result_frozen_sum,  # [NEW] Frozen Sum
             "forecast": {
                 "dates": dates_future,
                 "values": future_scenario

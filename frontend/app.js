@@ -297,8 +297,10 @@ function renderCharts(data) {
     const showBacktest = document.getElementById('show-backtest')?.checked ?? false;
     let traceBacktest = null;
     let traceFrozenStrat = null;
+    let traceFrozenSumStrat = null;
     let backtestStats = null;
     let frozenStats = null;
+    let frozenSumStats = null;
 
     if (showBacktest) {
         // 1. Live Strategy (Green)
@@ -329,6 +331,20 @@ function renderCharts(data) {
                 yaxis: 'y5'
             };
             frozenStats = data.frozen_strategy.stats;
+        }
+
+        // 3. Frozen Sum Strategy (Yellow/Gold)
+        if (data.frozen_sum_strategy && data.frozen_sum_strategy.trade_pnl_curve) {
+            traceFrozenSumStrat = {
+                x: data.dates,
+                y: data.frozen_sum_strategy.trade_pnl_curve,
+                name: `📊 SUM Strat (Avg: ${data.frozen_sum_strategy.stats.avg_trade}%)`,
+                type: 'scatter',
+                line: { color: '#ffcc00', width: 2, dash: 'solid' }, // Gold
+                xaxis: 'x',
+                yaxis: 'y5'
+            };
+            frozenSumStats = data.frozen_sum_strategy.stats;
         }
     }
 
