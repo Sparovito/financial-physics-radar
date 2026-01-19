@@ -478,31 +478,23 @@ body {
 
     .main-content {
         width: 100%;
-        height: 100dvh;
-        /* Dynamic Full Height */
-        min-height: 0;
-        padding: 0;
-        /* Remove padding to maximize space */
+        height: auto;
+        min-height: 85vh;
+        /* Use viewport height, not fixed px */
+        padding: 10px;
         order: 1;
-        display: flex;
-        flex-direction: column;
     }
 
     .chart-container {
-        flex: 1;
-        /* Grow to fill available space */
-        min-height: 0;
-        width: 100%;
-        height: 100%;
-        border: none;
-        /* Clean look on mobile */
-        border-radius: 0;
+        min-height: 80vh;
+        /* Fill most of viewport */
+        height: auto;
     }
 
     #chart-combined {
-        width: 100% !important;
-        height: 100% !important;
-        min-height: 0;
+        min-height: 75vh;
+        /* Nearly full viewport */
+        height: auto !important;
     }
 
     /* Modal Mobile */
