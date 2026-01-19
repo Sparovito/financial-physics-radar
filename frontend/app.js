@@ -1354,11 +1354,18 @@ function renderFrozenLine() {
             currentPrice = r.history.prices[sliderIdx];
         }
 
+        // [NEW] Get SUM Strategy P/L (Red Line)
+        let sumPnl = 0;
+        if (r.history.sum_pnl && sliderIdx < r.history.sum_pnl.length) {
+            sumPnl = r.history.sum_pnl[sliderIdx];
+        }
+
         points.push({
             ticker: r.ticker,
             z: frozenZ,
-            pnl: tradePnl,
-            active: inPosition,
+            pnl: tradePnl,       // Orange
+            sumPnl: sumPnl,     // Red
+            active: inPosition || sumPnl !== 0,
             price: currentPrice
         });
     });
@@ -1445,7 +1452,11 @@ function renderFrozenLine() {
             }
         },
         hoverinfo: 'text',
-        hovertext: points.map(p => `${p.ticker}: Z=${p.z.toFixed(2)}`)
+        hovertext: points.map(p => {
+            const orangeSign = p.pnl > 0 ? '+' : '';
+            const redSign = p.sumPnl > 0 ? '+' : '';
+            return `${p.ticker}: Z=${p.z.toFixed(2)}\n🟠 ${orangeSign}${p.pnl?.toFixed(1) || 0}%  🔴 ${redSign}${p.sumPnl?.toFixed(1) || 0}%`;
+        })
     };
 
     // Zero line reference

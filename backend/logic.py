@@ -438,6 +438,52 @@ class MarketScanner:
             # Use TRADE P/L CURVE (resets to 0 between trades) to match Orange Line
             frozen_pnl_curve = strat_res['trade_pnl_curve'] 
 
+            # === [NEW] FROZEN SUM STRATEGY ===
+            # 1. Calculate Frozen Kinetic (point-in-time, shifted T-25)
+            frozen_kin_raw = []
+            for t in range(MIN_POINTS, n_total, SAMPLE_EVERY):
+                px_t = px.iloc[:t+1]
+                try:
+                    mech_t = ActionPath(px_t, alpha=200, beta=1.0)
+                    if len(mech_t.kin_density) >= 25:
+                        frozen_kin_raw.append(float(mech_t.kin_density.iloc[-25]))
+                    else:
+                        frozen_kin_raw.append(0.0)
+                except:
+                    frozen_kin_raw.append(0.0)
+            
+            # 2. Calculate SUM (Kinetic + Potential)
+            frozen_sum_raw = [k + p for k, p in zip(frozen_kin_raw, frozen_pot_raw)]
+            
+            # 3. Normalize SUM with Z-Score
+            aligned_frozen_sum = [0] * padding_size + frozen_sum_raw
+            frozen_sum_series = pd.Series(aligned_frozen_sum).fillna(0)
+            roll_fsum_mean = frozen_sum_series.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
+            roll_fsum_std = frozen_sum_series.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
+            z_frozen_sum = ((frozen_sum_series - roll_fsum_mean) / (roll_fsum_std + 1e-6)).fillna(0).tolist()
+            
+            # 4. Apply Zero-Phase Low-Pass Filter (Butterworth) - requires scipy
+            try:
+                from scipy.signal import butter, filtfilt
+                b, a = butter(N=2, Wn=0.05, btype='low')
+                z_frozen_sum_filtered = filtfilt(b, a, z_frozen_sum).tolist()
+                z_frozen_sum = z_frozen_sum_filtered
+            except:
+                pass  # Keep unfiltered if scipy fails
+            
+            # 5. Run SUM Strategy Backtest (threshold=-0.3)
+            # Use -999 padding to prevent false signals
+            z_sum_for_backtest = [-999] * padding_size + z_frozen_sum[padding_size:]
+            
+            strat_sum_res = backtest_strategy(
+                 prices=hist_price,
+                 z_kinetic=z_sum_for_backtest,
+                 z_slope=hist_z_slope,
+                 dates=hist_dates,
+                 threshold=-0.3
+            )
+            sum_pnl_curve = strat_sum_res['trade_pnl_curve'] 
+
             return {
                 "ticker": ticker,
                 "avg_abs_kin": round(float(avg_abs_kin), 2),
@@ -455,7 +501,8 @@ class MarketScanner:
                     "z_slope": [round(x, 2) if x is not None else None for x in hist_z_slope],
                     "prices": [round(x, 2) if x is not None else None for x in hist_price],
                     "z_kin_frozen": [round(x, 2) if x is not None else None for x in hist_z_pot], # Legacy name mapping
-                    "strategy_pnl": frozen_pnl_curve # The "Orange Line" content (Cumulative)
+                    "strategy_pnl": frozen_pnl_curve, # The "Orange Line" content (Cumulative)
+                    "sum_pnl": sum_pnl_curve  # The "SUM Red Line" (Threshold=-0.3)
                 }
             }
             
