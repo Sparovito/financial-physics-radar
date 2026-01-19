@@ -445,6 +445,7 @@ function renderCharts(data) {
     if (isMobile) {
         layout.height = window.innerHeight - 80;
     }
+    layout.autosize = true;
 
     const config = {
         responsive: true,
