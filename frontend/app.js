@@ -2134,10 +2134,12 @@ function saveAnnotations() {
 function setAnnotationMode(mode) {
     const btnGreen = document.getElementById('btn-anno-green');
     const btnRed = document.getElementById('btn-anno-red');
+    const btnBlue = document.getElementById('btn-anno-blue');
+    const btnPurple = document.getElementById('btn-anno-purple');
     const btnClear = document.getElementById('btn-anno-clear');
 
     // Reset all button styles
-    [btnGreen, btnRed, btnClear].forEach(btn => {
+    [btnGreen, btnRed, btnBlue, btnPurple, btnClear].forEach(btn => {
         if (btn) btn.style.background = 'transparent';
     });
 
@@ -2160,7 +2162,12 @@ function setAnnotationMode(mode) {
     } else {
         window.ANNOTATION_MODE = mode;
         // Highlight active button
-        const activeBtn = mode === 'green' ? btnGreen : btnRed;
+        let activeBtn = null;
+        if (mode === 'green') activeBtn = btnGreen;
+        if (mode === 'red') activeBtn = btnRed;
+        if (mode === 'blue') activeBtn = btnBlue;
+        if (mode === 'purple') activeBtn = btnPurple;
+
         if (activeBtn) activeBtn.style.background = 'rgba(255,255,255,0.15)';
     }
 
@@ -2169,20 +2176,28 @@ function setAnnotationMode(mode) {
 
 // Convert annotations to Plotly shapes
 function getAnnotationShapes() {
-    return window.CHART_ANNOTATIONS.map(anno => ({
-        type: 'line',
-        x0: anno.x,
-        x1: anno.x,
-        y0: 0,
-        y1: 1,
-        yref: 'paper', // Full height
-        line: {
-            color: anno.color === 'green' ? '#00ff88' : '#ff4444',
-            width: 2,
-            dash: 'solid'
-        },
-        layer: 'below'
-    }));
+    return window.CHART_ANNOTATIONS.map(anno => {
+        let color = '#ffffff';
+        if (anno.color === 'green') color = '#00ff88';
+        if (anno.color === 'red') color = '#ff4444';
+        if (anno.color === 'blue') color = '#3366ff';
+        if (anno.color === 'purple') color = '#aa33ff';
+
+        return {
+            type: 'line',
+            x0: anno.x,
+            x1: anno.x,
+            y0: 0,
+            y1: 1,
+            yref: 'paper', // Full height
+            line: {
+                color: color,
+                width: 2,
+                dash: 'solid'
+            },
+            layer: 'below'
+        };
+    });
 }
 
 // Setup click handler for the chart (called after Plotly.newPlot)
