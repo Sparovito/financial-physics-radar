@@ -794,7 +794,11 @@ function renderTradesList() {
 }
 
 // Verify trade integrity by running time simulation
+// Verify trade integrity by running time simulation
 async function verifyTradeIntegrity() {
+    console.log("👆 Button verifyTradeIntegrity clicked!");
+    // alert("Avvio verifica integrità..."); // Debug alert
+
     const listDiv = document.getElementById('trades-list');
     const ticker = document.getElementById('ticker-input').value.toUpperCase();
     const strategy = window.CURRENT_TRADES_VIEW || 'FROZEN';
