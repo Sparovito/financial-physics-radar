@@ -422,10 +422,11 @@ async def analyze_stock(req: AnalysisRequest):
         backtest_result_frozen = backtest_strategy(
             prices=price_real,
             z_kinetic=z_frozen_pot_score, # Sostituiamo segnale trigger
-            z_slope=z_slope_series,       # Manteniamo filtro direzionale
+            z_slope=z_slope_series,       # Non usato (use_z_roc=True)
             dates=dates_historical,
             start_date=req.start_date,
-            end_date=req.end_date
+            end_date=req.end_date,
+            use_z_roc=True  # Direzione basata su Z-ROC (causale)
         )
         
         # --- STRATEGIA 3: FROZEN SUM (Nuovo Indicatore Filtrato) ---
@@ -436,11 +437,12 @@ async def analyze_stock(req: AnalysisRequest):
         backtest_result_frozen_sum = backtest_strategy(
             prices=price_real,
             z_kinetic=aligned_frozen_sum,  # Segnale: Frozen Sum Z (Filtrato)
-            z_slope=z_slope_series,        # Manteniamo filtro direzionale
+            z_slope=z_slope_series,        # Non usato (use_z_roc=True)
             dates=dates_historical,
             start_date=req.start_date,
             end_date=req.end_date,
-            threshold=-0.3  # Entry/Exit a -0.3 invece di 0
+            threshold=-0.3,  # Entry/Exit a -0.3 invece di 0
+            use_z_roc=True   # Direzione basata su Z-ROC (causale)
         )
         
         # Dati Futuri (Proiezione)

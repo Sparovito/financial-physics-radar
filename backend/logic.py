@@ -433,7 +433,8 @@ class MarketScanner:
                  prices=hist_price,
                  z_kinetic=z_frozen_pot,  # TRUE Frozen Z-Score (point-in-time)
                  z_slope=hist_z_slope,
-                 dates=hist_dates
+                 dates=hist_dates,
+                 use_z_roc=True  # Direzione basata su Z-ROC (causale)
             )
             # Use TRADE P/L CURVE (resets to 0 between trades) to match Orange Line
             frozen_pnl_curve = strat_res['trade_pnl_curve'] 
@@ -480,7 +481,8 @@ class MarketScanner:
                  z_kinetic=z_sum_for_backtest,
                  z_slope=hist_z_slope,
                  dates=hist_dates,
-                 threshold=-0.3
+                 threshold=-0.3,
+                 use_z_roc=True  # Direzione basata su Z-ROC (causale)
             )
             sum_pnl_curve = strat_sum_res['trade_pnl_curve'] 
 
@@ -513,11 +515,12 @@ class MarketScanner:
             return None
 
 # --- 5. Backtesting Strategy ---
-def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list, initial_capital=1000.0, start_date=None, end_date=None, threshold=0.0):
+def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list, initial_capital=1000.0, start_date=None, end_date=None, threshold=0.0, use_z_roc=False):
     """
     Esegue il backtest della strategia basata su Z-Scores.
     Filtra le operazioni in base a start_date e end_date.
     threshold: soglia per entry/exit (default 0).
+    use_z_roc: se True, usa Z-ROC per direzione (Frozen/SUM). Se False, usa z_slope (LIVE).
     """
     capital = initial_capital
     in_position = False
@@ -568,10 +571,13 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                 in_position = True
                 entry_price = price
                 entry_date = date
-                # Direction based on Z-ROC (Rate of Change of Z-Score) - 100% causal
-                z_prev = z_kinetic[i-1] if i > 0 and z_kinetic[i-1] is not None else 0
-                z_roc = z_kin - z_prev
-                position_direction = 'LONG' if z_roc >= 0 else 'SHORT'
+                # Direction: Z-ROC for Frozen/SUM, z_slope for LIVE
+                if use_z_roc:
+                    z_prev = z_kinetic[i-1] if i > 0 and z_kinetic[i-1] is not None else 0
+                    z_roc = z_kin - z_prev
+                    position_direction = 'LONG' if z_roc >= 0 else 'SHORT'
+                else:
+                    position_direction = 'LONG' if z_sl > 0 else 'SHORT'
                 trade_pnl_curve.append(0)
             else:
                 trade_pnl_curve.append(0)
