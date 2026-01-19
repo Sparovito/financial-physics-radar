@@ -488,23 +488,13 @@ body {
     .chart-container {
         min-height: 80vh;
         /* Fill most of viewport */
-        height: 80vh;
+        height: auto;
     }
 
     #chart-combined {
         min-height: 75vh;
-        height: 75vh;
-        /* Fixed height on mobile */
-    }
-
-    /* Hide toggle sidebar on mobile - collapsible takes too much space */
-    #toggle-sidebar-container {
-        display: none !important;
-    }
-
-    /* Adjust chart container margin since sidebar is hidden */
-    .chart-container {
-        margin-left: 0 !important;
+        /* Nearly full viewport */
+        height: auto !important;
     }
 
     /* Modal Mobile */
