@@ -282,20 +282,6 @@ function renderCharts(data) {
         }
     }
 
-    // [NEW] ZigZag Indicator Trace (Always visible, independent of Backtest toggle)
-    if (data.indicators && data.indicators.zigzag) {
-        const traceZigZag = {
-            x: data.dates,
-            y: data.indicators.zigzag,
-            name: '⚡ ZigZag Cumulativo',
-            type: 'scatter',
-            line: { color: '#ffcc00', width: 2 }, // Yellow Gold
-            xaxis: 'x',
-            yaxis: 'y7'
-        };
-        traces.push(traceZigZag);
-    }
-
     // --- DETECT MOBILE ---
     // Increased threshold to ensure it catches high-res phones/tablets
     const isMobile = window.innerWidth < 1024;
@@ -426,6 +412,20 @@ function renderCharts(data) {
 
     if (traceBacktest) traces.push(traceBacktest);
     if (traceFrozenStrat) traces.push(traceFrozenStrat);
+
+    // [NEW] ZigZag Indicator Trace (Always visible)
+    if (data.indicators && data.indicators.zigzag) {
+        const traceZigZag = {
+            x: data.dates,
+            y: data.indicators.zigzag,
+            name: '⚡ ZigZag Cumulativo',
+            type: 'scatter',
+            line: { color: '#ffcc00', width: 2 },
+            xaxis: 'x',
+            yaxis: 'y7'
+        };
+        traces.push(traceZigZag);
+    }
 
     Plotly.newPlot('chart-combined', traces, layout, config);
 
