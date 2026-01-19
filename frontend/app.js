@@ -299,6 +299,13 @@ function renderCharts(data) {
         ? `Analisi: ${data.ticker} (${extendedName})`
         : `Analisi: ${data.ticker}`;
 
+    // --- READ VISIBILITY TOGGLES ---
+    const showPrice = document.getElementById('show-price')?.checked ?? true;
+    const showEnergy = document.getElementById('show-energy')?.checked ?? true;
+    const showFrozen = document.getElementById('show-frozen')?.checked ?? true;
+    const showIndicators = document.getElementById('show-indicators')?.checked ?? true;
+    const showZigZag = document.getElementById('show-zigzag')?.checked ?? true;
+
     // --- DYNAMIC DOMAIN CALCULATION ---
     // Calculate visible panels and redistribute space
     const visiblePanels = [];
@@ -442,13 +449,6 @@ function renderCharts(data) {
         responsive: true,
         displayModeBar: !isMobile
     };
-
-    // --- READ VISIBILITY TOGGLES ---
-    const showPrice = document.getElementById('show-price')?.checked ?? true;
-    const showEnergy = document.getElementById('show-energy')?.checked ?? true;
-    const showFrozen = document.getElementById('show-frozen')?.checked ?? true;
-    const showIndicators = document.getElementById('show-indicators')?.checked ?? true;
-    const showZigZag = document.getElementById('show-zigzag')?.checked ?? true;
 
     // Build traces array based on toggles
     const traces = [];
