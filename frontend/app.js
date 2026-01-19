@@ -747,15 +747,7 @@ function renderTradesList() {
         let warningMessages = [];
         let rowWarningStyle = '';
 
-        // 1. Check Z-ROC snapshot mismatch (direction flip based on recalculated Z)
-        if (t.entry_z_value !== undefined && t.entry_z_roc !== undefined) {
-            const expectedDir = t.entry_z_roc >= 0 ? 'LONG' : 'SHORT';
-            if (expectedDir !== t.direction) {
-                warningMessages.push('Z-ROC invertito');
-            }
-        }
-
-        // 2. Compare with previous version of this trade (by matching entry_date)
+        // Compare with previous version of this trade (by matching entry_date)
         const prevTrade = prevTradesMap[t.entry_date];
         if (prevTrade) {
             // Direction changed
