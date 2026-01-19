@@ -168,13 +168,22 @@ function renderCharts(data) {
         yaxis: 'y'
     };
 
+    // Calculate Volume Colors (Green if Close >= PrevClose, Red if Lower)
+    const volumeColors = (data.volume || []).map((v, i) => {
+        if (i === 0) return 'rgba(100, 150, 255, 0.4)'; // Neutral first
+        const priceChange = (data.prices[i] || 0) - (data.prices[i - 1] || 0);
+        return priceChange >= 0
+            ? 'rgba(0, 255, 136, 0.4)'  // Green (Up)
+            : 'rgba(255, 68, 68, 0.4)'; // Red (Down)
+    });
+
     // --- TRACE: VOLUME (Overlay) ---
     const traceVolume = {
         x: data.dates,
         y: data.volume || [],
         type: 'bar',
         name: 'Volume',
-        marker: { color: 'rgba(100, 150, 255, 0.2)' },
+        marker: { color: volumeColors },
         yaxis: 'y8',
         xaxis: 'x',
         showlegend: false, // Don't clutter legend

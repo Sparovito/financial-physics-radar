@@ -90,11 +90,21 @@ async def analyze_stock(req: AnalysisRequest):
             full_frozen_data = cached_obj.get("frozen", None)
             # Load ZigZag Series
             zigzag_series = cached_obj.get("zigzag", None)
+            # [NEW] Volume loading
+            volume_series = cached_obj.get("volume", None)
+            if volume_series is None:
+                volume_series = pd.Series([0]*len(px), index=px.index)
         else:
             # Scarica storia COMPLETA
             print(f"🌐 API FETCH: Scarico dati freschi per {req.ticker}...")
             md = MarketData(req.ticker, start_date=req.start_date, end_date=None)
             px = md.fetch()
+            
+            # Extract Volume immediately
+            if hasattr(md, 'df_full') and 'Volume' in md.df_full.columns:
+                volume_series = md.df_full['Volume']
+            else:
+                volume_series = pd.Series([0]*len(px), index=px.index)
 
             # [NEW] Calculate Cumulative Direction (ZigZag) - HOURLY AGGREGATED
             try:
@@ -168,7 +178,11 @@ async def analyze_stock(req: AnalysisRequest):
             TICKER_CACHE[req.ticker] = {
                 "px": px,
                 "frozen": full_frozen_data,
-                "zigzag": zigzag_series
+            TICKER_CACHE[req.ticker] = {
+                "px": px,
+                "frozen": full_frozen_data,
+                "zigzag": zigzag_series,
+                "volume": volume_series
             }
 
         # --- SIMULATION TIME TRAVEL (Slicing istantaneo) ---
@@ -182,8 +196,13 @@ async def analyze_stock(req: AnalysisRequest):
             target_date_str = req.end_date
             
             # Slice ZigZag (Series)
+            # Slice ZigZag (Series)
             if zigzag_series is not None:
                 zigzag_series = zigzag_series[zigzag_series.index <= end_ts]
+                
+            # Slice Volume
+            if volume_series is not None:
+                volume_series = volume_series[volume_series.index <= end_ts]
             
             # Filtro rapido liste (date frozen sono già sorted)
             trunc_dates = []
@@ -365,7 +384,9 @@ async def analyze_stock(req: AnalysisRequest):
             "market_cap": mkt_cap,
             "dates": dates_historical,
             "prices": price_real,
-            "volume": md.df_full['Volume'].fillna(0).tolist() if hasattr(md, 'df_full') and 'Volume' in md.df_full.columns else [0]*len(price_real),
+            "dates": dates_historical,
+            "prices": price_real,
+            "volume": volume_series.reindex(px.index).fillna(0).tolist(),
             "min_action": price_min_action,
             "fundamentals": fundamentals,
             "energy": {
