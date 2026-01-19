@@ -601,17 +601,76 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
         win_rate = 0
         total_return = 0
         avg_trade = 0
-    
-    return {
-        "trades": trades,
-        "trade_pnl_curve": trade_pnl_curve,  # Individual trade P/L (0 = not invested)
-        "equity_curve": equity_curve, # Cumulative Equity P/L (Total Strategy Return)
-        "stats": {
-            "total_trades": len(trades),
-            "win_rate": round(win_rate, 1),
-            "total_return": round(total_return, 2),
-            "avg_trade": round(avg_trade, 2),
-            "final_capital": round(capital, 2)
+
+    backtest_stats = {
+        "final_capital": round(capital, 2),
+        "total_return": round(total_return, 2),
+        "win_rate": round(win_rate, 2),
+        "total_trades": len(trades),
+        "avg_trade_pct": round(avg_trade, 2),
+        "params": {
+            "alpha": self.action.alpha,
+            "beta": self.action.beta
         }
     }
+    
+    # --- Estrazione e Normalizzazione Volume ---
+    volume_data = []
+    volume_norm = []
+    try:
+        # Recupera il volume dal DataFrame completo salvato in MarketData
+        # Assicuriamoci che l'indice combaci con self.action.px
+        if hasattr(self.market, 'df_full') and 'Volume' in self.market.df_full.columns:
+            vol_series = self.market.df_full['Volume']
+            # Reindex per allineare esattamente ai prezzi usati (che potrebbero essere filtrati/tagliati)
+            vol_aligned = vol_series.reindex(self.action.px.index).fillna(0)
+            volume_data = vol_aligned.values.tolist()
+            
+            # Normalizzazione Min-Max (0-100) per grafico overlay
+            v_min = np.min(volume_data)
+            v_max = np.max(volume_data)
+            if v_max > v_min:
+                volume_norm = [((v - v_min) / (v_max - v_min)) * 100 for v in volume_data]
+            else:
+                volume_norm = [0] * len(volume_data)
+        else:
+            # Fallback se non disponibile (es. dati sintetici senza volume)
+            volume_data = [0] * len(prices)
+            volume_norm = [0] * len(prices)
+            
+    except Exception as e:
+        print(f"⚠️ Errore estrazione volumi: {e}")
+        volume_data = [0] * len(prices)
+        volume_norm = [0] * len(prices)
 
+    return {
+        "dates": date_strings,
+        "prices": prices,
+        "volume": volume_data,           # [NEW] Raw volume
+        "volume_norm": volume_norm,      # [NEW] Normalized 0-100
+        "path": list(self.action.q_path),
+        "fundamental": list(self.action.F),
+        "kinetic_energy": list(self.T),
+        "potential_energy": list(self.V),
+        "z_kinetic": list(z_kinetic),
+        "z_potential": list(z_potential),
+        "z_resid": list(z_resid),
+        "frozen_density": list(dens_frozen),
+        "frozen_component": list(comp_frozen),
+        "top_components": self.fourier.get_components(),
+        "projection": {
+             "dates": proj_dates,
+             "prices": proj_prices
+        },
+        "zigzag": {
+             "values": list(zz.zigzag),
+             "pivots": zz.pivots
+        },
+        "backtest": {
+            "equity_curve": equity_curve,
+            "trades": trades,
+            "trade_pnl_curve": trade_pnl_curve,
+            "stats": backtest_stats
+        }
+    }
+```

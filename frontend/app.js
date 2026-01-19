@@ -168,6 +168,19 @@ function renderCharts(data) {
         yaxis: 'y'
     };
 
+    // --- TRACE: VOLUME (Overlay) ---
+    const traceVolume = {
+        x: data.dates,
+        y: data.volume || [],
+        type: 'bar',
+        name: 'Volume',
+        marker: { color: 'rgba(100, 150, 255, 0.2)' },
+        yaxis: 'y8',
+        xaxis: 'x',
+        showlegend: false, // Don't clutter legend
+        hoverinfo: 'y+name'
+    };
+
     // --- TRACCE GRAFICO ENERGIA (Centro) ---
     const traceKinetic = {
         x: data.dates,
@@ -305,6 +318,7 @@ function renderCharts(data) {
     const showFrozen = document.getElementById('show-frozen')?.checked ?? true;
     const showIndicators = document.getElementById('show-indicators')?.checked ?? true;
     const showZigZag = document.getElementById('show-zigzag')?.checked ?? true;
+    const showVolume = document.getElementById('show-volume')?.checked ?? false;
     // showBacktest is already defined above
 
     // --- DYNAMIC DOMAIN CALCULATION ---
@@ -402,6 +416,16 @@ function renderCharts(data) {
             tickfont: { color: '#00ff88' },
             visible: showBacktest
         },
+        yaxis8: {
+            // Volume Axis (Overlay on Price)
+            overlaying: 'y',
+            side: 'left',
+            showgrid: false,
+            zeroline: false,
+            visible: showVolume,
+            showticklabels: false,
+            range: [0, (data.volume && data.volume.length ? Math.max(...data.volume) : 100) * 5]
+        },
 
         title: { text: titleText, font: { color: '#fff' } },
         paper_bgcolor: 'rgba(0,0,0,0)',
@@ -442,6 +466,8 @@ function renderCharts(data) {
 
     // Price group
     if (showPrice) {
+        // Volume first so it's behind candles
+        if (showVolume) traces.push(traceVolume);
         traces.push(tracePrice, tracePath, traceFund, traceForecast);
     }
 
