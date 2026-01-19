@@ -793,6 +793,94 @@ function renderTradesList() {
     listDiv.innerHTML = html;
 }
 
+// Verify trade integrity by running time simulation
+async function verifyTradeIntegrity() {
+    const listDiv = document.getElementById('trades-list');
+    const ticker = document.getElementById('ticker-input').value.toUpperCase();
+    const strategy = window.CURRENT_TRADES_VIEW || 'FROZEN';
+    const alpha = parseFloat(document.getElementById('alpha-input').value) || 200;
+    const beta = parseFloat(document.getElementById('beta-input').value) || 1.0;
+
+    // Show loading
+    listDiv.innerHTML = `
+        <div style="text-align: center; padding: 40px; color: #888;">
+            <div style="font-size: 2rem; margin-bottom: 10px;">🔍</div>
+            <div>Verifica integrità in corso per ${ticker} (${strategy})...</div>
+            <div style="font-size: 0.8em; margin-top: 10px;">Simulazione dal passato al presente...</div>
+        </div>
+    `;
+
+    try {
+        const response = await fetch('/verify-integrity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ticker, strategy, alpha, beta })
+        });
+
+        const data = await response.json();
+
+        if (data.status === 'error') {
+            listDiv.innerHTML = `<div style="color: #ff4444; padding: 20px;">Errore: ${data.detail}</div>`;
+            return;
+        }
+
+        // Display results
+        let html = `
+            <div style="background: #1a1d2e; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                <h3 style="margin: 0 0 10px 0; color: #fff;">📊 Risultato Verifica Integrità</h3>
+                <div style="display: flex; gap: 20px; color: #888;">
+                    <span><b>Ticker:</b> ${data.ticker}</span>
+                    <span><b>Strategia:</b> ${data.strategy}</span>
+                    <span><b>Trade Totali:</b> ${data.total_trades}</span>
+                    <span style="color: ${data.corrupted_count > 0 ? '#ff4444' : '#00ff88'};">
+                        <b>Trade Corrotti:</b> ${data.corrupted_count}
+                    </span>
+                </div>
+            </div>
+        `;
+
+        if (data.corrupted_count === 0) {
+            html += `
+                <div style="text-align: center; padding: 30px; color: #00ff88;">
+                    <div style="font-size: 3rem;">✅</div>
+                    <div style="font-size: 1.2rem; margin-top: 10px;">Nessuna anomalia rilevata!</div>
+                    <div style="color: #888; font-size: 0.9em; margin-top: 5px;">
+                        I trade sono coerenti nel tempo (nessun look-ahead bias)
+                    </div>
+                </div>
+            `;
+        } else {
+            html += `
+                <div style="background: rgba(255,68,68,0.1); padding: 10px; border-radius: 6px; margin-bottom: 15px; color: #ff4444;">
+                    ⚠️ <b>${data.corrupted_count} trade</b> hanno cambiato retroattivamente (look-ahead bias)
+                </div>
+            `;
+
+            html += '<table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">';
+            html += `<tr style="color: #888; border-bottom: 1px solid #333;">
+                <th style="text-align: left; padding: 8px;">Entry Date</th>
+                <th style="text-align: left; padding: 8px;">Direzione Orig.</th>
+                <th style="text-align: left; padding: 8px;">Cambiamenti</th>
+            </tr>`;
+
+            data.corrupted_trades.forEach(trade => {
+                html += `<tr style="border-bottom: 1px solid #222; background: rgba(255,68,68,0.1);">
+                    <td style="padding: 8px; color: #fff;">${trade.entry_date}</td>
+                    <td style="padding: 8px; color: #aaa;">${trade.original.direction}</td>
+                    <td style="padding: 8px; color: #ff4444; font-size: 0.8em;">${trade.changes.join(' | ')}</td>
+                </tr>`;
+            });
+
+            html += '</table>';
+        }
+
+        listDiv.innerHTML = html;
+
+    } catch (error) {
+        listDiv.innerHTML = `<div style="color: #ff4444; padding: 20px;">Errore di connessione: ${error.message}</div>`;
+    }
+}
+
 function closeTradesModal() {
     document.getElementById('trades-modal').style.display = 'none';
 }

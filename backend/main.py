@@ -519,6 +519,151 @@ async def analyze_stock(req: AnalysisRequest):
 def health_check():
     return {"status": "running"}
 
+# --- TRADE INTEGRITY VERIFICATION ---
+class VerifyIntegrityRequest(BaseModel):
+    ticker: str
+    strategy: str = "FROZEN"  # LIVE, FROZEN, or SUM
+    alpha: float = 200.0
+    beta: float = 1.0
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+@app.post("/verify-integrity")
+async def verify_trade_integrity(req: VerifyIntegrityRequest):
+    """
+    Verifica l'integrità dei trade simulando il tempo dal passato al presente.
+    Rileva quando i trade cambiano retroattivamente (look-ahead bias).
+    """
+    try:
+        from logic import backtest_strategy
+        from datetime import datetime, timedelta
+        
+        print(f"🔍 Verifica integrità per {req.ticker} - Strategia: {req.strategy}")
+        
+        # Get full cached data
+        if req.ticker not in TICKER_CACHE:
+            md = MarketData(req.ticker)
+            px = md.get_price()
+            TICKER_CACHE[req.ticker] = px
+        
+        full_px = TICKER_CACHE[req.ticker].copy()
+        
+        # Determine date range
+        all_dates = full_px.index.tolist()
+        start_idx = 252 * 2  # Start after 2 years of data for Z-Score
+        step_every = 5  # Check every 5 days to speed up
+        
+        # Track trades across time
+        trade_history = {}  # entry_date -> {first_seen_data, changes: []}
+        corrupted_trades = []
+        
+        for end_idx in range(start_idx, len(all_dates), step_every):
+            end_date = all_dates[end_idx].strftime('%Y-%m-%d')
+            
+            # Simulate analysis at this point in time
+            truncated_px = full_px.iloc[:end_idx+1]
+            
+            # Calculate path and Z-scores
+            path = ActionPath(alpha=req.alpha, beta=req.beta)
+            path.calculate(truncated_px)
+            
+            kinetic = path.kinetic_density
+            potential = path.potential_density
+            
+            # Calculate Z-scores
+            z_kin_series = (kinetic - kinetic.rolling(252).mean()) / kinetic.rolling(252).std()
+            z_pot_series = (potential - potential.rolling(252).mean()) / potential.rolling(252).std()
+            z_slope_series = z_kin_series.diff(5) / 5
+            
+            dates_historical = [d.strftime('%Y-%m-%d') for d in truncated_px.index]
+            price_real = truncated_px.tolist()
+            
+            # Run backtest based on strategy
+            if req.strategy == "LIVE":
+                z_signal = z_kin_series.tolist()
+                threshold = 0.0
+                use_z_roc = False
+            elif req.strategy == "FROZEN":
+                z_signal = z_pot_series.tolist()
+                threshold = 0.0
+                use_z_roc = True
+            else:  # SUM
+                # Simplified SUM calculation
+                z_sum = (z_kin_series + z_pot_series).tolist()
+                z_signal = z_sum
+                threshold = -0.3
+                use_z_roc = True
+            
+            backtest_result = backtest_strategy(
+                prices=price_real,
+                z_kinetic=z_signal,
+                z_slope=z_slope_series.tolist(),
+                dates=dates_historical,
+                threshold=threshold,
+                use_z_roc=use_z_roc
+            )
+            
+            current_trades = backtest_result['trades']
+            
+            # Compare with previously seen trades
+            for trade in current_trades:
+                entry_date = trade['entry_date']
+                
+                if entry_date not in trade_history:
+                    # First time seeing this trade - store it
+                    trade_history[entry_date] = {
+                        'first_seen': trade.copy(),
+                        'first_seen_at': end_date,
+                        'changes': []
+                    }
+                else:
+                    # Already seen - check for changes
+                    original = trade_history[entry_date]['first_seen']
+                    changes = []
+                    
+                    if original['direction'] != trade['direction']:
+                        changes.append(f"Dir: {original['direction']}→{trade['direction']}")
+                    
+                    # Only flag exit_date change if original was not OPEN
+                    if original['exit_date'] != trade['exit_date'] and original['exit_date'] != 'OPEN':
+                        changes.append(f"Exit: {original['exit_date']}→{trade['exit_date']}")
+                    
+                    if abs(original['entry_price'] - trade['entry_price']) > 0.01:
+                        changes.append(f"Price: {original['entry_price']}→{trade['entry_price']}")
+                    
+                    if changes:
+                        trade_history[entry_date]['changes'].extend(changes)
+        
+        # Collect corrupted trades
+        for entry_date, data in trade_history.items():
+            if data['changes']:
+                corrupted_trades.append({
+                    'entry_date': entry_date,
+                    'original': data['first_seen'],
+                    'first_seen_at': data['first_seen_at'],
+                    'changes': list(set(data['changes']))  # Unique changes
+                })
+        
+        # Sort by entry date
+        corrupted_trades.sort(key=lambda x: x['entry_date'], reverse=True)
+        
+        print(f"✅ Verifica completata: {len(corrupted_trades)} trade corrotti trovati")
+        
+        return {
+            "status": "ok",
+            "ticker": req.ticker,
+            "strategy": req.strategy,
+            "total_trades": len(trade_history),
+            "corrupted_count": len(corrupted_trades),
+            "corrupted_trades": corrupted_trades
+        }
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Errore verifica integrità: {e}")
+        traceback.print_exc()
+        return {"status": "error", "detail": str(e)}
+
 # --- STATIC FILES SERVING (Fallback) ---
 
 # Construct absolute path to frontend directory to avoid CWD issues
