@@ -97,6 +97,40 @@ async def analyze_stock(req: AnalysisRequest):
             
             # [NEW] Load Market Cap
             mkt_cap = cached_obj.get("mkt_cap", 0)
+
+            # [NEW] Slice by Requested Start Date (if provided)
+            if req.start_date:
+                start_ts = pd.Timestamp(req.start_date)
+                # Handle timezone if necessary (copying logic from cache check if distinct, 
+                # but simple comparison usually works if both naive/aware or if pandas handles it)
+                if px.index.tz is not None and start_ts.tz is None:
+                    start_ts = start_ts.tz_localize(px.index.tz)
+                
+                px = px[px.index >= start_ts]
+                if volume_series is not None:
+                    volume_series = volume_series[volume_series.index >= start_ts]
+                if zigzag_series is not None:
+                    zigzag_series = zigzag_series[zigzag_series.index >= start_ts]
+                
+                # [NEW] Slice Frozen Data Lists by Start Date (String Comparison)
+                if full_frozen_data:
+                    start_date_str = req.start_date
+                    # Lists are sorted by date. Find index where date >= start_date
+                    idx_start = 0
+                    for i, d in enumerate(full_frozen_data["dates"]):
+                        if d >= start_date_str:
+                            idx_start = i
+                            break
+                    
+                    # Store sliced temporary copy (don't mutate cache directly if shared, but here we read)
+                    # Actually we typically pass full_frozen_data to the response construction
+                    # We should filter it here for the current request context
+                    full_frozen_data = {
+                        "dates": full_frozen_data["dates"][idx_start:],
+                        "kin": full_frozen_data["kin"][idx_start:],
+                        "pot": full_frozen_data["pot"][idx_start:],
+                        "z_sum": full_frozen_data.get("z_sum", [])[idx_start:] 
+                    }
         else:
             # Scarica storia COMPLETA
             print(f"🌐 API FETCH: Scarico dati freschi per {req.ticker}...")
@@ -180,29 +214,51 @@ async def analyze_stock(req: AnalysisRequest):
             SAMPLE_EVERY = 1
             MIN_POINTS = 100
             
-            f_kin, f_pot, f_dates = [], [], []
+            f_kin, f_pot, f_sum, f_dates = [], [], [], []
             n_total = len(px)
             
             for t in range(MIN_POINTS, n_total, SAMPLE_EVERY):
                 px_t = px.iloc[:t+1]
                 try:
                     mech_t = ActionPath(px_t, alpha=req.alpha, beta=req.beta)
-                    # Save RAW DENSITY
-                    # [MOD] Kinetics at T-24 days (Shifted) as requested
-                    lag_idx = -25 # -1 is Today, so -25 is 24 days ago
+                    
+                    # 1. Kinetic Frozen (Shifted T-25 for prediction comparison)
+                    lag_idx = -25
                     if len(mech_t.kin_density) >= 25:
-                        f_kin.append(round(float(mech_t.kin_density.iloc[lag_idx]), 2))
+                        val_kin = round(float(mech_t.kin_density.iloc[lag_idx]), 2)
                     else:
-                        f_kin.append(0.0)
-                    f_pot.append(round(float(mech_t.pot_density.iloc[-1]), 2))
+                        val_kin = 0.0
+                    f_kin.append(val_kin)
+                    
+                    # 2. Potential Frozen (Current T)
+                    val_pot = round(float(mech_t.pot_density.iloc[-1]), 2)
+                    f_pot.append(val_pot)
+                    
+                    # 3. [NEW] Frozen Sum Index (Sum of Current Kin & Current Pot)
+                    # We use Current Kin (iloc[-1]) for this index, not the shifted one
+                    curr_kin_raw = float(mech_t.kin_density.iloc[-1])
+                    curr_pot_raw = float(mech_t.pot_density.iloc[-1])
+                    val_sum = curr_kin_raw + curr_pot_raw
+                    f_sum.append(val_sum)
+                    
                     f_dates.append(px.index[t].strftime('%Y-%m-%d'))
                 except:
                     continue
             
+            # [NEW] Normalize Frozen Sum Index (Rolling Z-Score 252)
+            f_sum_series = pd.Series(f_sum)
+            roll_fsum_mean = f_sum_series.rolling(window=252, min_periods=20).mean()
+            roll_fsum_std = f_sum_series.rolling(window=252, min_periods=20).std()
+            z_frozen_sum = ((f_sum_series - roll_fsum_mean) / (roll_fsum_std + 1e-6)).fillna(0).tolist()
+            
+            # Round for JSON
+            z_frozen_sum = [round(x, 2) for x in z_frozen_sum]
+            
             full_frozen_data = {
                 "dates": f_dates,
                 "kin": f_kin,
-                "pot": f_pot
+                "pot": f_pot,
+                "z_sum": z_frozen_sum
             }
             
             # Salva tutto in cache
@@ -235,7 +291,10 @@ async def analyze_stock(req: AnalysisRequest):
             # Filtro rapido liste (date frozen sono già sorted)
             trunc_dates = []
             trunc_kin = []
+            trunc_dates = []
+            trunc_kin = []
             trunc_pot = []
+            trunc_z_sum = []
             
             # Ottimizzazione: bisect o semplice loop finché <= date
             # Dato che sono stringhe YYYY-MM-DD, confronto lessicografico funziona
@@ -244,12 +303,14 @@ async def analyze_stock(req: AnalysisRequest):
                     trunc_dates.append(d)
                     trunc_kin.append(full_frozen_data["kin"][i])
                     trunc_pot.append(full_frozen_data["pot"][i])
+                    trunc_z_sum.append(full_frozen_data["z_sum"][i])
                 else:
                     break # Stop appena superiamo la data
             
             frozen_dates = trunc_dates
             frozen_z_kin = trunc_kin
             frozen_z_pot = trunc_pot
+            frozen_z_sum = trunc_z_sum
             
             print(f"🕐 Simulating past: data truncated to {req.end_date}")
         else:
@@ -257,6 +318,7 @@ async def analyze_stock(req: AnalysisRequest):
             frozen_dates = full_frozen_data["dates"]
             frozen_z_kin = full_frozen_data["kin"]
             frozen_z_pot = full_frozen_data["pot"]
+            frozen_z_sum = full_frozen_data["z_sum"]
         
         # Prepare ZigZag List
         zigzag_line = zigzag_series.values.tolist() if zigzag_series is not None else []
@@ -410,7 +472,10 @@ async def analyze_stock(req: AnalysisRequest):
             "frozen": {
                 "dates": frozen_dates,
                 "z_kinetic": frozen_z_kin,
-                "z_potential": frozen_z_pot
+                "dates": frozen_dates,
+                "z_kinetic": frozen_z_kin,
+                "z_potential": frozen_z_pot,
+                "z_sum": frozen_z_sum
             }
         }
 

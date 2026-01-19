@@ -236,6 +236,31 @@ function renderCharts(data) {
         yaxis: 'y6'
     };
 
+    // --- KINETIC Z TRACE (New Request) ---
+    const traceKineticZ = {
+        x: data.dates,
+        y: data.energy.z_kinetic || [],
+        name: 'Kinetic Z (Normalized)',
+        type: 'scatter',
+        mode: 'lines',
+        fill: 'tozeroy', // Optional: fill to zero like others, or just line
+        line: { color: '#bf00ff', width: 2 }, // Neon Purple
+        xaxis: 'x',
+        yaxis: 'y9'
+    };
+
+    // --- FROZEN SUM TRACE (Cyan) ---
+    const traceFrozenSum = {
+        x: data.frozen?.dates || [],
+        y: data.frozen?.z_sum || [],
+        name: 'Frozen Sum Z',
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: '#00e5ff', width: 2, dash: 'solid' }, // Cyan
+        xaxis: 'x',
+        yaxis: 'y9'
+    };
+
     // --- TRACCE INDICATORI (Sotto - Dual Axis) ---
     const traceSlope = {
         x: data.dates,
@@ -328,6 +353,7 @@ function renderCharts(data) {
     const showIndicators = document.getElementById('show-indicators')?.checked ?? true;
     const showZigZag = document.getElementById('show-zigzag')?.checked ?? true;
     const showVolume = document.getElementById('show-volume')?.checked ?? false;
+    const showKineticZ = document.getElementById('show-kinetic-z')?.checked ?? false;
     // showBacktest is already defined above
 
     // --- DYNAMIC DOMAIN CALCULATION ---
@@ -338,6 +364,7 @@ function renderCharts(data) {
     if (showFrozen) visiblePanels.push('frozen');
     if (showZigZag && data.indicators?.zigzag) visiblePanels.push('zigzag');
     if (showIndicators) visiblePanels.push('indicators');
+    if (showKineticZ) visiblePanels.push('kineticz');
     if (showBacktest) visiblePanels.push('backtest');
 
     const panelCount = visiblePanels.length;
@@ -370,7 +397,8 @@ function renderCharts(data) {
         xaxis: {
             anchor: 'y',
             domain: [0, 1],
-            gridcolor: '#333'
+            gridcolor: '#333',
+            hoverformat: '%d/%m/%Y' // [NEW] Numeric date format (DD/MM/YYYY)
         },
 
         // --- Configurazione Assi Y (Dynamic Domains) ---
@@ -424,6 +452,13 @@ function renderCharts(data) {
             title: showBacktest ? 'P/L %' : '',
             tickfont: { color: '#00ff88' },
             visible: showBacktest
+        },
+        yaxis9: { // KINETIC Z PANEL
+            domain: domains.kineticz || defaultDomain,
+            gridcolor: '#333333',
+            title: showKineticZ ? 'Kinetic Z' : '',
+            tickfont: { color: '#bf00ff' },
+            visible: showKineticZ
         },
         yaxis8: {
             // Volume Axis (Overlay on Price)
@@ -498,6 +533,11 @@ function renderCharts(data) {
     // Backtest / Strategy traces
     if (traceBacktest) traces.push(traceBacktest);
     if (traceFrozenStrat) traces.push(traceFrozenStrat);
+
+    // Kinetic Z Trace
+    if (showKineticZ) {
+        traces.push(traceKineticZ, traceFrozenSum);
+    }
 
     // ZigZag Indicator Trace
     if (showZigZag && data.indicators && data.indicators.zigzag) {
@@ -2090,7 +2130,7 @@ function applyScanFilters() {
 
 // --- CHART VISIBILITY TOGGLE LISTENERS ---
 // Re-render chart when toggles change (uses cached data)
-['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag', 'show-backtest'].forEach(id => {
+['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag', 'show-backtest', 'show-volume', 'show-kinetic-z'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
         el.addEventListener('change', (e) => {
@@ -2275,4 +2315,9 @@ function setupChartClickHandler() {
 // Initialize annotations when page loads
 document.addEventListener('DOMContentLoaded', () => {
     loadAnnotations();
+
+    // Add listener for new Kinetic Z toggle
+    document.getElementById('show-kinetic-z')?.addEventListener('change', () => {
+        if (currentAnalysisData) renderCharts(currentAnalysisData);
+    });
 });
