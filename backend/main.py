@@ -551,19 +551,22 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
         # Determine date range
         all_dates = full_px.index.tolist()
         start_idx = 252 * 2  # Start after 2 years of data for Z-Score
-        step_every = 5  # Check every 5 days to speed up
+        step_every = 1  # Check EVERY day for maximum precision
         
         # Track trades across time
-        trade_history = {}  # entry_date -> {first_seen_data, changes: []}
+        trade_history = {}  # entry_date -> {first_seen_data, changes: [], disappeared: False}
         corrupted_trades = []
         
+        print(f"⏳ Inizio simulazione integrità ({len(all_dates) - start_idx} passi)...")
+        
         for end_idx in range(start_idx, len(all_dates), step_every):
-            end_date = all_dates[end_idx].strftime('%Y-%m-%d')
+            end_date_obj = all_dates[end_idx]
+            end_date_str = end_date_obj.strftime('%Y-%m-%d')
             
             # Simulate analysis at this point in time
             truncated_px = full_px.iloc[:end_idx+1]
             
-            # Calculate path and Z-scores
+            # Calculate path and Z-scores FRESH at every step to capture detailed look-ahead bias
             path = ActionPath(alpha=req.alpha, beta=req.beta)
             path.calculate(truncated_px)
             
@@ -588,7 +591,6 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                 threshold = 0.0
                 use_z_roc = True
             else:  # SUM
-                # Simplified SUM calculation
                 z_sum = (z_kin_series + z_pot_series).tolist()
                 z_signal = z_sum
                 threshold = -0.3
@@ -604,36 +606,61 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
             )
             
             current_trades = backtest_result['trades']
+            current_trade_dates = set()
             
             # Compare with previously seen trades
             for trade in current_trades:
                 entry_date = trade['entry_date']
+                current_trade_dates.add(entry_date)
                 
                 if entry_date not in trade_history:
                     # First time seeing this trade - store it
                     trade_history[entry_date] = {
                         'first_seen': trade.copy(),
-                        'first_seen_at': end_date,
-                        'changes': []
+                        'first_seen_at': end_date_str,
+                        'changes': [],
+                        'disappeared': False
                     }
                 else:
                     # Already seen - check for changes
-                    original = trade_history[entry_date]['first_seen']
+                    record = trade_history[entry_date]
+                    original = record['first_seen']
                     changes = []
                     
                     if original['direction'] != trade['direction']:
                         changes.append(f"Dir: {original['direction']}→{trade['direction']}")
                     
                     # Only flag exit_date change if original was not OPEN
+                    # OPEN -> Date is normal closure. Date -> Date is retroactive change.
                     if original['exit_date'] != trade['exit_date'] and original['exit_date'] != 'OPEN':
                         changes.append(f"Exit: {original['exit_date']}→{trade['exit_date']}")
                     
                     if abs(original['entry_price'] - trade['entry_price']) > 0.01:
                         changes.append(f"Price: {original['entry_price']}→{trade['entry_price']}")
-                    
+
+                    # If it was marked disappeared but is back now (flickering), flag it
+                    if record['disappeared']:
+                         changes.append(f"RE-APPEARED")
+                         record['disappeared'] = False
+
                     if changes:
-                        trade_history[entry_date]['changes'].extend(changes)
-        
+                        # Append unique changes only
+                        for c in changes:
+                            if c not in record['changes']:
+                                record['changes'].append(c)
+            
+            # CHECK FOR DISAPPEARED TRADES
+            # Rules: Trade exists in history, is NOT in current_trades, and its entry_date is <= current sim date
+            for hist_entry_date, record in trade_history.items():
+                if hist_entry_date not in current_trade_dates:
+                    # Trade is missing from current simulation
+                    # Ensure we are simulating a time AFTER the trade should have started
+                    if hist_entry_date <= end_date_str:
+                         if not record['disappeared']:
+                             record['disappeared'] = True
+                             if "❌ DISSOLTO" not in record['changes']:
+                                 record['changes'].append("❌ DISSOLTO")
+
         # Collect corrupted trades
         for entry_date, data in trade_history.items():
             if data['changes']:
@@ -641,7 +668,7 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                     'entry_date': entry_date,
                     'original': data['first_seen'],
                     'first_seen_at': data['first_seen_at'],
-                    'changes': list(set(data['changes']))  # Unique changes
+                    'changes': list(set(data['changes']))
                 })
         
         # Sort by entry date
