@@ -604,14 +604,25 @@ function renderCharts(data) {
                 </div>`;
         }
 
+        if (frozenSumStats) {
+            html += `
+                <div style="color: #ff4444;">
+                    <strong>🔴 SUM Strat:</strong> 
+                    Trades: ${frozenSumStats.total_trades} | 
+                    Win: ${frozenSumStats.win_rate}% | 
+                    Return: ${frozenSumStats.total_return}%
+                </div>`;
+        }
+
         statsDiv.innerHTML = html || 'No Stats Available';
     }
 
     // Store trades globally and show button
     window.TRADES_LIVE = (data.backtest && data.backtest.trades) ? data.backtest.trades : [];
     window.TRADES_FROZEN = (data.frozen_strategy && data.frozen_strategy.trades) ? data.frozen_strategy.trades : [];
+    window.TRADES_SUM = (data.frozen_sum_strategy && data.frozen_sum_strategy.trades) ? data.frozen_sum_strategy.trades : [];
 
-    if (window.TRADES_LIVE.length > 0 || window.TRADES_FROZEN.length > 0) {
+    if (window.TRADES_LIVE.length > 0 || window.TRADES_FROZEN.length > 0 || window.TRADES_SUM.length > 0) {
         const btnTrades = document.getElementById('btn-view-trades');
         if (btnTrades) btnTrades.style.display = 'block';
     } else {
@@ -638,12 +649,19 @@ function switchTradesView(mode) {
     const btnFrozen = document.getElementById('btn-trades-frozen');
 
     if (btnLive && btnFrozen) {
+        // Reset all to inactive
+        btnLive.style.background = 'transparent'; btnLive.style.color = '#888'; btnLive.style.border = 'none';
+        btnFrozen.style.background = 'transparent'; btnFrozen.style.color = '#888'; btnFrozen.style.border = 'none';
+        const btnSum = document.getElementById('btn-trades-sum');
+        if (btnSum) { btnSum.style.background = 'transparent'; btnSum.style.color = '#888'; btnSum.style.border = 'none'; }
+
+        // Activate selected
         if (mode === 'LIVE') {
-            btnLive.style.background = '#00ff88'; btnLive.style.color = '#000'; btnLive.style.border = 'none';
-            btnFrozen.style.background = 'transparent'; btnFrozen.style.color = '#888'; btnFrozen.style.border = 'none';
-        } else {
-            btnLive.style.background = 'transparent'; btnLive.style.color = '#888'; btnLive.style.border = 'none';
-            btnFrozen.style.background = '#ff9900'; btnFrozen.style.color = '#000'; btnFrozen.style.border = 'none';
+            btnLive.style.background = '#00ff88'; btnLive.style.color = '#000';
+        } else if (mode === 'FROZEN') {
+            btnFrozen.style.background = '#ff9900'; btnFrozen.style.color = '#000';
+        } else if (mode === 'SUM' && btnSum) {
+            btnSum.style.background = '#ff4444'; btnSum.style.color = '#fff';
         }
     }
 
@@ -660,7 +678,14 @@ function openTradesModal() {
 
 function renderTradesList() {
     const listDiv = document.getElementById('trades-list');
-    const trades = (window.CURRENT_TRADES_VIEW === 'LIVE') ? window.TRADES_LIVE : window.TRADES_FROZEN;
+    let trades;
+    if (window.CURRENT_TRADES_VIEW === 'LIVE') {
+        trades = window.TRADES_LIVE;
+    } else if (window.CURRENT_TRADES_VIEW === 'FROZEN') {
+        trades = window.TRADES_FROZEN;
+    } else {
+        trades = window.TRADES_SUM;
+    }
 
     if (!trades || trades.length === 0) {
         listDiv.innerHTML = '<p style="color: #888; text-align: center; margin-top: 20px;">Nessuna operazione disponibile per questa strategia.</p>';
