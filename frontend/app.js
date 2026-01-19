@@ -725,8 +725,24 @@ function renderTradesList() {
         const pnlSign = t.pnl_pct >= 0 ? '+' : '';
         const typeEmoji = t.direction === 'LONG' ? '🟢' : '🔴';
 
-        html += `<tr style="${rowStyle}">
-            <td style="padding: 8px; color: #aaa;">${t.entry_date}<br><small>→ ${exitDateDisplay}</small></td>
+        // Snapshot Warning: Detect if trade data changed retroactively
+        // This happens when Z-values recalculated with new data differ from entry snapshot
+        let snapshotWarning = '';
+        let rowWarningStyle = '';
+        if (t.entry_z_value !== undefined && t.entry_z_roc !== undefined) {
+            // Check if this is a Frozen/SUM strategy (has Z-ROC based direction)
+            // Direction would flip if Z-ROC sign changed
+            const expectedDir = t.entry_z_roc >= 0 ? 'LONG' : 'SHORT';
+            if (expectedDir !== t.direction) {
+                snapshotWarning = '<span style="color:#ff4444; font-size:0.75em; display:block;">⚠️ DATI MODIFICATI</span>';
+                rowWarningStyle = 'background: rgba(255,68,68,0.15); border-left: 3px solid #ff4444;';
+            }
+        }
+
+        const finalRowStyle = isOpen ? rowStyle : (rowWarningStyle || rowStyle);
+
+        html += `<tr style="${finalRowStyle}">
+            <td style="padding: 8px; color: #aaa;">${t.entry_date}${snapshotWarning}<br><small>→ ${exitDateDisplay}</small></td>
             <td style="padding: 8px; text-align: center;">${typeEmoji} ${t.direction}</td>
             <td style="padding: 8px; text-align: right; color: #ccc;">${t.entry_price}</td>
             <td style="padding: 8px; text-align: right; color: #ccc;">${exitPriceDisplay}</td>

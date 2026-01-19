@@ -572,12 +572,15 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                 entry_price = price
                 entry_date = date
                 # Direction: Z-ROC for Frozen/SUM, z_slope for LIVE
+                z_prev = z_kinetic[i-1] if i > 0 and z_kinetic[i-1] is not None else 0
+                z_roc = z_kin - z_prev
                 if use_z_roc:
-                    z_prev = z_kinetic[i-1] if i > 0 and z_kinetic[i-1] is not None else 0
-                    z_roc = z_kin - z_prev
                     position_direction = 'LONG' if z_roc >= 0 else 'SHORT'
                 else:
                     position_direction = 'LONG' if z_sl > 0 else 'SHORT'
+                # Snapshot: save decision data at entry time
+                entry_z_snapshot = round(z_kin, 4)
+                entry_z_roc_snapshot = round(z_roc, 4)
                 trade_pnl_curve.append(0)
             else:
                 trade_pnl_curve.append(0)
@@ -606,7 +609,10 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                     "entry_price": round(entry_price, 2),
                     "exit_price": round(price, 2),
                     "pnl_pct": round(pnl_pct, 2),
-                    "capital_after": round(capital, 2)
+                    "capital_after": round(capital, 2),
+                    # Snapshot data for detecting retroactive changes
+                    "entry_z_value": entry_z_snapshot,
+                    "entry_z_roc": entry_z_roc_snapshot
                 })
                 
                 in_position = False
