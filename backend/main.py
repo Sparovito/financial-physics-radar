@@ -540,9 +540,24 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
         
         print(f"🔍 Verifica integrità per {req.ticker} - Strategia: {req.strategy}")
         
-        # Get full cached data
-        if req.ticker not in TICKER_CACHE:
-            md = MarketData(req.ticker)
+        # Get full cached data or fetch if missing/insufficient
+        force_reload = False
+        if req.ticker in TICKER_CACHE:
+            cached_obj = TICKER_CACHE[req.ticker]
+            if isinstance(cached_obj, dict):
+                measure_px = cached_obj["px"]
+            else:
+                measure_px = cached_obj
+            
+            # Check sufficiency (need > 504 for loop to start + margin)
+            if len(measure_px) < 550:
+                print(f"⚠️ Dati in cache insufficienti per verifica ({len(measure_px)} pti). Ricarico...")
+                force_reload = True
+        
+        if req.ticker not in TICKER_CACHE or force_reload:
+            # Scarica almeno 5 anni per avere margine ampio
+            start_date_long = (datetime.now() - timedelta(days=365*5)).strftime('%Y-%m-%d')
+            md = MarketData(req.ticker, start_date=start_date_long)
             px = md.fetch()
             # Initialize cache with dictionary structure matching main logic
             TICKER_CACHE[req.ticker] = {"px": px}
