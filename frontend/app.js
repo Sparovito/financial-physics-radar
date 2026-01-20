@@ -735,7 +735,7 @@ function openTradesModal() {
 }
 
 // Global storage for ORIGINAL trades (baseline - saved once, never overwritten)
-window.ORIGINAL_TRADES = window.ORIGINAL_TRADES || { LIVE: null, FROZEN: null, SUM: null };
+window.ORIGINAL_TRADES = window.ORIGINAL_TRADES || { LIVE: null, FROZEN: null, SUM: null, MA: null };
 
 function renderTradesList() {
     const listDiv = document.getElementById('trades-list');
