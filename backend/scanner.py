@@ -46,6 +46,7 @@ def run_market_scan(send_email=True):
             
             frozen_trades = result.get("frozen_strategy", {}).get("trades", [])
             sum_trades = result.get("frozen_sum_strategy", {}).get("trades", [])
+            ma_trades = result.get("frozen_min_action_strategy", {}).get("trades", [])
             
             # Helper date diff
             def get_days_diff(date_str):
@@ -100,6 +101,7 @@ def run_market_scan(send_email=True):
             # Esegui check
             check_signals(frozen_trades, "Frozen")
             check_signals(sum_trades, "Sum")
+            check_signals(ma_trades, "MA")
 
         except Exception as e:
             continue
