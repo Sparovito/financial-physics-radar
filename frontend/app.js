@@ -1931,9 +1931,11 @@ async function startBulkScan() {
     let totalLiveRet = 0;
     let totalFrozenRet = 0;
     let totalSumRet = 0;
+    let totalMaRet = 0;
     let totalWinLive = 0;
     let totalWinFrozen = 0;
     let totalWinSum = 0;
+    let totalWinMa = 0;
     let countStats = 0;
 
     // Global Trade Accumulator for Portfolio Simulator
@@ -2019,6 +2021,7 @@ async function startBulkScan() {
             const liveStats = data.backtest?.stats;
             const frozenStats = data.frozen_strategy?.stats;
             const sumStats = data.frozen_sum_strategy?.stats;
+            const maStats = data.frozen_min_action_strategy?.stats;
 
             if (liveStats && frozenStats) {
                 totalLiveRet += liveStats.total_return;
@@ -2029,12 +2032,18 @@ async function startBulkScan() {
                     totalSumRet += sumStats.total_return;
                     totalWinSum += sumStats.win_rate;
                 }
+                if (maStats) {
+                    totalMaRet += maStats.total_return;
+                    totalWinMa += maStats.win_rate;
+                }
                 countStats++;
 
                 const liveRet = liveStats.total_return;
                 const frozenRet = frozenStats.total_return;
                 const sumRet = sumStats ? sumStats.total_return : 0;
                 const sumWin = sumStats ? sumStats.win_rate : 0;
+                const maRet = maStats ? maStats.total_return : 0;
+                const maWin = maStats ? maStats.win_rate : 0;
                 const delta = (liveRet - frozenRet).toFixed(2);
                 const deltaColor = parseFloat(delta) > 20 ? '#ff4444' : (parseFloat(delta) < -5 ? '#00ff88' : '#888');
 
@@ -2053,6 +2062,8 @@ async function startBulkScan() {
                         <td style="color:${frozenRet > 0 ? '#ff9900' : '#ff4444'}">${frozenRet}%</td>
                         <td style="color:${sumWin >= 50 ? '#ff4444' : '#888'}">${sumWin}%</td>
                         <td style="color:${sumRet > 0 ? '#ff4444' : '#888'}">${sumRet}%</td>
+                        <td style="color:${maWin >= 50 ? '#00aaff' : '#888'}">${maWin}%</td>
+                        <td style="color:${maRet > 0 ? '#00aaff' : '#888'}">${maRet}%</td>
                         <td style="color:${deltaColor}; font-weight:bold;">${delta}%</td>
                         <td>
                             <button onclick="loadTickerFromScan('${ticker}')" style="background:#333; color:#fff; border:none; padding:4px 8px; cursor:pointer; font-size:0.8em; border-radius:4px;">🔍 Vedi</button>
@@ -2072,9 +2083,11 @@ async function startBulkScan() {
         const avgLiveRet = (totalLiveRet / countStats).toFixed(2);
         const avgFrozenRet = (totalFrozenRet / countStats).toFixed(2);
         const avgSumRet = (totalSumRet / countStats).toFixed(2);
+        const avgMaRet = (totalMaRet / countStats).toFixed(2);
         const avgWinLive = (totalWinLive / countStats).toFixed(1);
         const avgWinFrozen = (totalWinFrozen / countStats).toFixed(1);
         const avgWinSum = (totalWinSum / countStats).toFixed(1);
+        const avgWinMa = (totalWinMa / countStats).toFixed(1);
         const avgDelta = (avgLiveRet - avgFrozenRet).toFixed(2);
 
         const statsRow = `
@@ -2087,6 +2100,8 @@ async function startBulkScan() {
                 <td style="color:${avgFrozenRet > 0 ? '#ff9900' : '#ff4444'}">${avgFrozenRet}%</td>
                 <td style="color:${avgWinSum >= 50 ? '#ff4444' : '#bbb'}">${avgWinSum}%</td>
                 <td style="color:${avgSumRet > 0 ? '#ff4444' : '#888'}">${avgSumRet}%</td>
+                <td style="color:${avgWinMa >= 50 ? '#00aaff' : '#bbb'}">${avgWinMa}%</td>
+                <td style="color:${avgMaRet > 0 ? '#00aaff' : '#888'}">${avgMaRet}%</td>
                 <td style="color:#eba834;">${avgDelta}%</td>
                 <td>
                     <button onclick="openSimulatorModal()" style="background:#00ff88; color:#000; font-weight:bold; border:none; padding:6px 10px; cursor:pointer; border-radius:4px; box-shadow:0 2px 5px rgba(0,0,0,0.5);">
