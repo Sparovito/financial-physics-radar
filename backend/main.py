@@ -710,10 +710,16 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
             if not z_signal:
                  continue # Skip if no signal generated yet
             
+            # Calculate slope consistently for all strategies
+            # Z-ROC requires slope of the signal being traded
+            z_signal_series = pd.Series(z_signal)
+            z_slope_series = z_signal_series.diff(5) / 5
+            z_slope_list = z_slope_series.fillna(0).tolist()
+
             backtest_result = backtest_strategy(
                 prices=price_real,
                 z_kinetic=z_signal,
-                z_slope=z_slope_series.tolist(),
+                z_slope=z_slope_list,
                 dates=dates_historical,
                 threshold=threshold,
                 use_z_roc=use_z_roc
