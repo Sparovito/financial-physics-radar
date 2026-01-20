@@ -413,7 +413,9 @@ class MarketScanner:
             SAMPLE_EVERY = 1  # Every day for accuracy
             
             frozen_pot_raw = []
+            frozen_pot_raw = []
             frozen_dates_raw = []
+            frozen_ma_price_raw = [] # [NEW] Store Min Action Prices
             
             # Build point-in-time series (no look-ahead bias)
             n_total = len(px)
@@ -423,6 +425,8 @@ class MarketScanner:
                     mech_t = ActionPath(px_t, alpha=200, beta=1.0)
                     frozen_pot_raw.append(float(mech_t.pot_density.iloc[-1]))
                     frozen_dates_raw.append(px.index[t].strftime('%Y-%m-%d'))
+                    # [NEW] Capture Point-in-Time Min Action Price
+                    frozen_ma_price_raw.append(float(mech_t.px_star.iloc[-1]))
                 except:
                     continue
             
@@ -430,6 +434,7 @@ class MarketScanner:
             padding_size = len(hist_price) - len(frozen_pot_raw)
             aligned_frozen_pot = [0] * padding_size + frozen_pot_raw
             aligned_frozen_dates = [None] * padding_size + frozen_dates_raw
+            aligned_frozen_ma_price = [0] * padding_size + frozen_ma_price_raw
             
             # Calculate Rolling Z-Score on aligned frozen potential
             frozen_pot_series = pd.Series(aligned_frozen_pot).fillna(0)
@@ -493,7 +498,22 @@ class MarketScanner:
                  threshold=-0.3,
                  use_z_roc=True  # Direzione basata su Z-ROC (causale)
             )
-            sum_pnl_curve = strat_sum_res['trade_pnl_curve'] 
+            sum_pnl_curve = strat_sum_res['trade_pnl_curve']
+            
+            # === [NEW] MIN ACTION STRATEGY (Green Line) ===
+            # Trigger: Sum Z < -0.3 (Same as SUM)
+            # Direction: Price > MinActionCurve -> LONG, Price < MinActionCurve -> SHORT
+            
+            strat_ma_res = backtest_strategy(
+                 prices=hist_price,
+                 z_kinetic=z_sum_for_backtest, # Trigger based on Sum Z
+                 z_slope=hist_z_slope,
+                 dates=hist_dates,
+                 threshold=-0.3, # Trigger threshold
+                 trend_curve=aligned_frozen_ma_price, # Pass Point-in-Time Min Action Curve
+                 trend_mode='PRICE_VS_CURVE' # New mode
+            )
+            ma_pnl_curve = strat_ma_res['trade_pnl_curve']
 
             return {
                 "ticker": ticker,
@@ -513,7 +533,8 @@ class MarketScanner:
                     "prices": [round(x, 2) if x is not None else None for x in hist_price],
                     "z_kin_frozen": [round(x, 2) if x is not None else None for x in hist_z_pot], # Legacy name mapping
                     "strategy_pnl": frozen_pnl_curve, # The "Orange Line" content (Cumulative)
-                    "sum_pnl": sum_pnl_curve  # The "SUM Red Line" (Threshold=-0.3)
+                    "sum_pnl": sum_pnl_curve,  # The "SUM Red Line" (Threshold=-0.3)
+                    "ma_pnl": ma_pnl_curve # The "Min Action Green Line"
                 }
             }
             
@@ -524,12 +545,14 @@ class MarketScanner:
             return None
 
 # --- 5. Backtesting Strategy ---
-def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list, initial_capital=1000.0, start_date=None, end_date=None, threshold=0.0, use_z_roc=False):
+def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list, initial_capital=1000.0, start_date=None, end_date=None, threshold=0.0, use_z_roc=False, trend_curve=None, trend_mode=None):
     """
     Esegue il backtest della strategia basata su Z-Scores.
     Filtra le operazioni in base a start_date e end_date.
     threshold: soglia per entry/exit (default 0).
     use_z_roc: se True, usa Z-ROC per direzione (Frozen/SUM). Se False, usa z_slope (LIVE).
+    trend_curve: array opzionale per confronto trend (es. Min Action Curve).
+    trend_mode: 'PRICE_VS_CURVE' per attivare logica comparativa.
     """
     capital = initial_capital
     in_position = False
@@ -585,7 +608,18 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                 z_prev = z_kinetic[i-1] if i > 0 and z_kinetic[i-1] is not None else 0
                 z_roc = z_kin - z_prev
                 if use_z_roc:
-                    position_direction = 'LONG' if z_roc >= 0 else 'SHORT'
+                    if trend_mode == 'PRICE_VS_CURVE' and trend_curve:
+                        # [NEW] Min Action Strategy Direction
+                        # If Price > Curve -> LONG, Else SHORT
+                        # Find valid index, handle padding
+                        t_val = trend_curve[i]
+                        p_val = price
+                        if t_val and p_val > t_val:
+                             position_direction = 'LONG'
+                        else:
+                             position_direction = 'SHORT'
+                    else:
+                        position_direction = 'LONG' if z_roc >= 0 else 'SHORT'
                 else:
                     position_direction = 'LONG' if z_sl > 0 else 'SHORT'
                 # Snapshot: save decision data at entry time
