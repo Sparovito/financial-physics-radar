@@ -552,10 +552,10 @@ function renderCharts(data) {
     if (traceFrozenSumStrat) traces.push(traceFrozenSumStrat);
 
     // [NEW] Min Action Strategy Trace (Blue)
-    if (showBacktest && data.frozen_min_action_strategy && data.frozen_min_action_strategy.pnl_curve) {
+    if (showBacktest && data.frozen_min_action_strategy && data.frozen_min_action_strategy.equity_curve) {
         const traceMaStrat = {
             x: data.dates,
-            y: data.frozen_min_action_strategy.pnl_curve,
+            y: data.frozen_min_action_strategy.equity_curve,
             name: '🔵 Min Action Strat',
             type: 'scatter',
             mode: 'lines',
