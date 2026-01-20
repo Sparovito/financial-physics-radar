@@ -745,8 +745,12 @@ function renderTradesList() {
         trades = window.TRADES_LIVE;
     } else if (viewMode === 'FROZEN') {
         trades = window.TRADES_FROZEN;
-    } else {
+    } else if (viewMode === 'SUM') {
         trades = window.TRADES_SUM;
+    } else if (viewMode === 'MA') {
+        trades = window.TRADES_MA;
+    } else {
+        trades = [];
     }
 
     if (!trades || trades.length === 0) {
