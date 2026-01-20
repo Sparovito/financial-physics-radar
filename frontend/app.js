@@ -552,7 +552,7 @@ function renderCharts(data) {
     if (traceFrozenSumStrat) traces.push(traceFrozenSumStrat);
 
     // [NEW] Min Action Strategy Trace (Blue)
-    if (data.frozen_min_action_strategy && data.frozen_min_action_strategy.pnl_curve) {
+    if (showBacktest && data.frozen_min_action_strategy && data.frozen_min_action_strategy.pnl_curve) {
         const traceMaStrat = {
             x: data.dates,
             y: data.frozen_min_action_strategy.pnl_curve,
@@ -561,7 +561,7 @@ function renderCharts(data) {
             mode: 'lines',
             line: { color: '#00aaff', width: 2 }, // Bright Blue
             opacity: 0.9,
-            yaxis: 'y2'
+            yaxis: 'y5' // P/L Panel (same as other strategies)
         };
         traces.push(traceMaStrat);
     }
