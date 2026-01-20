@@ -689,49 +689,31 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                         # No frozen data available yet at this time
                         z_signal = []
                     else:
-                        trunc_raw_sum = full_raw_sum[:cut_idx]
-                        # [FIX] Define trunc_dates for later alignment
+                        # [FIX] FROZEN strategy uses POTENTIAL (not Sum), and aligns BEFORE Z-Score
+                        # This matches analyze_stock logic for the "Frozen" tab (Strategy 2)
+                        trunc_pot_raw = full_frozen_data["pot"][:cut_idx]
                         trunc_dates = full_frozen_dates[:cut_idx]
                         
-                        # Apply Rolling Z-Score (Normalization)
-                        s_sum = pd.Series(trunc_raw_sum)
-                        roll_mean = s_sum.rolling(window=252, min_periods=20).mean()
-                        roll_std = s_sum.rolling(window=252, min_periods=20).std()
-                        z_frozen_raw = ((s_sum - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
-                        
-                        # Apply Filter (Butterworth)
-                        try:
-                            from scipy.signal import butter, filtfilt
-                            b, a = butter(N=2, Wn=0.05, btype='low')
-                            # filtfilt requires minimal length (padlen)
-                            if len(z_frozen_raw) > 15:
-                                z_frozen_sum_filtered = filtfilt(b, a, z_frozen_raw).tolist()
-                                z_signal_short = z_frozen_sum_filtered
-                            else:
-                                z_signal_short = z_frozen_raw
-                        except:
-                             z_signal_short = z_frozen_raw
-                             
-                        # [CRITICAL] ALIGNMENT & PADDING
-                        # z_signal_short corresponds to trunc_dates (which starts at MIN_POINTS)
-                        # We must align it to truncated_px (which starts at 0) to avoid IndexError and Time Shift
-                        
-                        # Create Series map: Date(str) -> Value
-                        # trunc_dates are strings from cache
-                        z_series_map = pd.Series(z_signal_short, index=trunc_dates)
-                        
-                        # Target keys: valid string dates from price index
+                        # ALIGNMENT First (Raw Pot to Truncated Prices)
+                        # Create Series map: Date(str) -> Raw Value
+                        pot_map = pd.Series(trunc_pot_raw, index=trunc_dates)
                         target_keys = [d.strftime('%Y-%m-%d') for d in truncated_px.index]
                         
-                        # Reindex (pads missing dates with NaN -> fillna 0)
-                        z_signal = z_series_map.reindex(target_keys).fillna(0).tolist()
+                        # Reindex fills with 0 (assuming Pot=0 for missing data)
+                        aligned_pot = pot_map.reindex(target_keys).fillna(0)
                         
+                        # Apply Rolling Z-Score ON ALIGNED DATA (Matches analyze_stock)
+                        roll_mean = aligned_pot.rolling(window=252, min_periods=20).mean()
+                        roll_std = aligned_pot.rolling(window=252, min_periods=20).std()
+                        # Use z_signal directly from potential z-score
+                        z_signal = ((aligned_pot - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
+
                 else:
-                    # Fallback if cache missing raw_sum (should trigger reload in analyze, but here we defend)
+                    # Fallback if cache missing
                     z_signal = []
                 
                 threshold = 0.0
-                use_z_roc = True # Frozen uses Z-ROC logic
+                use_z_roc = True
                 
                 
             else:  # SUM
