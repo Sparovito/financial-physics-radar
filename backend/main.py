@@ -842,32 +842,43 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                     # Trade is missing from current simulation
                     # Ensure we are simulating a time AFTER the trade should have started
                     if hist_entry_date <= end_date_str:
-                         if not record['disappeared']:
-                             record['disappeared'] = True
-                             
-                             status_msg = "❌ DISSOLTO"
-                             
-                             # [NEW] Check logic:
-                             # 1. Exact Match in Skipped
-                             if hist_entry_date in skipped_trade_dates:
-                                 status_msg = "⚠️ BLOCCATO (POS. APERTA)"
-                             
-                             # 2. Fuzzy Match (Proximity Check)
-                             # If exact match failed, check if it just shifted a few days and got blocked
-                             elif hist_entry_date in date_to_idx and skipped_trade_indices:
-                                 hist_idx = date_to_idx[hist_entry_date]
-                                 # Check +/- 3 days
-                                 found_fuzzy = False
-                                 for offset in range(-3, 4):
-                                     if (hist_idx + offset) in skipped_trade_indices:
-                                         found_fuzzy = True
-                                         break
-                                 
-                                 if found_fuzzy:
-                                     status_msg = "⚠️ BLOCCATO (Slittato)"
-                                 
-                             if status_msg not in record['changes']:
-                                 record['changes'].append(status_msg)
+                         
+                         # [NEW LOGIC] Check if it was skipped due to position already open
+                         # If it matches exact or fuzzy, it means the SIGNAL IS VALID but blocked.
+                         # In this case, we treat it as "Not Disappeared" (Hide it from error list).
+                         is_blocked = False
+                         
+                         # 1. Exact Match
+                         if hist_entry_date in skipped_trade_dates:
+                             is_blocked = True
+                         
+                         # 2. Fuzzy Match
+                         elif hist_entry_date in date_to_idx and skipped_trade_indices:
+                             hist_idx = date_to_idx[hist_entry_date]
+                             for offset in range(-3, 4):
+                                 if (hist_idx + offset) in skipped_trade_indices:
+                                     is_blocked = True
+                                     break
+                         
+                         if is_blocked:
+                             # It's a valid signal blocked by position. 
+                             # User doesn't want to see "Ghosts". So we consider it NOT disappeared.
+                             # If it was previously marked disappeared, clear it.
+                             record['disappeared'] = False
+                             if "❌ DISSOLTO" in record['changes']:
+                                 record['changes'].remove("❌ DISSOLTO")
+                             if "⚠️ BLOCCATO (Slittato)" in record['changes']:
+                                 record['changes'].remove("⚠️ BLOCCATO (Slittato)")
+                             if "⚠️ BLOCCATO (POS. APERTA)" in record['changes']:
+                                 record['changes'].remove("⚠️ BLOCCATO (POS. APERTA)")
+                         
+                         else:
+                             # It is NOT blocked, so the signal must be gone.
+                             if not record['disappeared']:
+                                 record['disappeared'] = True
+                                 if "❌ DISSOLTO" not in record['changes']:
+                                     record['changes'].append("❌ DISSOLTO")
+                                     
                 else:
                     # Trade is PRESENT in current simulation
                     # Check if it was previously marked as disappeared (Resurrection)
