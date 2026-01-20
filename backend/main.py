@@ -690,6 +690,8 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                         z_signal = []
                     else:
                         trunc_raw_sum = full_raw_sum[:cut_idx]
+                        # [FIX] Define trunc_dates for later alignment
+                        trunc_dates = full_frozen_dates[:cut_idx]
                         
                         # Apply Rolling Z-Score (Normalization)
                         s_sum = pd.Series(trunc_raw_sum)
@@ -749,6 +751,7 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                         z_signal = []
                     else:
                         trunc_raw_sum = full_raw_sum[:cut_idx]
+                        trunc_dates = full_frozen_dates[:cut_idx] # [FIX] Required for padding logic
                         s_sum = pd.Series(trunc_raw_sum)
                         roll_mean = s_sum.rolling(window=252, min_periods=20).mean()
                         roll_std = s_sum.rolling(window=252, min_periods=20).std()
