@@ -715,16 +715,7 @@ function switchTradesView(mode) {
     renderTradesList();
 }
 
-// ... inside renderTradesList ...
-if (viewMode === 'LIVE') {
-    trades = window.TRADES_LIVE;
-} else if (viewMode === 'FROZEN') {
-    trades = window.TRADES_FROZEN;
-} else if (viewMode === 'SUM') {
-    trades = window.TRADES_SUM;
-} else if (viewMode === 'MA') {
-    trades = window.TRADES_MA;
-}
+
 
 function openTradesModal() {
     // Force Default to Live on open unless we want persistence
