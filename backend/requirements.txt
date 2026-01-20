@@ -10,3 +10,4 @@ firebase-admin
 resend
 apscheduler
 tzdata
+pytz
