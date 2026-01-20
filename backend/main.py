@@ -625,7 +625,7 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
 
         # [FIX] Load full_frozen_data for FROZEN/SUM strategies
         frozen_cache_key = f"{req.ticker}_frozen"
-        full_frozen_data = CACHE.get(frozen_cache_key) # Can be None if not analyzed yet
+        full_frozen_data = TICKER_CACHE.get(frozen_cache_key) # Can be None if not analyzed yet
         full_frozen_dates = full_frozen_data["dates"] if full_frozen_data else []
         full_raw_sum = full_frozen_data["raw_sum"] if (full_frozen_data and "raw_sum" in full_frozen_data) else []
         
