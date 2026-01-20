@@ -542,7 +542,6 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
         
         # Get full cached data
         if req.ticker not in TICKER_CACHE:
-        if req.ticker not in TICKER_CACHE:
             md = MarketData(req.ticker)
             px = md.fetch()
             # Initialize cache with dictionary structure matching main logic
