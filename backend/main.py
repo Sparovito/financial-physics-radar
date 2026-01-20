@@ -586,6 +586,23 @@ def analyze_stock(req: AnalysisRequest):
             use_z_roc=True   # Direzione basata su Z-ROC (causale)
         )
         
+        # --- STRATEGIA 4: MIN ACTION (TREND FOLLOWING) [NEW] ---
+        # Usa la curva di minima azione (price_min_action / px_star) come trend follower.
+        # Long se Price > Curve, Short se Price < Curve.
+        # Filtro laterale: Opzionale (qui usiamo threshold=0 per semplicità o possiamo aggiungere z_sum filter)
+        # Usiamo logic.py backtest_strategy con mode='PRICE_VS_CURVE'
+        
+        backtest_result_ma = backtest_strategy(
+            prices=price_real,
+            z_kinetic=[], # Ignorato in mode PRICE_VS_CURVE
+            z_slope=[],   # Ignorato
+            dates=dates_historical,
+            start_date=req.start_date,
+            end_date=req.end_date,
+            trend_mode='PRICE_VS_CURVE',
+            trend_curve=price_min_action # La curva verde/blu
+        )
+        
         # Dati Futuri (Proiezione)
         # Nota: future_idx potrebbe contenere timestamp o interi, convertiamo
         try:
@@ -635,6 +652,7 @@ def analyze_stock(req: AnalysisRequest):
             "backtest": backtest_result,                  # Strategia Live
             "frozen_strategy": backtest_result_frozen,    # Strategia Frozen Pot
             "frozen_sum_strategy": backtest_result_frozen_sum,  # [NEW] Frozen Sum
+            "frozen_min_action_strategy": backtest_result_ma,   # [NEW] Min Action Trend
             "forecast": {
                 "dates": dates_future,
                 "values": future_scenario
