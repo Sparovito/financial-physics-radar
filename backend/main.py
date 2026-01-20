@@ -23,6 +23,35 @@ from logic import MarketData, ActionPath, FourierEngine, MarketScanner
 
 app = FastAPI(title="Financial Physics API")
 
+# --- SCHEDULER ---
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+scheduler = BackgroundScheduler(timezone="Europe/Rome")
+
+def scheduled_scan_job():
+    """Runs daily at 18:30 Rome time."""
+    print("⏰ Scheduled scan triggered!")
+    from scanner import run_market_scan
+    run_market_scan(send_email=True)
+
+# Schedule: Every day at 18:30
+scheduler.add_job(
+    scheduled_scan_job,
+    CronTrigger(hour=18, minute=30),
+    id="daily_scan",
+    replace_existing=True
+)
+
+@app.on_event("startup")
+def start_scheduler():
+    scheduler.start()
+    print("🕡 Scheduler attivato: Scansione giornaliera alle 18:30 (Europe/Rome)")
+
+@app.on_event("shutdown")
+def shutdown_scheduler():
+    scheduler.shutdown()
+
 # Abilita CORS
 app.add_middleware(
     CORSMiddleware,
