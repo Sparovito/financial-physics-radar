@@ -790,8 +790,10 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                 use_z_roc=use_z_roc
             )
             
+            skipped_trades_current = backtest_result.get('skipped_trades', []) # [NEW]
             current_trades = backtest_result['trades']
             current_trade_dates = set()
+            skipped_trade_dates = {t['date'] for t in skipped_trades_current} # Set for fast lookup
             
             # Compare with previously seen trades
             for trade in current_trades:
@@ -823,8 +825,6 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                     if abs(original['entry_price'] - trade['entry_price']) > 0.01:
                         changes.append(f"Price: {original['entry_price']}→{trade['entry_price']}")
 
-                    # [REMOVED] Redundant RE-APPEARED block. Handled in final loop.
-                    
                     if changes:
                         # Append unique changes only
                         for c in changes:
@@ -840,15 +840,27 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                     if hist_entry_date <= end_date_str:
                          if not record['disappeared']:
                              record['disappeared'] = True
-                             if "❌ DISSOLTO" not in record['changes']:
-                                 record['changes'].append("❌ DISSOLTO")
+                             
+                             # [NEW] Check if it was skipped due to position already open
+                             if hist_entry_date in skipped_trade_dates:
+                                 status_msg = "⚠️ BLOCCATO (POS. APERTA)"
+                             else:
+                                 status_msg = "❌ DISSOLTO"
+                                 
+                             if status_msg not in record['changes']:
+                                 record['changes'].append(status_msg)
                 else:
                     # Trade is PRESENT in current simulation
                     # Check if it was previously marked as disappeared (Resurrection)
                     if record['disappeared']:
                         record['disappeared'] = False
+                        
+                        # Remove negative flags if it reappears
                         if "❌ DISSOLTO" in record['changes']:
                             record['changes'].remove("❌ DISSOLTO")
+                        if "⚠️ BLOCCATO (POS. APERTA)" in record['changes']:
+                            record['changes'].remove("⚠️ BLOCCATO (POS. APERTA)")
+                            
                         # Mark as Unstable/Flickering instead
                         if "⚠️ INSTABILE" not in record['changes']:
                             record['changes'].append("⚠️ INSTABILE")

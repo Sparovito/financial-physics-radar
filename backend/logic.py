@@ -529,6 +529,7 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
     position_direction = None # 'LONG' or 'SHORT'
     
     trades = []
+    skipped_trades = [] # [NEW] Track signals ignored because already in position
     trade_pnl_curve = [] # Individual trade P/L (0 = not invested)
     equity_curve = [] # Cumulative Strategy P/L % (Equity Curve)
     
@@ -590,6 +591,21 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
             equity_curve.append(round(current_equity_pct, 2))
 
         else:
+            # [NEW] Check if we WOULD have entered here if we weren't in position
+            if z_kin > threshold:
+                 # This is a potential skipped signal
+                 # Direction check
+                 z_prev = z_kinetic[i-1] if i > 0 and z_kinetic[i-1] is not None else 0
+                 z_roc = z_kin - z_prev
+                 potential_direction = 'LONG' if (use_z_roc and z_roc >= 0) or (not use_z_roc and z_sl > 0) else 'SHORT'
+                 
+                 skipped_trades.append({
+                     "date": date,
+                     "price": price,
+                     "direction": potential_direction,
+                     "reason": "ALREADY_INVESTED"
+                 })
+            
             # Calculate current open P/L
             if position_direction == 'LONG':
                 current_pnl = ((price - entry_price) / entry_price) * 100
@@ -676,6 +692,7 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
     return {
         "equity_curve": equity_curve,
         "trades": trades,
+        "skipped_trades": skipped_trades, # [NEW]
         "trade_pnl_curve": trade_pnl_curve,
         "stats": backtest_stats
     }
