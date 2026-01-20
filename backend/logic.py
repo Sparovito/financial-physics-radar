@@ -601,6 +601,7 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                  
                  skipped_trades.append({
                      "date": date,
+                     "index": i,  # [NEW] For proximity check
                      "price": price,
                      "direction": potential_direction,
                      "reason": "ALREADY_INVESTED"

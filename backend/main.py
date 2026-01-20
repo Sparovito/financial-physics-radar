@@ -790,11 +790,15 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                 use_z_roc=use_z_roc
             )
             
-            skipped_trades_current = backtest_result.get('skipped_trades', []) # [NEW]
+            skipped_trades_current = backtest_result.get('skipped_trades', []) 
             current_trades = backtest_result['trades']
             current_trade_dates = set()
-            skipped_trade_dates = {t['date'] for t in skipped_trades_current} # Set for fast lookup
+            skipped_trade_dates = {t['date'] for t in skipped_trades_current} # Exact match
+            skipped_trade_indices = {t['index'] for t in skipped_trades_current if 'index' in t} # Index match
             
+            # Map date string to index for fuzzy matching
+            date_to_idx = {d: i for i, d in enumerate(dates_historical)}
+
             # Compare with previously seen trades
             for trade in current_trades:
                 entry_date = trade['entry_date']
@@ -841,11 +845,26 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                          if not record['disappeared']:
                              record['disappeared'] = True
                              
-                             # [NEW] Check if it was skipped due to position already open
+                             status_msg = "❌ DISSOLTO"
+                             
+                             # [NEW] Check logic:
+                             # 1. Exact Match in Skipped
                              if hist_entry_date in skipped_trade_dates:
                                  status_msg = "⚠️ BLOCCATO (POS. APERTA)"
-                             else:
-                                 status_msg = "❌ DISSOLTO"
+                             
+                             # 2. Fuzzy Match (Proximity Check)
+                             # If exact match failed, check if it just shifted a few days and got blocked
+                             elif hist_entry_date in date_to_idx and skipped_trade_indices:
+                                 hist_idx = date_to_idx[hist_entry_date]
+                                 # Check +/- 3 days
+                                 found_fuzzy = False
+                                 for offset in range(-3, 4):
+                                     if (hist_idx + offset) in skipped_trade_indices:
+                                         found_fuzzy = True
+                                         break
+                                 
+                                 if found_fuzzy:
+                                     status_msg = "⚠️ BLOCCATO (Slittato)"
                                  
                              if status_msg not in record['changes']:
                                  record['changes'].append(status_msg)
@@ -860,6 +879,8 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                             record['changes'].remove("❌ DISSOLTO")
                         if "⚠️ BLOCCATO (POS. APERTA)" in record['changes']:
                             record['changes'].remove("⚠️ BLOCCATO (POS. APERTA)")
+                        if "⚠️ BLOCCATO (Slittato)" in record['changes']:
+                            record['changes'].remove("⚠️ BLOCCATO (Slittato)")
                             
                         # Mark as Unstable/Flickering instead
                         if "⚠️ INSTABILE" not in record['changes']:
