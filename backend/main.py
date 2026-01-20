@@ -35,13 +35,30 @@ def scheduled_scan_job():
     from scanner import run_market_scan
     run_market_scan(send_email=True)
 
-# Schedule: Every day at 18:40 (TEST)
+# Schedule: Every day at 18:30
 scheduler.add_job(
     scheduled_scan_job,
-    CronTrigger(hour=18, minute=40),
+    CronTrigger(hour=18, minute=30),
     id="daily_scan",
     replace_existing=True
 )
+
+@app.get("/debug-time")
+def debug_time():
+    """Returns server time info for debugging scheduler."""
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    try:
+        import pytz
+        rome = pytz.timezone("Europe/Rome")
+        now_rome = datetime.datetime.now(rome)
+        return {
+            "utc_time": now_utc.isoformat(),
+            "rome_time": now_rome.isoformat(),
+            "server_local_time": datetime.datetime.now().isoformat(),
+            "scheduler_timezone": str(scheduler.timezone)
+        }
+    except Exception as e:
+        return {"error": str(e), "utc_time": now_utc.isoformat()}
 
 @app.on_event("startup")
 def start_scheduler():
