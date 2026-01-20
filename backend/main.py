@@ -544,9 +544,15 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
         if req.ticker not in TICKER_CACHE:
             md = MarketData(req.ticker)
             px = md.get_price()
-            TICKER_CACHE[req.ticker] = px
+            # Initialize cache with dictionary structure matching main logic
+            TICKER_CACHE[req.ticker] = {"px": px}
         
-        full_px = TICKER_CACHE[req.ticker].copy()
+        cached_obj = TICKER_CACHE[req.ticker]
+        if isinstance(cached_obj, dict):
+            full_px = cached_obj["px"].copy()
+        else:
+            # Fallback if somehow it's just the Series (legacy)
+            full_px = cached_obj.copy()
         
         # Determine date range
         all_dates = full_px.index.tolist()
