@@ -663,22 +663,17 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                 
             elif req.strategy == "FROZEN":
                 # [FIXED LOGIC] Use Frozen Point-in-Time Data
-                # Retrieve raw_sum from cache logic if available, else skip or calc
-                # We need the RAW values to simulate the normalization/filter at time 'end_idx'
+                # Retrieve from separate cache key loaded at start
                 
                 # Check if we have frozen data
-                if isinstance(cached_obj, dict) and "frozen" in cached_obj and cached_obj["frozen"] is not None and "raw_sum" in cached_obj["frozen"]:
-                    # We have pre-calculated point-in-time raw sums (stable!)
-                    # Get raw sum up to current simulation point
-                    # Note: raw_sum list aligns with 'full_px' indices roughly? 
-                    # Actually, raw_sum is appended in loop min_points..n.
-                    # We need to map 'end_idx' to the raw_sum list index.
-                    # Or simpler: Re-calculate 'raw_sum' point-in-time if necessary, but that's slow.
-                    # Better: The 'raw_sum' list contains values [v_min, v_min+1, ..., v_end].
-                    # Let's align by dates.
+                if full_frozen_data and "pot" in full_frozen_data:
+                    # We have pre-calculated point-in-time data
                     
-                    full_raw_sum = cached_obj["frozen"]["raw_sum"]
-                    full_frozen_dates = cached_obj["frozen"]["dates"]
+                    # Find subset of data available at time 'end_date_str'
+                    # It includes all points with date <= end_date_str
+                    
+                    end_date_str = end_date_obj.strftime('%Y-%m-%d')
+
                     
                     # Find index in frozen list corresponding to end_date_str
                     # Optimized: Since we iterate step_every=1, we can track index. But binary search is safer.
