@@ -288,15 +288,11 @@ async def analyze_stock(req: AnalysisRequest):
                 "mkt_cap": mkt_cap
             }
 
-        # --- SIMULATION TIME TRAVEL (Slicing istantaneo) ---
+        # --- SIMULATION TIME TRAVEL (True Point-in-Time Calculation) ---
         if req.end_date:
             end_ts = pd.Timestamp(req.end_date)
             # Slice Prices
             px = px[px.index <= end_ts]
-            
-            # Slice Frozen Data
-            # Troviamo l'indice fin dove arrivare nei dati frozen
-            target_date_str = req.end_date
             
             # Slice ZigZag (Series)
             if zigzag_series is not None:
@@ -306,24 +302,76 @@ async def analyze_stock(req: AnalysisRequest):
             if volume_series is not None:
                 volume_series = volume_series[volume_series.index <= end_ts]
             
-            # Filtro rapido liste (date frozen sono già sorted)
-            trunc_dates = []
-            trunc_kin = []
+            # Slice Frozen Data
+            # To avoid look-ahead bias from the filter, we must:
+            # 1. Slice the RAW SUM to the target date
+            # 2. Re-apply Rolling Z-Score and Filter on the truncated series
+            
             trunc_dates = []
             trunc_kin = []
             trunc_pot = []
             trunc_z_sum = []
             
-            # Ottimizzazione: bisect o semplice loop finché <= date
-            # Dato che sono stringhe YYYY-MM-DD, confronto lessicografico funziona
-            for i, d in enumerate(full_frozen_data["dates"]):
-                if d <= target_date_str:
-                    trunc_dates.append(d)
-                    trunc_kin.append(full_frozen_data["kin"][i])
-                    trunc_pot.append(full_frozen_data["pot"][i])
-                    trunc_z_sum.append(full_frozen_data["z_sum"][i])
+            if full_frozen_data and "raw_sum" in full_frozen_data:
+                full_dates = full_frozen_data["dates"]
+                full_raw_sum = full_frozen_data["raw_sum"]
+                
+                # Find cut-off index
+                from bisect import bisect_right
+                # full_dates is sorted list of strings YYYY-MM-DD
+                cut_idx = bisect_right(full_dates, req.end_date)
+                
+                if cut_idx > 0:
+                    trunc_dates = full_frozen_data["dates"][:cut_idx]
+                    trunc_kin = full_frozen_data["kin"][:cut_idx]
+                    trunc_pot = full_frozen_data["pot"][:cut_idx]
+                    
+                    # Recalculate Indicator on Truncated Data
+                    trunc_raw = full_raw_sum[:cut_idx]
+                    
+                    # 1. Rolling Z-Score
+                    s_trunc = pd.Series(trunc_raw)
+                    roll_mean = s_trunc.rolling(window=252, min_periods=20).mean()
+                    roll_std = s_trunc.rolling(window=252, min_periods=20).std()
+                    z_trunc = ((s_trunc - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
+                    
+                    # 2. Filter (Butterworth)
+                    try:
+                        from scipy.signal import butter, filtfilt
+                        b, a = butter(N=2, Wn=0.05, btype='low')
+                        if len(z_trunc) > 15:
+                            trunc_z_sum = filtfilt(b, a, z_trunc).tolist()
+                        else:
+                            trunc_z_sum = z_trunc
+                    except:
+                        trunc_z_sum = z_trunc
+                    
+                    # Rounding
+                    trunc_z_sum = [round(x, 2) for x in trunc_z_sum]
                 else:
-                    break # Stop appena superiamo la data
+                    # No data before date
+                    pass
+            else:
+                # Fallback to old simple slicing if raw_sum missing (legacy cache)
+                # But we should have invalidated cache earlier
+                target_date_str = req.end_date
+                for i, d in enumerate(full_frozen_data["dates"]):
+                    if d <= target_date_str:
+                        trunc_dates.append(d)
+                        trunc_kin.append(full_frozen_data["kin"][i])
+                        trunc_pot.append(full_frozen_data["pot"][i])
+                        trunc_z_sum.append(full_frozen_data["z_sum"][i])
+                    else:
+                        break # Stop appena superiamo la data
+            
+            # Override response content
+            full_frozen_data = {
+                "dates": trunc_dates,
+                "kin": trunc_kin,
+                "pot": trunc_pot,
+                "z_sum": trunc_z_sum,
+                "raw_sum": [] # Not needed in frontend
+            }
             
             frozen_dates = trunc_dates
             frozen_z_kin = trunc_kin
