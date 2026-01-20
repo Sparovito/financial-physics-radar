@@ -551,15 +551,15 @@ function renderCharts(data) {
     if (traceFrozenStrat) traces.push(traceFrozenStrat);
     if (traceFrozenSumStrat) traces.push(traceFrozenSumStrat);
 
-    // [NEW] Min Action Strategy Trace (Green)
+    // [NEW] Min Action Strategy Trace (Blue)
     if (data.history.ma_pnl) {
         const traceMaStrat = {
             x: data.dates,
             y: data.history.ma_pnl,
-            name: '🟢 Min Action Strat',
+            name: '🔵 Min Action Strat',
             type: 'scatter',
             mode: 'lines',
-            line: { color: '#00ff88', width: 2 }, // Bright Green
+            line: { color: '#00aaff', width: 2 }, // Bright Blue
             opacity: 0.9,
             yaxis: 'y2'
         };
@@ -645,8 +645,8 @@ function renderCharts(data) {
         if (data.frozen_min_action_strategy?.stats) {
             const maStats = data.frozen_min_action_strategy.stats;
             html += `
-                <div style="color: #00ff88; margin-top: 4px; border-top: 1px dashed #333; padding-top: 4px;">
-                    <strong>🟢 MIN ACTION:</strong> 
+                <div style="color: #00aaff; margin-top: 4px; border-top: 1px dashed #333; padding-top: 4px;">
+                    <strong>🔵 MIN ACTION:</strong> 
                     Trades: ${maStats.total_trades} | 
                     Win: ${maStats.win_rate}% | 
                     Return: ${maStats.total_return}%
@@ -694,7 +694,7 @@ function switchTradesView(mode) {
         { btn: btnLive, mode: 'LIVE', color: '#00ff88', textColor: '#000' },
         { btn: btnFrozen, mode: 'FROZEN', color: '#ff9900', textColor: '#000' },
         { btn: btnSum, mode: 'SUM', color: '#ff4444', textColor: '#fff' },
-        { btn: btnMa, mode: 'MA', color: '#00ff88', textColor: '#000' }
+        { btn: btnMa, mode: 'MA', color: '#00aaff', textColor: '#fff' }
     ];
 
     buttons.forEach(item => {
