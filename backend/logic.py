@@ -702,11 +702,16 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                 current_pnl = ((entry_price - price) / entry_price) * 100
             
             # Check for exit signal
-            # Check for exit signal
-            if is_curve_mode:
-                # Exit if direction flips (Reversal)
+            # In Hybrid Curve Mode (with Z-trigger), exit is ALSO based on Z-threshold (not curve reversal)
+            # Pure Curve Mode (no Z) would exit on curve reversal - but we aren't using that.
+            if is_curve_mode and has_valid_z:
+                # Hybrid Mode: Exit when Z drops below threshold (same as SUM)
+                should_exit = z_kin < threshold
+            elif is_curve_mode:
+                # Pure Curve Mode (always-in): Exit on direction flip
                 should_exit = (position_direction != curve_direction)
             else:
+                # Standard Mode
                 should_exit = z_kin < threshold
 
             if should_exit:
