@@ -83,6 +83,11 @@ async def analyze_stock(req: AnalysisRequest):
                     use_cache_data = True
             else:
                 use_cache_data = True
+            
+            # CRITICAL FIX: Ensure 'frozen' data exists (avoid crash after verify integrity invalidation)
+            if use_cache_data and cached_obj.get("frozen") is None:
+                print(f"⚠️ Cache partial miss (Dati Frozen mancanti). Ricalcolo...")
+                use_cache_data = False
 
         if use_cache_data:
             print(f"⚡ CACHE HIT: Uso dati in memoria per {req.ticker}")
