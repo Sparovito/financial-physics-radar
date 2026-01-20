@@ -592,6 +592,8 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
             
             # Simulate analysis at this point in time
             truncated_px = full_px.iloc[:end_idx+1]
+            dates_historical = [d.strftime('%Y-%m-%d') for d in truncated_px.index]
+            price_real = truncated_px.tolist()
             
             # Run backtest based on strategy
             if req.strategy == "LIVE":
