@@ -616,9 +616,6 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
         
         if is_curve_mode:
             # Curve Logic: Price vs Trend Curve
-            # Handle possible padding/alignment issues if trend_curve is shorter?
-            # Assuming aligned by caller (main.py does alignment or passes full length array)
-            # Safe access
             t_val = trend_curve[i] if i < len(trend_curve) else None
             
             if t_val is not None and price is not None:
@@ -627,9 +624,20 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                 else:
                     curve_direction = 'SHORT'
                 
-                # Entry Condition: Always enter if we define a direction (Always In System)
-                # Or we could add a hysteresis/buffer? For now pure crossover.
-                should_enter = True
+                # Entry Condition:
+                # 1. If Z-Kinetic is provided (Hybrid), use it as trigger (e.g. > -0.3)
+                # 2. If no Z-Kinetic, use Always In (Pure Crossover)
+                has_valid_z = (z_kinetic is not None and len(z_kinetic) > 0)
+                # Check if we are using a real Z array (not just empty list passed in main)
+                # In main.py we pass [] earlier. Now we will pass real data.
+                # So we check if current z_kin is "valid" in context? 
+                # Simplest: check threshold logic.
+                
+                if has_valid_z:
+                     should_enter = z_kin > threshold
+                else:
+                     should_enter = True # Always trade the crossover
+                     
             else:
                 should_enter = False
         else:
@@ -655,7 +663,7 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                          position_direction = 'LONG' if z_sl > 0 else 'SHORT'
 
                 # Snapshot: save decision data at entry time
-                entry_z_snapshot = round(z_kin, 4) if not is_curve_mode else 0
+                entry_z_snapshot = round(z_kin, 4) if (not is_curve_mode or has_valid_z) else 0
                 entry_z_roc_snapshot = 0
                 trade_pnl_curve.append(0)
             else:

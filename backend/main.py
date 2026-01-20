@@ -588,19 +588,19 @@ def analyze_stock(req: AnalysisRequest):
         
         # --- STRATEGIA 4: MIN ACTION (TREND FOLLOWING) [NEW] ---
         # Usa la curva di minima azione (price_min_action / px_star) come trend follower.
-        # Long se Price > Curve, Short se Price < Curve.
-        # Filtro laterale: Opzionale (qui usiamo threshold=0 per semplicità o possiamo aggiungere z_sum filter)
-        # Usiamo logic.py backtest_strategy con mode='PRICE_VS_CURVE'
+        # TIMING: Triggered by Frozen Sum Z > -0.3 (Hybrid Mode)
+        # DIRECTION: Price vs Curve
         
         backtest_result_ma = backtest_strategy(
             prices=price_real,
-            z_kinetic=[], # Ignorato in mode PRICE_VS_CURVE
+            z_kinetic=aligned_frozen_sum, # Trigger signal (same as SUM)
             z_slope=[],   # Ignorato
             dates=dates_historical,
             start_date=req.start_date,
             end_date=req.end_date,
+            threshold=-0.3, # Trigger Threshold (same as SUM)
             trend_mode='PRICE_VS_CURVE',
-            trend_curve=price_min_action # La curva verde/blu
+            trend_curve=price_min_action 
         )
         
         # Dati Futuri (Proiezione)
