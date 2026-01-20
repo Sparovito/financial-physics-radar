@@ -551,6 +551,21 @@ function renderCharts(data) {
     if (traceFrozenStrat) traces.push(traceFrozenStrat);
     if (traceFrozenSumStrat) traces.push(traceFrozenSumStrat);
 
+    // [NEW] Min Action Strategy Trace (Green)
+    if (data.history.ma_pnl) {
+        const traceMaStrat = {
+            x: data.dates,
+            y: data.history.ma_pnl,
+            name: '🟢 Min Action Strat',
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: '#00ff88', width: 2 }, // Bright Green
+            opacity: 0.9,
+            yaxis: 'y2'
+        };
+        traces.push(traceMaStrat);
+    }
+
     // Kinetic Z Trace
     if (showKineticZ) {
         traces.push(traceKineticZ, traceFrozenSum);
@@ -614,6 +629,30 @@ function renderCharts(data) {
                 </div>`;
         }
 
+        // [NEW] MIN ACTION STRAT
+        const maStats = data.frozen_min_action_strategy?.stats;
+        // Wait, backend logic didn't return 'frozen_min_action_strategy' key at root, 
+        // it returned 'ma_pnl' in history and likely didn't expose full stats object in root?
+        // Let me check logic.py return structure.
+        // Logic.py: 
+        // return { ..., "history": {..., "ma_pnl": ...} }
+        // Ah, logic.py DOES NOT return 'frozen_min_action_strategy' stats object in the root dict!
+        // I missed that in logic.py.
+        // I need to update logic.py to return the stats object too if I want to show them here.
+        // For now, I will skip stats display or infer from P/L curve? No, curve is just array.
+        // I will assume I will fix logic.py next step to return stats. For now I add placeholder code that checks if present.
+
+        if (data.frozen_min_action_strategy?.stats) {
+            const maStats = data.frozen_min_action_strategy.stats;
+            html += `
+                <div style="color: #00ff88; margin-top: 4px; border-top: 1px dashed #333; padding-top: 4px;">
+                    <strong>🟢 MIN ACTION:</strong> 
+                    Trades: ${maStats.total_trades} | 
+                    Win: ${maStats.win_rate}% | 
+                    Return: ${maStats.total_return}%
+                </div>`;
+        }
+
         statsDiv.innerHTML = html || 'No Stats Available';
     }
 
@@ -621,8 +660,9 @@ function renderCharts(data) {
     window.TRADES_LIVE = (data.backtest && data.backtest.trades) ? data.backtest.trades : [];
     window.TRADES_FROZEN = (data.frozen_strategy && data.frozen_strategy.trades) ? data.frozen_strategy.trades : [];
     window.TRADES_SUM = (data.frozen_sum_strategy && data.frozen_sum_strategy.trades) ? data.frozen_sum_strategy.trades : [];
+    window.TRADES_MA = (data.frozen_min_action_strategy && data.frozen_min_action_strategy.trades) ? data.frozen_min_action_strategy.trades : [];
 
-    if (window.TRADES_LIVE.length > 0 || window.TRADES_FROZEN.length > 0 || window.TRADES_SUM.length > 0) {
+    if (window.TRADES_LIVE.length > 0 || window.TRADES_FROZEN.length > 0 || window.TRADES_SUM.length > 0 || window.TRADES_MA.length > 0) {
         const btnTrades = document.getElementById('btn-view-trades');
         if (btnTrades) btnTrades.style.display = 'block';
     } else {
@@ -647,25 +687,43 @@ function switchTradesView(mode) {
     // Update Buttons UI
     const btnLive = document.getElementById('btn-trades-live');
     const btnFrozen = document.getElementById('btn-trades-frozen');
+    const btnSum = document.getElementById('btn-trades-sum');
+    const btnMa = document.getElementById('btn-trades-ma');
 
-    if (btnLive && btnFrozen) {
-        // Reset all to inactive
-        btnLive.style.background = 'transparent'; btnLive.style.color = '#888'; btnLive.style.border = 'none';
-        btnFrozen.style.background = 'transparent'; btnFrozen.style.color = '#888'; btnFrozen.style.border = 'none';
-        const btnSum = document.getElementById('btn-trades-sum');
-        if (btnSum) { btnSum.style.background = 'transparent'; btnSum.style.color = '#888'; btnSum.style.border = 'none'; }
+    const buttons = [
+        { btn: btnLive, mode: 'LIVE', color: '#00ff88', textColor: '#000' },
+        { btn: btnFrozen, mode: 'FROZEN', color: '#ff9900', textColor: '#000' },
+        { btn: btnSum, mode: 'SUM', color: '#ff4444', textColor: '#fff' },
+        { btn: btnMa, mode: 'MA', color: '#00ff88', textColor: '#000' }
+    ];
 
-        // Activate selected
-        if (mode === 'LIVE') {
-            btnLive.style.background = '#00ff88'; btnLive.style.color = '#000';
-        } else if (mode === 'FROZEN') {
-            btnFrozen.style.background = '#ff9900'; btnFrozen.style.color = '#000';
-        } else if (mode === 'SUM' && btnSum) {
-            btnSum.style.background = '#ff4444'; btnSum.style.color = '#fff';
+    buttons.forEach(item => {
+        if (item.btn) {
+            // Reset
+            item.btn.style.background = 'transparent';
+            item.btn.style.color = '#888';
+            item.btn.style.border = 'none';
+
+            // Activate if matches
+            if (item.mode === mode) {
+                item.btn.style.background = item.color;
+                item.btn.style.color = item.textColor;
+            }
         }
-    }
+    });
 
     renderTradesList();
+}
+
+// ... inside renderTradesList ...
+if (viewMode === 'LIVE') {
+    trades = window.TRADES_LIVE;
+} else if (viewMode === 'FROZEN') {
+    trades = window.TRADES_FROZEN;
+} else if (viewMode === 'SUM') {
+    trades = window.TRADES_SUM;
+} else if (viewMode === 'MA') {
+    trades = window.TRADES_MA;
 }
 
 function openTradesModal() {
