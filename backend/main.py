@@ -542,8 +542,9 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
         
         # Get full cached data
         if req.ticker not in TICKER_CACHE:
+        if req.ticker not in TICKER_CACHE:
             md = MarketData(req.ticker)
-            px = md.get_price()
+            px = md.fetch()
             # Initialize cache with dictionary structure matching main logic
             TICKER_CACHE[req.ticker] = {"px": px}
         
@@ -573,11 +574,12 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
             truncated_px = full_px.iloc[:end_idx+1]
             
             # Calculate path and Z-scores FRESH at every step to capture detailed look-ahead bias
-            path = ActionPath(alpha=req.alpha, beta=req.beta)
-            path.calculate(truncated_px)
+            # FIX: Constructor requires price series, calculate is internal via _compute
+            path = ActionPath(truncated_px, alpha=req.alpha, beta=req.beta)
             
-            kinetic = path.kinetic_density
-            potential = path.potential_density
+            # FIX: Attribute names from logic.py are kin_density/pot_density
+            kinetic = path.kin_density
+            potential = path.pot_density
             
             # Calculate Z-scores
             z_kin_series = (kinetic - kinetic.rolling(252).mean()) / kinetic.rolling(252).std()
