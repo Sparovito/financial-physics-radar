@@ -6,7 +6,7 @@ from tickers_loader import load_tickers
 import datetime
 
 def run_market_scan(send_email=True):
-    from main import analyze_stock, AnalysisRequest
+    from main import analyze_stock, AnalysisRequest, PortfolioManager
     
     tickers_map = load_tickers()
     tickers = list(tickers_map.keys())
@@ -65,7 +65,6 @@ def run_market_scan(send_email=True):
                 direction = last_trade.get("direction", "LONG")
                 
                 # --- BUY CHECK ---
-                # Se è APERTO o appena aperto
                 if exit_dt is None or exit_dt == "OPEN":
                     diff = get_days_diff(entry_date)
                     
@@ -81,14 +80,13 @@ def run_market_scan(send_email=True):
                     
                     if diff == 0:
                         buy_today.append(item)
-                    elif diff <= 5: # Finestra 5 giorni
+                    elif diff <= 5:
                         buy_recent.append(item)
                 
                 # --- SELL CHECK ---
-                # Se è CHIUSO e la data di uscita è OGGI
                 if exit_dt and exit_dt != "OPEN":
                      diff_exit = get_days_diff(exit_dt)
-                     if diff_exit == 0: # Solo se chiuso OGGI
+                     if diff_exit == 0:
                         sell_today.append({
                             "ticker": ticker,
                             "category": category,
@@ -105,15 +103,43 @@ def run_market_scan(send_email=True):
 
         except Exception as e:
             continue
+    
+    # --- PORTFOLIO STATUS CHECK ---
+    portfolio_status = []
+    try:
+        pf_mgr = PortfolioManager()
+        pf_data = pf_mgr.load()
+        open_positions = [p for p in pf_data.get("positions", []) if p.get("status") == "OPEN"]
+        
+        # Build set of sell tickers for quick lookup
+        sell_set = {(s["ticker"], s["strategy"]) for s in sell_today}
+        
+        for pos in open_positions:
+            ticker = pos.get("ticker", "")
+            strategy = pos.get("strategy", "")
+            
+            has_sell = (ticker, strategy) in sell_set
+            action = "SELL" if has_sell else "HOLD"
+            
+            portfolio_status.append({
+                "ticker": ticker,
+                "strategy": strategy,
+                "entry_date": pos.get("entry_date", ""),
+                "entry_price": pos.get("entry_price", 0),
+                "action": action
+            })
+    except Exception as e:
+        print(f"⚠️ Errore caricamento portafoglio: {e}")
             
     # STATISTICHE
     n_buy = len(buy_today)
     n_recent = len(buy_recent)
     n_sell = len(sell_today)
-    print(f"✅ Scansione completata: {n_buy} BUY OGGI, {n_recent} RECENTI, {n_sell} SELL OGGI")
+    n_portfolio = len(portfolio_status)
+    print(f"✅ Scansione completata: {n_buy} BUY OGGI, {n_recent} RECENTI, {n_sell} SELL OGGI, {n_portfolio} Posizioni")
     
     # COSTRUZIONE EMAIL
-    if n_buy + n_recent + n_sell > 0:
+    if n_buy + n_recent + n_sell + n_portfolio > 0:
         subject = f"🔔 Report: {n_buy} BUY, {n_sell} SELL ({today_real})"
         
         style = """
@@ -128,14 +154,18 @@ def run_market_scan(send_email=True):
             tr:last-child td { border-bottom: none; }
             
             /* Colors */
-            .bg-green { background-color: #e8f5e9; } /* Light Green */
-            .bg-yellow { background-color: #fffde7; } /* Light Yellow */
-            .bg-red { background-color: #ffebee; }    /* Light Red */
+            .bg-green { background-color: #e8f5e9; }
+            .bg-yellow { background-color: #fffde7; }
+            .bg-red { background-color: #ffebee; }
+            .bg-blue { background-color: #e3f2fd; }
             
             .text-green { color: #2e7d32; font-weight: bold; }
             .text-red { color: #c62828; font-weight: bold; }
+            .text-blue { color: #1565c0; font-weight: bold; }
             
             .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: #fff; background: #78909c; }
+            .action-sell { background: #c62828; color: #fff; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
+            .action-hold { background: #1565c0; color: #fff; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
         </style>
         """
         
@@ -153,7 +183,7 @@ def run_market_scan(send_email=True):
         
         # 2. BUY RECENTI
         if buy_recent:
-            buy_recent.sort(key=lambda x: x['days_ago']) # Ordina per più recenti
+            buy_recent.sort(key=lambda x: x['days_ago'])
             body += "<h3 style='color:#f9a825;'>🟡 INGRESSI RECENTI (< 5gg)</h3>"
             body += "<table><thead><tr><th>Ticker</th><th>Cat</th><th>Strat</th><th>Prezzo</th><th>Data</th><th>Giorni fa</th></tr></thead><tbody>"
             for a in buy_recent:
@@ -170,6 +200,15 @@ def run_market_scan(send_email=True):
                 cat = a['category'][:12]
                 body += f"<tr class='bg-red'><td><b>{a['ticker']}</b></td><td><span class='badge'>{cat}</span></td><td>{a['strategy']}</td><td>${a['price']:.2f}</td><td class='{pnl_cls}'>{a['pnl']:.2f}%</td></tr>"
             body += "</tbody></table>"
+        
+        # 4. PORTFOLIO STATUS (NEW!)
+        if portfolio_status:
+            body += "<h3 style='color:#1565c0;'>🔵 IL TUO PORTAFOGLIO</h3>"
+            body += "<table><thead><tr><th>Ticker</th><th>Strategia</th><th>Ingresso</th><th>Azione</th></tr></thead><tbody>"
+            for p in portfolio_status:
+                action_cls = "action-sell" if p['action'] == "SELL" else "action-hold"
+                body += f"<tr class='bg-blue'><td><b>{p['ticker']}</b></td><td>{p['strategy']}</td><td>{p['entry_date']} @ ${p['entry_price']:.2f}</td><td><span class='{action_cls}'>{p['action']}</span></td></tr>"
+            body += "</tbody></table>"
             
         body += "<p style='font-size:12px; color:#888; margin-top:30px;'>Generato da Financial Physics AI Scanner</p>"
         body += "</div></body></html>"
@@ -181,7 +220,7 @@ def run_market_scan(send_email=True):
         if send_email:
              notifier.send_email(f"Report {today_real}", "<p>Nessun segnale rilevante oggi.</p>")
 
-    return {"buy_today": n_buy, "buy_recent": n_recent, "sell_today": n_sell}
+    return {"buy_today": n_buy, "buy_recent": n_recent, "sell_today": n_sell, "portfolio": n_portfolio}
 
 
 if __name__ == "__main__":
