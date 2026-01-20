@@ -814,11 +814,8 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                     if abs(original['entry_price'] - trade['entry_price']) > 0.01:
                         changes.append(f"Price: {original['entry_price']}→{trade['entry_price']}")
 
-                    # If it was marked disappeared but is back now (flickering), flag it
-                    if record['disappeared']:
-                         changes.append(f"RE-APPEARED")
-                         record['disappeared'] = False
-
+                    # [REMOVED] Redundant RE-APPEARED block. Handled in final loop.
+                    
                     if changes:
                         # Append unique changes only
                         for c in changes:
