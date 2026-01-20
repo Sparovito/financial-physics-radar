@@ -746,11 +746,13 @@ function renderTradesList() {
         const pnlSign = t.pnl_pct >= 0 ? '+' : '';
         const typeEmoji = t.direction === 'LONG' ? '🟢' : '🔴';
 
-        // === COMPLETE CHANGE DETECTION ===
-        // Compare with previous trade data to detect retroactive changes
+        // === COMPLETE CHANGE DETECTION (DISABLED BY USER REQUEST) ===
+        // Logic commented out to remove red highlights in the main list
         let warningMessages = [];
         let rowWarningStyle = '';
+        let snapshotWarning = ''; // Defined here to avoid ReferenceError
 
+        /*
         // Compare with ORIGINAL version of this trade (by matching entry_date)
         const originalTrade = originalTradesMap[t.entry_date];
         if (originalTrade) {
@@ -774,6 +776,7 @@ function renderTradesList() {
             snapshotWarning = '<span style="color:#ff4444; font-size:0.7em; display:block;">⚠️ ' + warningMessages.join(' | ') + '</span>';
             rowWarningStyle = 'background: rgba(255,68,68,0.2); border-left: 3px solid #ff4444;';
         }
+        */
 
         const finalRowStyle = isOpen ? rowStyle : (rowWarningStyle || rowStyle);
 

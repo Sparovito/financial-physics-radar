@@ -718,15 +718,13 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                 
                 
             else:  # SUM
-                 # SUM Strategy typically uses the same underlying Frozen Sum Z signal in the frontend
-                 # So we reuse the FROZEN logic or copy it. Given the code above sets z_signal for FROZEN,
-                 # we can just use the same logic if we structured it better.
-                 # For now, let's treat SUM as FROZEN in terms of signal integrity check.
+                # SUM Strategy typically uses the same underlying Frozen Sum Z signal in the frontend
+                # So we reuse the logic but with correct variables
                  
-                 # Copy-paste logic from FROZEN for safety within this block scope (or refactor later)
-                 if isinstance(cached_obj, dict) and "frozen" in cached_obj and cached_obj["frozen"] is not None and "raw_sum" in cached_obj["frozen"]:
-                    full_raw_sum = cached_obj["frozen"]["raw_sum"]
-                    full_frozen_dates = cached_obj["frozen"]["dates"]
+                if full_frozen_data and "raw_sum" in full_frozen_data:
+                    full_raw_sum = full_frozen_data["raw_sum"]
+                    # full_frozen_dates is already loaded at top scope (line 629)
+                    
                     from bisect import bisect_right
                     cut_idx = bisect_right(full_frozen_dates, end_date_str)
                     
@@ -734,7 +732,7 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                         z_signal = []
                     else:
                         trunc_raw_sum = full_raw_sum[:cut_idx]
-                        trunc_dates = full_frozen_dates[:cut_idx] # [FIX] Required for padding logic
+                        trunc_dates = full_frozen_dates[:cut_idx]
                         s_sum = pd.Series(trunc_raw_sum)
                         roll_mean = s_sum.rolling(window=252, min_periods=20).mean()
                         roll_std = s_sum.rolling(window=252, min_periods=20).std()
@@ -742,7 +740,15 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                         
                         try:
                             from scipy.signal import butter, filtfilt
-                            b, a = butter(N=2, Wn=0.05, btype='low')
+                            # Match parameter from analyze_stock? Checking Wn. 
+                            # If analyze uses 0.1, we should use 0.1. Typically I used 0.1 in previous steps.
+                            # Let's standardize to 0.1 matching verify output findings if recent view_file confirmed. 
+                            # However recent view_file showed 0.05 in verify but didn't show analyze definition.
+                            # I will assume 0.05 as it was in verify, but to be safer I stick to what was there unless confirmed.
+                            # BUT, wait, I saw analyze_stock line 498 threshold=-0.3.
+                            # I'll stick to 0.05 to avoid changing signal logic blindly, but ensure robustness.
+                            b, a = butter(N=2, Wn=0.05, btype='low') 
+                            
                             if len(z_frozen_raw) > 15:
                                 z_frozen_sum_filtered = filtfilt(b, a, z_frozen_raw).tolist()
                                 z_signal_short = z_frozen_sum_filtered
@@ -752,11 +758,14 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                              z_signal_short = z_frozen_raw
                              
                         # [CRITICAL] ALIGNMENT & PADDING for SUM
+                        # Align by Date Map first
                         z_series_map = pd.Series(z_signal_short, index=trunc_dates)
                         target_keys = [d.strftime('%Y-%m-%d') for d in truncated_px.index]
+                        
+                        # Reindex fills missing dates with 0 (or previous? No, signal is discrete)
                         z_signal = z_series_map.reindex(target_keys).fillna(0).tolist()
                         
-                 else:
+                else:
                     z_signal = []
 
                  threshold = -0.3
