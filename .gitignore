@@ -38,3 +38,4 @@ backend/venv/
 # Logs
 *.log
 backend/portfolio.json
+backend/serviceAccountKey.json

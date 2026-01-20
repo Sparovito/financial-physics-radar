@@ -3096,3 +3096,15 @@ async function pfSaveStrategy(id, val) {
         console.error(e);
     }
 }
+
+async function runAlertScan() {
+    if (!confirm("Avviare scansione completa e invio email? (Richiede circa 2-5 minuti)")) return;
+
+    try {
+        const res = await fetch(`${API_URL}/scan/email`, { method: 'POST' });
+        const data = await res.json();
+        alert(data.message);
+    } catch (e) {
+        alert("Errore: " + e.message);
+    }
+}

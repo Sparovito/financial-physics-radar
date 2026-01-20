@@ -1,5 +1,5 @@
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -1075,21 +1075,68 @@ PORTFOLIO_FILE = "portfolio.json"
 
 class PortfolioManager:
     def __init__(self):
-        self.file = PORTFOLIO_FILE
-        self._ensure_file()
+        self.use_firebase = False
+        self.db = None
+        self.local_file = PORTFOLIO_FILE
+        
+        # Tentativo connessione Firebase
+        key_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "serviceAccountKey.json")
+        if os.path.exists(key_path):
+            try:
+                import firebase_admin
+                from firebase_admin import credentials, firestore
+                
+                if not firebase_admin._apps:
+                    cred = credentials.Certificate(key_path)
+                    firebase_admin.initialize_app(cred)
+                
+                self.db = firestore.client()
+                self.use_firebase = True
+                print("🔥 Firebase Portfolio Connesso! (Firestore)")
+            except Exception as e:
+                print(f"⚠️ Errore inizializzazione Firebase: {e}")
+                self._ensure_local_file()
+        else:
+            print("📂 Firebase Key non trovata. Uso file locale.")
+            self._ensure_local_file()
 
-    def _ensure_file(self):
-        if not os.path.exists(self.file):
-            with open(self.file, "w") as f:
+    def _ensure_local_file(self):
+        if not os.path.exists(self.local_file):
+            with open(self.local_file, "w") as f:
                 json.dump({"positions": []}, f)
 
     def load(self):
-        with open(self.file, "r") as f:
-            return json.load(f)
+        if self.use_firebase:
+            try:
+                doc_ref = self.db.collection("portfolio").document("main")
+                doc = doc_ref.get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    # Ensure positions exists
+                    if "positions" not in data:
+                        data["positions"] = []
+                    return data
+                else:
+                    return {"positions": []}
+            except Exception as e:
+                print(f"⚠️ Errore lettura Firebase: {e}")
+                return {"positions": []}
+        else:
+            with open(self.local_file, "r") as f:
+                return json.load(f)
 
     def save(self, data):
-        with open(self.file, "w") as f:
-            json.dump(data, f, indent=4)
+        if self.use_firebase:
+            try:
+                doc_ref = self.db.collection("portfolio").document("main")
+                doc_ref.set(data)
+            except Exception as e:
+                print(f"⚠️ Errore salvataggio Firebase: {e}")
+                raise e
+        else:
+            with open(self.local_file, "w") as f:
+                json.dump(data, f, indent=4)
+
 
     def get_price(self, ticker):
         try:
@@ -1100,6 +1147,47 @@ class PortfolioManager:
             return 0.0
         except:
             return 0.0
+
+
+
+
+@app.post("/scan/email")
+def trigger_email_scan(background_tasks: BackgroundTasks):
+    """
+    Triggers a full market scan of all tickers and sends results via email.
+    Runs in background to avoid timeout.
+    """
+    from scanner import run_market_scan
+    background_tasks.add_task(run_market_scan, send_email=True)
+    return {"status": "started", "message": "📩 Scansione avviata! Riceverai l'email al termine (circa 5-10 min)."}
+
+@app.post("/scan/test-email")
+def test_email_config():
+    """Quick test to verify email configuration works."""
+    import os
+    from notifications import NotificationManager
+    
+    sender = os.getenv("EMAIL_SENDER", "NOT SET")
+    recipient = os.getenv("EMAIL_RECIPIENT", "NOT SET")
+    password_set = "YES" if os.getenv("EMAIL_PASSWORD") else "NO"
+    
+    print(f"📧 Testing email config...")
+    print(f"   Sender: {sender}")
+    print(f"   Recipient: {recipient}")
+    print(f"   Password set: {password_set}")
+    
+    notifier = NotificationManager()
+    notifier.send_email(
+        "🧪 Test Email - Financial Physics",
+        "<h2>✅ Email funziona!</h2><p>Se ricevi questa email, la configurazione è corretta.</p>"
+    )
+    
+    return {
+        "sender": sender,
+        "recipient": recipient,
+        "password_set": password_set,
+        "message": "Test email inviata! Controlla la console del server per errori."
+    }
 
 portfolio_mgr = PortfolioManager()
 

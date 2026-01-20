@@ -16,6 +16,12 @@ fi
 # ATTIVA SEMPRE l'ambiente
 source backend/venv/bin/activate
 
+# Carica variabili d'ambiente da .env (se esiste)
+if [ -f .env ]; then
+    echo "📄 Loading .env configuration..."
+    export $(grep -v '^#' .env | grep -v '^$' | xargs)
+fi
+
 # PULIZIA PREVENTIVA: Libera le porte 8000 e 3000
 echo "🧹 Pulizia processi precedenti..."
 lsof -ti:8000 | xargs kill -9 2>/dev/null
