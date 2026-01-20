@@ -768,8 +768,8 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                 else:
                     z_signal = []
 
-                 threshold = -0.3
-                 use_z_roc = True
+            threshold = -0.3
+            use_z_roc = True
             
             # Common backtest call
             if not z_signal:
@@ -949,6 +949,111 @@ async def serve_frontend_file(filename: str):
     if os.path.exists(file_path) and os.path.isfile(file_path):
         return FileResponse(file_path)
     raise HTTPException(status_code=404, detail="File not found")
+
+@app.post("/scan-signals")
+def scan_signals(request: ScanRequest):
+    """
+    Analizza una lista di ticker e determina i segnali operativi per Oggi.
+    Usa la logica di transizione stato (T-1 -> T) basata sulle curve PnL.
+    """
+    try:
+        tickers = request.tickers
+        if not tickers:
+            return {"error": "Nessun ticker fornito"}
+            
+        print(f"📡 Scanning signals for {len(tickers)} tickers...")
+        
+        # Use existing MarketScanner for parallel processing
+        # Note: MarketScanner.scan() returns a list of results with full history
+        scanner = MarketScanner(tickers)
+        results = scanner.scan()
+        
+        signals = []
+        
+        for res in results:
+            ticker = res['ticker']
+            last_price = res['price']
+            
+            # Helper to determine signal from PnL curve
+            def get_signal_state(pnl_curve, strat_name):
+                # Need at least 2 points to determine transition
+                if not pnl_curve or len(pnl_curve) < 2:
+                    return "NEUTRAL", ""
+                    
+                # Values: 0.0 = Flat. != 0.0 = Invested (Current PnL)
+                # Note: logic.py uses 0 for flat.
+                
+                t_curr = pnl_curve[-1] # Today
+                t_prev = pnl_curve[-2] # Yesterday
+                
+                # Check for None
+                if t_curr is None: t_curr = 0.0
+                if t_prev is None: t_prev = 0.0
+                
+                state = "NEUTRAL"
+                details = ""
+                
+                is_invested_curr = abs(t_curr) != 0
+                is_invested_prev = abs(t_prev) != 0
+                
+                if is_invested_curr and not is_invested_prev:
+                    state = "ENTER"
+                    details = f"New Entry (Prev Flat -> Curr {t_curr}%)"
+                elif not is_invested_curr and is_invested_prev:
+                    state = "EXIT"
+                    # If pnl was positive -> Take Profit, else Stop Loss? 
+                    # Actually t_prev is the PnL just before close.
+                    pnl = round(t_prev, 2)
+                    details = f"Exit Position (Result: {pnl}%)"
+                elif is_invested_curr and is_invested_prev:
+                    state = "HOLD"
+                    pnl = round(t_curr, 2)
+                    details = f"Holding (Current: {pnl}%)"
+                else:
+                    state = "WAIT"
+                    details = "Flat"
+                    
+                return state, details
+
+            # Analyze Frozen
+            frozen_curve = res['history']['strategy_pnl']
+            frozen_state, frozen_details = get_signal_state(frozen_curve, "FROZEN")
+            
+            if frozen_state != "WAIT":
+                signals.append({
+                    "ticker": ticker,
+                    "strategy": "FROZEN",
+                    "signal": frozen_state,
+                    "price": last_price,
+                    "details": frozen_details,
+                    "date": pd.Timestamp.now().strftime('%Y-%m-%d') # Scan Date
+                })
+                
+            # Analyze SUM
+            sum_curve = res['history']['sum_pnl']
+            sum_state, sum_details = get_signal_state(sum_curve, "SUM")
+            
+            if sum_state != "WAIT":
+                # Check if it matches Frozen? No, treat independent.
+                signals.append({
+                    "ticker": ticker,
+                    "strategy": "SUM ⚡",
+                    "signal": sum_state,
+                    "price": last_price,
+                    "details": sum_details,
+                    "date": pd.Timestamp.now().strftime('%Y-%m-%d')
+                })
+        
+        # Sort signals: ENTER/EXIT first, then HOLD
+        priority = {"ENTER": 1, "EXIT": 2, "HOLD": 3, "WAIT": 4}
+        signals.sort(key=lambda x: (priority.get(x['signal'], 99), x['ticker']))
+        
+        return {"signals": signals, "scanned_count": len(tickers)}
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

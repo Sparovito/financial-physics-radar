@@ -1847,18 +1847,29 @@ function closeScannerModal() {
 async function startBulkScan() {
     const cat = document.getElementById('scanner-category').value;
     const tableBody = document.getElementById('scanner-results');
+    const tableHead = document.querySelector('.scanner-table thead tr');
     const progressBar = document.getElementById('scan-progress');
     const statusLabel = document.getElementById('scan-status');
     const btnStart = document.getElementById('btn-start-scan');
     const btnStop = document.getElementById('btn-stop-scan');
 
+    // 1. SWITCH TO SIGNALS MODE (Headers)
+    tableHead.innerHTML = `
+        <th style="padding:12px;">Ticker</th>
+        <th style="padding:12px;">Strategy</th>
+        <th style="padding:12px;">Signal</th>
+        <th style="padding:12px;">Price</th>
+        <th style="padding:12px;">Details</th>
+        <th style="padding:12px;">Action</th>
+    `;
+
     // UI Reset
     tableBody.innerHTML = '';
     progressBar.style.display = 'block';
-    progressBar.value = 0;
+    progressBar.removeAttribute('value'); // Indeterminate
     btnStart.style.display = 'none';
-    btnStop.style.display = 'inline-block';
-    SCAN_STOP_SIGNAL = false;
+    btnStop.style.display = 'none'; // Not cancellable (server side is fast)
+    statusLabel.innerHTML = '🚀 Scansione Segnali in corso...';
 
     // Build Ticker List
     let tickersToScan = [];
@@ -1866,195 +1877,61 @@ async function startBulkScan() {
         Object.values(TICKERS_DATA).forEach(list => {
             tickersToScan = tickersToScan.concat(list.map(t => t.symbol));
         });
-        // Deduplicate
         tickersToScan = [...new Set(tickersToScan)];
     } else {
         tickersToScan = TICKERS_DATA[cat].map(t => t.symbol);
     }
 
-    progressBar.max = tickersToScan.length;
+    try {
+        // CALL BACKEND
+        const response = await fetch(`${API_URL}/scan-signals`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tickers: tickersToScan })
+        });
 
-    // --- ACCUMULATORS FOR AVERAGE ---
-    let totalLiveRet = 0;
-    let totalFrozenRet = 0;
-    let totalSumRet = 0;
-    let totalWinLive = 0;
-    let totalWinFrozen = 0;
-    let totalWinSum = 0;
-    let countStats = 0;
+        if (!response.ok) throw new Error("Errore durante la scansione");
 
-    // Global Trade Accumulator for Portfolio Simulator
-    // Global Trade Accumulator for Portfolio Simulator
-    window.ALL_SCAN_TRADES_LIVE = [];
-    window.ALL_SCAN_TRADES_FROZEN = [];
-    window.ALL_SCAN_TRADES = []; // Fallback/Reference
+        const data = await response.json();
+        const signals = data.signals;
+        const count = data.scanned_count;
 
-    // Get Parallelism Level
-    const parallelism = parseInt(document.getElementById('scan-parallel').value) || 4;
+        statusLabel.innerHTML = `✅ Scansione completata su ${count} titoli.`;
+        progressBar.style.display = 'none';
 
-    // Helper: Analyze a single ticker and return result
-    async function analyzeTicker(ticker) {
-        if (SCAN_STOP_SIGNAL) return null;
-
-        try {
-            const alpha = parseFloat(document.getElementById('alpha').value) || 200;
-            const beta = parseFloat(document.getElementById('beta').value) || 1.0;
-            const startDate = document.getElementById('scanner-start').value || "2023-01-01";
-            let endDate = document.getElementById('scanner-end').value;
-            if (endDate === "") endDate = null;
-
-            const response = await fetch(`${API_URL}/analyze`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    ticker: ticker,
-                    alpha: alpha,
-                    beta: beta,
-                    top_k: 5,
-                    forecast_days: 60,
-                    start_date: startDate,
-                    end_date: endDate,
-                    use_cache: true
-                })
-            });
-
-            if (!response.ok) return null;
-            const data = await response.json();
-            return { ticker, data };
-        } catch (e) {
-            console.error(`Error analyzing ${ticker}:`, e);
-            return null;
-        }
-    }
-
-    // Process in batches
-    let processed = 0;
-    for (let i = 0; i < tickersToScan.length; i += parallelism) {
-        if (SCAN_STOP_SIGNAL) {
-            statusLabel.innerHTML = '🛑 Scan Interrotto.';
-            break;
-        }
-
-        // Create batch
-        const batch = tickersToScan.slice(i, i + parallelism);
-        statusLabel.innerHTML = `⚡ Analisi batch ${Math.floor(i / parallelism) + 1}/${Math.ceil(tickersToScan.length / parallelism)} (${batch.join(', ')})...`;
-
-        // Execute batch in parallel
-        const results = await Promise.all(batch.map(t => analyzeTicker(t)));
-
-        // Process results
-        for (const result of results) {
-            if (!result) continue;
-
-            const { ticker, data } = result;
-            processed++;
-            progressBar.value = processed;
-
-            // Capture trades
-            if (data.backtest?.trades) {
-                data.backtest.trades.forEach(t => {
-                    window.ALL_SCAN_TRADES_LIVE.push({ ...t, ticker: ticker });
-                });
-            }
-            if (data.frozen_strategy?.trades) {
-                data.frozen_strategy.trades.forEach(t => {
-                    window.ALL_SCAN_TRADES_FROZEN.push({ ...t, ticker: ticker });
-                });
-            }
-            window.ALL_SCAN_TRADES = window.ALL_SCAN_TRADES_LIVE;
-
-            const liveStats = data.backtest?.stats;
-            const frozenStats = data.frozen_strategy?.stats;
-            const sumStats = data.frozen_sum_strategy?.stats;
-
-            if (liveStats && frozenStats) {
-                totalLiveRet += liveStats.total_return;
-                totalFrozenRet += frozenStats.total_return;
-                totalWinLive += liveStats.win_rate;
-                totalWinFrozen += frozenStats.win_rate;
-                if (sumStats) {
-                    totalSumRet += sumStats.total_return;
-                    totalWinSum += sumStats.win_rate;
-                }
-                countStats++;
-
-                const liveRet = liveStats.total_return;
-                const frozenRet = frozenStats.total_return;
-                const sumRet = sumStats ? sumStats.total_return : 0;
-                const sumWin = sumStats ? sumStats.win_rate : 0;
-                const delta = (liveRet - frozenRet).toFixed(2);
-                const deltaColor = parseFloat(delta) > 20 ? '#ff4444' : (parseFloat(delta) < -5 ? '#00ff88' : '#888');
+        if (!signals || signals.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="6" style="padding:20px; text-align:center;">Nessun segnale operativo rilevato oggi.</td></tr>`;
+        } else {
+            signals.forEach(sig => {
+                let color = '#ccc';
+                let bg = '';
+                if (sig.signal === 'ENTER') { color = '#00ff88'; bg = 'rgba(0,255,136,0.1)'; }
+                if (sig.signal === 'EXIT') { color = '#ff4444'; bg = 'rgba(255,68,68,0.1)'; }
+                if (sig.signal === 'HOLD') { color = '#eba834'; }
 
                 const row = `
-                    <tr class="scan-row" data-kin="${data.avg_abs_kin || 0}" data-cap="${data.market_cap || 0}" style="border-bottom:1px solid #333;">
-                        <td style="padding:10px; text-align:center;">
-                            <input type="checkbox" class="scan-ticker-checkbox" data-ticker="${ticker}" checked>
-                        </td>
-                        <td style="padding:10px; font-weight:bold;">${ticker}</td>
-                        <td style="padding:10px; color:#ccc;">${data.avg_abs_kin || '-'}</td>
-                        <td style="padding:10px; color:#ccc;">${formatMarketCap(data.market_cap)}</td>
-                        <td style="padding:10px; color:#ccc;">${data.backtest?.trades?.length || 0}</td>
-                        <td style="color:${liveStats.win_rate >= 50 ? '#00ff88' : '#888'}">${liveStats.win_rate}%</td>
-                        <td style="color:${liveRet > 0 ? '#00ff88' : '#ff4444'}">${liveRet}%</td>
-                        <td style="color:${frozenStats.win_rate >= 50 ? '#ff9900' : '#888'}">${frozenStats.win_rate}%</td>
-                        <td style="color:${frozenRet > 0 ? '#ff9900' : '#ff4444'}">${frozenRet}%</td>
-                        <td style="color:${sumWin >= 50 ? '#ff4444' : '#888'}">${sumWin}%</td>
-                        <td style="color:${sumRet > 0 ? '#ff4444' : '#888'}">${sumRet}%</td>
-                        <td style="color:${deltaColor}; font-weight:bold;">${delta}%</td>
+                    <tr style="border-bottom:1px solid #333; background:${bg};">
+                        <td style="padding:10px; font-weight:bold;">${sig.ticker}</td>
+                        <td style="padding:10px; color:#aaa;">${sig.strategy}</td>
+                        <td style="padding:10px; font-weight:bold; color:${color};">${sig.signal}</td>
+                        <td style="padding:10px;">${sig.price ? sig.price.toFixed(2) : '-'}</td>
+                        <td style="padding:10px; font-size:0.9em; color:#ddd;">${sig.details}</td>
                         <td>
-                            <button onclick="loadTickerFromScan('${ticker}')" style="background:#333; color:#fff; border:none; padding:4px 8px; cursor:pointer; font-size:0.8em; border-radius:4px;">🔍 Vedi</button>
+                             <button onclick="loadTickerFromScan('${sig.ticker}')" style="background:#333; color:#fff; border:none; padding:4px 8px; cursor:pointer; font-size:0.8em; border-radius:4px;">🔍 Vedi</button>
                         </td>
                     </tr>
                 `;
                 tableBody.innerHTML += row;
-            }
+            });
         }
 
-        // Small delay between batches
-        await new Promise(r => setTimeout(r, 50));
+    } catch (e) {
+        console.error(e);
+        statusLabel.innerText = "❌ Errore Backend: " + e.message;
+        progressBar.style.display = 'none';
+    } finally {
+        btnStart.style.display = 'inline-block';
     }
-
-    // --- APPEND AVERAGE ROW & SIMULATOR BUTTON ---
-    if (countStats > 0) {
-        const avgLiveRet = (totalLiveRet / countStats).toFixed(2);
-        const avgFrozenRet = (totalFrozenRet / countStats).toFixed(2);
-        const avgSumRet = (totalSumRet / countStats).toFixed(2);
-        const avgWinLive = (totalWinLive / countStats).toFixed(1);
-        const avgWinFrozen = (totalWinFrozen / countStats).toFixed(1);
-        const avgWinSum = (totalWinSum / countStats).toFixed(1);
-        const avgDelta = (avgLiveRet - avgFrozenRet).toFixed(2);
-
-        const statsRow = `
-            <tr style="border-top: 3px solid #eba834; background: rgba(235, 168, 52, 0.15); font-weight: bold; font-size: 1.05em;">
-                <td></td>
-                <td colspan="4" style="padding:15px; color:#eba834; text-align:center;">📊 MEDIA (${countStats})</td>
-                <td style="color:${avgWinLive >= 50 ? '#00ff88' : '#bbb'}">${avgWinLive}%</td>
-                <td style="color:${avgLiveRet > 0 ? '#00ff88' : '#ff4444'}">${avgLiveRet}%</td>
-                <td style="color:${avgWinFrozen >= 50 ? '#ff9900' : '#bbb'}">${avgWinFrozen}%</td>
-                <td style="color:${avgFrozenRet > 0 ? '#ff9900' : '#ff4444'}">${avgFrozenRet}%</td>
-                <td style="color:${avgWinSum >= 50 ? '#ff4444' : '#bbb'}">${avgWinSum}%</td>
-                <td style="color:${avgSumRet > 0 ? '#ff4444' : '#888'}">${avgSumRet}%</td>
-                <td style="color:#eba834;">${avgDelta}%</td>
-                <td>
-                    <button onclick="openSimulatorModal()" style="background:#00ff88; color:#000; font-weight:bold; border:none; padding:6px 10px; cursor:pointer; border-radius:4px; box-shadow:0 2px 5px rgba(0,0,0,0.5);">
-                        💰 SIMULA
-                    </button>
-                </td>
-            </tr>
-        `;
-        tableBody.innerHTML += statsRow;
-
-        // Auto scroll to bottom
-        tableBody.parentElement.parentElement.scrollTop = tableBody.parentElement.parentElement.scrollHeight;
-    }
-
-    if (!SCAN_STOP_SIGNAL) {
-        statusLabel.innerHTML = '✅ Scan Completato!';
-    }
-
-    // Reset Buttons
-    document.getElementById('btn-stop-scan').style.display = 'none';
-    document.getElementById('btn-start-scan').style.display = 'inline-block';
 }
 
 // --- PORTFOLIO SIMULATOR FUNCTIONS ---
