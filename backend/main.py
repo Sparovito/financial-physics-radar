@@ -12,7 +12,7 @@ import os
 import sys
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 import yfinance as yf
 
 # Ensure the directory containing this file is in the Python path
@@ -35,10 +35,11 @@ def scheduled_scan_job():
     from scanner import run_market_scan
     run_market_scan(send_email=True)
 
-# Schedule: Every day at 18:50 (TEST)
+# Schedule: Every day at 19:00 (TEST)
+# Note: Changing back to 18:30 for production after test
 scheduler.add_job(
     scheduled_scan_job,
-    CronTrigger(hour=18, minute=50),
+    CronTrigger(hour=19, minute=0),
     id="daily_scan",
     replace_existing=True
 )
@@ -46,15 +47,15 @@ scheduler.add_job(
 @app.get("/debug-time")
 def debug_time():
     """Returns server time info for debugging scheduler."""
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now_utc = datetime.now(timezone.utc)
     try:
         import pytz
         rome = pytz.timezone("Europe/Rome")
-        now_rome = datetime.datetime.now(rome)
+        now_rome = datetime.now(rome)
         return {
             "utc_time": now_utc.isoformat(),
             "rome_time": now_rome.isoformat(),
-            "server_local_time": datetime.datetime.now().isoformat(),
+            "server_local_time": datetime.now().isoformat(),
             "scheduler_timezone": str(scheduler.timezone)
         }
     except Exception as e:
