@@ -797,13 +797,22 @@ function renderTradesList() {
 // Verify trade integrity by running time simulation
 async function verifyTradeIntegrity() {
     console.log("👆 Button verifyTradeIntegrity clicked!");
-    // alert("Avvio verifica integrità..."); // Debug alert
 
     const listDiv = document.getElementById('trades-list');
-    const ticker = document.getElementById('ticker-input').value.toUpperCase();
+    // FIX: IDs are 'ticker', 'alpha', 'beta', NOT 'ticker-input' etc.
+    const tickerEl = document.getElementById('ticker');
+    const alphaEl = document.getElementById('alpha');
+    const betaEl = document.getElementById('beta');
+
+    if (!tickerEl) {
+        alert("Errore: Impossibile trovare l'input ticker!");
+        return;
+    }
+
+    const ticker = tickerEl.value.toUpperCase();
     const strategy = window.CURRENT_TRADES_VIEW || 'FROZEN';
-    const alpha = parseFloat(document.getElementById('alpha-input').value) || 200;
-    const beta = parseFloat(document.getElementById('beta-input').value) || 1.0;
+    const alpha = parseFloat(alphaEl ? alphaEl.value : 200);
+    const beta = parseFloat(betaEl ? betaEl.value : 1.0);
 
     // Show loading
     listDiv.innerHTML = `
