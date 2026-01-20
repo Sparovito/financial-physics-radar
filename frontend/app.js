@@ -1847,29 +1847,18 @@ function closeScannerModal() {
 async function startBulkScan() {
     const cat = document.getElementById('scanner-category').value;
     const tableBody = document.getElementById('scanner-results');
-    const tableHead = document.querySelector('.scanner-table thead tr');
     const progressBar = document.getElementById('scan-progress');
     const statusLabel = document.getElementById('scan-status');
     const btnStart = document.getElementById('btn-start-scan');
     const btnStop = document.getElementById('btn-stop-scan');
 
-    // 1. SWITCH TO SIGNALS MODE (Headers)
-    tableHead.innerHTML = `
-        <th style="padding:12px;">Ticker</th>
-        <th style="padding:12px;">Strategy</th>
-        <th style="padding:12px;">Signal</th>
-        <th style="padding:12px;">Price</th>
-        <th style="padding:12px;">Details</th>
-        <th style="padding:12px;">Action</th>
-    `;
-
     // UI Reset
     tableBody.innerHTML = '';
     progressBar.style.display = 'block';
-    progressBar.removeAttribute('value'); // Indeterminate
+    progressBar.value = 0;
     btnStart.style.display = 'none';
-    btnStop.style.display = 'none'; // Not cancellable (server side is fast)
-    statusLabel.innerHTML = '🚀 Scansione Segnali in corso...';
+    btnStop.style.display = 'inline-block';
+    SCAN_STOP_SIGNAL = false;
 
     // Build Ticker List
     let tickersToScan = [];
@@ -1877,61 +1866,195 @@ async function startBulkScan() {
         Object.values(TICKERS_DATA).forEach(list => {
             tickersToScan = tickersToScan.concat(list.map(t => t.symbol));
         });
+        // Deduplicate
         tickersToScan = [...new Set(tickersToScan)];
     } else {
         tickersToScan = TICKERS_DATA[cat].map(t => t.symbol);
     }
 
-    try {
-        // CALL BACKEND
-        const response = await fetch(`${API_URL}/scan-signals`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tickers: tickersToScan })
-        });
+    progressBar.max = tickersToScan.length;
 
-        if (!response.ok) throw new Error("Errore durante la scansione");
+    // --- ACCUMULATORS FOR AVERAGE ---
+    let totalLiveRet = 0;
+    let totalFrozenRet = 0;
+    let totalSumRet = 0;
+    let totalWinLive = 0;
+    let totalWinFrozen = 0;
+    let totalWinSum = 0;
+    let countStats = 0;
 
-        const data = await response.json();
-        const signals = data.signals;
-        const count = data.scanned_count;
+    // Global Trade Accumulator for Portfolio Simulator
+    // Global Trade Accumulator for Portfolio Simulator
+    window.ALL_SCAN_TRADES_LIVE = [];
+    window.ALL_SCAN_TRADES_FROZEN = [];
+    window.ALL_SCAN_TRADES = []; // Fallback/Reference
 
-        statusLabel.innerHTML = `✅ Scansione completata su ${count} titoli.`;
-        progressBar.style.display = 'none';
+    // Get Parallelism Level
+    const parallelism = parseInt(document.getElementById('scan-parallel').value) || 4;
 
-        if (!signals || signals.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="6" style="padding:20px; text-align:center;">Nessun segnale operativo rilevato oggi.</td></tr>`;
-        } else {
-            signals.forEach(sig => {
-                let color = '#ccc';
-                let bg = '';
-                if (sig.signal === 'ENTER') { color = '#00ff88'; bg = 'rgba(0,255,136,0.1)'; }
-                if (sig.signal === 'EXIT') { color = '#ff4444'; bg = 'rgba(255,68,68,0.1)'; }
-                if (sig.signal === 'HOLD') { color = '#eba834'; }
+    // Helper: Analyze a single ticker and return result
+    async function analyzeTicker(ticker) {
+        if (SCAN_STOP_SIGNAL) return null;
+
+        try {
+            const alpha = parseFloat(document.getElementById('alpha').value) || 200;
+            const beta = parseFloat(document.getElementById('beta').value) || 1.0;
+            const startDate = document.getElementById('scanner-start').value || "2023-01-01";
+            let endDate = document.getElementById('scanner-end').value;
+            if (endDate === "") endDate = null;
+
+            const response = await fetch(`${API_URL}/analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ticker: ticker,
+                    alpha: alpha,
+                    beta: beta,
+                    top_k: 5,
+                    forecast_days: 60,
+                    start_date: startDate,
+                    end_date: endDate,
+                    use_cache: true
+                })
+            });
+
+            if (!response.ok) return null;
+            const data = await response.json();
+            return { ticker, data };
+        } catch (e) {
+            console.error(`Error analyzing ${ticker}:`, e);
+            return null;
+        }
+    }
+
+    // Process in batches
+    let processed = 0;
+    for (let i = 0; i < tickersToScan.length; i += parallelism) {
+        if (SCAN_STOP_SIGNAL) {
+            statusLabel.innerHTML = '🛑 Scan Interrotto.';
+            break;
+        }
+
+        // Create batch
+        const batch = tickersToScan.slice(i, i + parallelism);
+        statusLabel.innerHTML = `⚡ Analisi batch ${Math.floor(i / parallelism) + 1}/${Math.ceil(tickersToScan.length / parallelism)} (${batch.join(', ')})...`;
+
+        // Execute batch in parallel
+        const results = await Promise.all(batch.map(t => analyzeTicker(t)));
+
+        // Process results
+        for (const result of results) {
+            if (!result) continue;
+
+            const { ticker, data } = result;
+            processed++;
+            progressBar.value = processed;
+
+            // Capture trades
+            if (data.backtest?.trades) {
+                data.backtest.trades.forEach(t => {
+                    window.ALL_SCAN_TRADES_LIVE.push({ ...t, ticker: ticker });
+                });
+            }
+            if (data.frozen_strategy?.trades) {
+                data.frozen_strategy.trades.forEach(t => {
+                    window.ALL_SCAN_TRADES_FROZEN.push({ ...t, ticker: ticker });
+                });
+            }
+            window.ALL_SCAN_TRADES = window.ALL_SCAN_TRADES_LIVE;
+
+            const liveStats = data.backtest?.stats;
+            const frozenStats = data.frozen_strategy?.stats;
+            const sumStats = data.frozen_sum_strategy?.stats;
+
+            if (liveStats && frozenStats) {
+                totalLiveRet += liveStats.total_return;
+                totalFrozenRet += frozenStats.total_return;
+                totalWinLive += liveStats.win_rate;
+                totalWinFrozen += frozenStats.win_rate;
+                if (sumStats) {
+                    totalSumRet += sumStats.total_return;
+                    totalWinSum += sumStats.win_rate;
+                }
+                countStats++;
+
+                const liveRet = liveStats.total_return;
+                const frozenRet = frozenStats.total_return;
+                const sumRet = sumStats ? sumStats.total_return : 0;
+                const sumWin = sumStats ? sumStats.win_rate : 0;
+                const delta = (liveRet - frozenRet).toFixed(2);
+                const deltaColor = parseFloat(delta) > 20 ? '#ff4444' : (parseFloat(delta) < -5 ? '#00ff88' : '#888');
 
                 const row = `
-                    <tr style="border-bottom:1px solid #333; background:${bg};">
-                        <td style="padding:10px; font-weight:bold;">${sig.ticker}</td>
-                        <td style="padding:10px; color:#aaa;">${sig.strategy}</td>
-                        <td style="padding:10px; font-weight:bold; color:${color};">${sig.signal}</td>
-                        <td style="padding:10px;">${sig.price ? sig.price.toFixed(2) : '-'}</td>
-                        <td style="padding:10px; font-size:0.9em; color:#ddd;">${sig.details}</td>
+                    <tr class="scan-row" data-kin="${data.avg_abs_kin || 0}" data-cap="${data.market_cap || 0}" style="border-bottom:1px solid #333;">
+                        <td style="padding:10px; text-align:center;">
+                            <input type="checkbox" class="scan-ticker-checkbox" data-ticker="${ticker}" checked>
+                        </td>
+                        <td style="padding:10px; font-weight:bold;">${ticker}</td>
+                        <td style="padding:10px; color:#ccc;">${data.avg_abs_kin || '-'}</td>
+                        <td style="padding:10px; color:#ccc;">${formatMarketCap(data.market_cap)}</td>
+                        <td style="padding:10px; color:#ccc;">${data.backtest?.trades?.length || 0}</td>
+                        <td style="color:${liveStats.win_rate >= 50 ? '#00ff88' : '#888'}">${liveStats.win_rate}%</td>
+                        <td style="color:${liveRet > 0 ? '#00ff88' : '#ff4444'}">${liveRet}%</td>
+                        <td style="color:${frozenStats.win_rate >= 50 ? '#ff9900' : '#888'}">${frozenStats.win_rate}%</td>
+                        <td style="color:${frozenRet > 0 ? '#ff9900' : '#ff4444'}">${frozenRet}%</td>
+                        <td style="color:${sumWin >= 50 ? '#ff4444' : '#888'}">${sumWin}%</td>
+                        <td style="color:${sumRet > 0 ? '#ff4444' : '#888'}">${sumRet}%</td>
+                        <td style="color:${deltaColor}; font-weight:bold;">${delta}%</td>
                         <td>
-                             <button onclick="loadTickerFromScan('${sig.ticker}')" style="background:#333; color:#fff; border:none; padding:4px 8px; cursor:pointer; font-size:0.8em; border-radius:4px;">🔍 Vedi</button>
+                            <button onclick="loadTickerFromScan('${ticker}')" style="background:#333; color:#fff; border:none; padding:4px 8px; cursor:pointer; font-size:0.8em; border-radius:4px;">🔍 Vedi</button>
                         </td>
                     </tr>
                 `;
                 tableBody.innerHTML += row;
-            });
+            }
         }
 
-    } catch (e) {
-        console.error(e);
-        statusLabel.innerText = "❌ Errore Backend: " + e.message;
-        progressBar.style.display = 'none';
-    } finally {
-        btnStart.style.display = 'inline-block';
+        // Small delay between batches
+        await new Promise(r => setTimeout(r, 50));
     }
+
+    // --- APPEND AVERAGE ROW & SIMULATOR BUTTON ---
+    if (countStats > 0) {
+        const avgLiveRet = (totalLiveRet / countStats).toFixed(2);
+        const avgFrozenRet = (totalFrozenRet / countStats).toFixed(2);
+        const avgSumRet = (totalSumRet / countStats).toFixed(2);
+        const avgWinLive = (totalWinLive / countStats).toFixed(1);
+        const avgWinFrozen = (totalWinFrozen / countStats).toFixed(1);
+        const avgWinSum = (totalWinSum / countStats).toFixed(1);
+        const avgDelta = (avgLiveRet - avgFrozenRet).toFixed(2);
+
+        const statsRow = `
+            <tr style="border-top: 3px solid #eba834; background: rgba(235, 168, 52, 0.15); font-weight: bold; font-size: 1.05em;">
+                <td></td>
+                <td colspan="4" style="padding:15px; color:#eba834; text-align:center;">📊 MEDIA (${countStats})</td>
+                <td style="color:${avgWinLive >= 50 ? '#00ff88' : '#bbb'}">${avgWinLive}%</td>
+                <td style="color:${avgLiveRet > 0 ? '#00ff88' : '#ff4444'}">${avgLiveRet}%</td>
+                <td style="color:${avgWinFrozen >= 50 ? '#ff9900' : '#bbb'}">${avgWinFrozen}%</td>
+                <td style="color:${avgFrozenRet > 0 ? '#ff9900' : '#ff4444'}">${avgFrozenRet}%</td>
+                <td style="color:${avgWinSum >= 50 ? '#ff4444' : '#bbb'}">${avgWinSum}%</td>
+                <td style="color:${avgSumRet > 0 ? '#ff4444' : '#888'}">${avgSumRet}%</td>
+                <td style="color:#eba834;">${avgDelta}%</td>
+                <td>
+                    <button onclick="openSimulatorModal()" style="background:#00ff88; color:#000; font-weight:bold; border:none; padding:6px 10px; cursor:pointer; border-radius:4px; box-shadow:0 2px 5px rgba(0,0,0,0.5);">
+                        💰 SIMULA
+                    </button>
+                </td>
+            </tr>
+        `;
+        tableBody.innerHTML += statsRow;
+
+        // Auto scroll to bottom
+        tableBody.parentElement.parentElement.scrollTop = tableBody.parentElement.parentElement.scrollHeight;
+    }
+
+    if (!SCAN_STOP_SIGNAL) {
+        statusLabel.innerHTML = '✅ Scan Completato!';
+    }
+
+    // Reset Buttons
+    document.getElementById('btn-stop-scan').style.display = 'none';
+    document.getElementById('btn-start-scan').style.display = 'inline-block';
 }
 
 // --- PORTFOLIO SIMULATOR FUNCTIONS ---
@@ -2422,3 +2545,554 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentAnalysisData) renderCharts(currentAnalysisData);
     });
 });
+// Helper to get tickers (Shared)
+// Helper to get tickers (Shared)
+function getTickersForCategory(category) {
+    if (!window.TICKERS_DATA) return [];
+
+    // Mapping from HTML values to TICKERS_DATA keys
+    const CATEGORY_MAP = {
+        'ALL': 'ALL',
+        'HIGHLIGHTS': '⭐ Highlights',
+        'US_MEGA': '🏛️ US Mega Cap',
+        'US_TECH': '💻 US Tech',
+        'US_FINANCE': '🏦 US Finance',
+        'US_HEALTH': '🏥 US Healthcare',
+        'US_INDUSTRIAL': '🏭 US Industrials',
+        'US_CONSUMER': '🛒 US Consumer',
+        'US_ENERGY': '⚡ US Energy',
+        'US_MIDCAP': '📈 US Mid Cap A-L',
+        'UK': '🇬🇧 UK (FTSE)',
+        'DE': '🇩🇪 Germany (DAX)',
+        'FR': '🇫🇷 France (CAC 40)',
+        'IT': '🇮🇹 Italy (MIB)',
+        'EU_ALL': 'EU_ALL',
+        'JP': '🇯🇵 Japan',
+        'CN': '🇨🇳 China / HK',
+        'KR': '🇰🇷 Korea',
+        'TW': '🇹🇼 Taiwan',
+        'IN': '🇮🇳 India',
+        'ETF': '📊 Major ETFs',
+        'CRYPTO': '🪙 Crypto',
+        'COMMODITIES': '🛢️ Commodities'
+    };
+
+    // Special Merging Logic
+    if (category === 'US_MIDCAP') {
+        const list1 = window.TICKERS_DATA['📈 US Mid Cap A-L'] || [];
+        const list2 = window.TICKERS_DATA['📉 US Mid Cap M-Z'] || [];
+        return [...list1, ...list2].map(t => t.symbol);
+    }
+
+    if (category === 'ALL') {
+        let all = [];
+        Object.values(window.TICKERS_DATA).forEach(list => {
+            all = all.concat(list.map(t => t.symbol));
+        });
+        return [...new Set(all)];
+    }
+
+    if (category === 'EU_ALL') {
+        const euKeys = ['🇬🇧 UK (FTSE)', '🇩🇪 Germany (DAX)', '🇫🇷 France (CAC 40)', '🇮🇹 Italy (MIB)', '🇳🇱 Netherlands', '🇪🇸 Spain', '🇨🇭 Switzerland'];
+        let allEu = [];
+        euKeys.forEach(k => {
+            if (window.TICKERS_DATA[k]) allEu = allEu.concat(window.TICKERS_DATA[k].map(t => t.symbol));
+        });
+        return [...new Set(allEu)];
+    }
+
+    const dataKey = CATEGORY_MAP[category];
+    if (dataKey && window.TICKERS_DATA[dataKey]) {
+        return window.TICKERS_DATA[dataKey].map(t => t.symbol);
+    }
+
+    return [];
+}
+
+// Ensure functions are global
+window.openDailyScanModal = openDailyScanModal;
+window.closeDailyScanModal = closeDailyScanModal;
+window.runDailyScan = runDailyScan;
+
+// --- DAILY SCANNER LOGIC ---
+
+function openDailyScanModal() {
+    document.getElementById('daily-scan-modal').style.display = 'flex';
+}
+
+function closeDailyScanModal() {
+    document.getElementById('daily-scan-modal').style.display = 'none';
+}
+
+// Time Navigation: Shift date by N days and re-run scan
+function shiftScanDate(days) {
+    const dateInput = document.getElementById('daily-scan-date');
+    let currentDate = dateInput.value ? new Date(dateInput.value) : new Date();
+
+    // Shift by N days
+    currentDate.setDate(currentDate.getDate() + days);
+
+    // Format as YYYY-MM-DD
+    const year = currentDate.getFullYear();
+    const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+    const day = String(currentDate.getDate()).padStart(2, '0');
+    dateInput.value = `${year}-${month}-${day}`;
+
+    // Auto-run scan
+    runDailyScan();
+}
+
+// Export to window
+window.shiftScanDate = shiftScanDate;
+
+async function runDailyScan() {
+    const category = document.getElementById('daily-scan-category').value;
+    const tickers = getTickersForCategory(category);
+    const asOfDate = document.getElementById('daily-scan-date').value || null; // Time travel date
+
+    if (tickers.length === 0) {
+        alert("Nessun ticker trovato per questa categoria.");
+        return;
+    }
+
+    const progress = document.getElementById('daily-scan-progress');
+    const status = document.getElementById('daily-scan-status');
+    const tbody = document.getElementById('daily-scan-results');
+
+    // Reset UI
+    progress.style.display = 'block';
+    progress.value = 10; // Started
+    status.style.display = 'block';
+    const dateLabel = asOfDate ? ` (data: ${asOfDate})` : ' (oggi)';
+    status.innerText = `Analisi in corso su ${tickers.length} titoli${dateLabel}...`;
+    tbody.innerHTML = ''; // Clear previous results
+
+    try {
+        // Call API
+        const response = await fetch(`${API_URL}/scan-daily`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tickers: tickers, as_of_date: asOfDate })
+        });
+
+        if (!response.ok) throw new Error("Errore scansione backend");
+
+        const results = await response.json();
+
+        progress.value = 100;
+        status.innerText = `Scansione completata: ${results.length} risultati.`;
+
+        renderDailyScanResults(results);
+
+    } catch (err) {
+        console.error(err);
+        status.innerText = "Errore durante la scansione.";
+        progress.style.display = 'none';
+    }
+}
+
+function renderDailyScanResults(results) {
+    const tbody = document.getElementById('daily-scan-results');
+    let html = '';
+
+    if (!results || results.length === 0) {
+        html = '<tr><td colspan="6" style="padding:20px; text-align:center; color:#888;">Nessun segnale rilevato o errore di connessione.</td></tr>';
+        tbody.innerHTML = html;
+        return;
+    }
+
+    // Sort logic: Actionable first (BUY/SELL), then others
+    // Sorting happens in backend by Market Cap, but let's prioritize ACTION here
+    const actionable = [];
+    const others = [];
+
+    results.forEach(r => {
+        const hasAction = (r.frozen && (r.frozen.action === 'BUY' || r.frozen.action === 'SELL')) ||
+            (r.sum && (r.sum.action === 'BUY' || r.sum.action === 'SELL'));
+        if (hasAction) actionable.push(r);
+        else others.push(r);
+    });
+
+    // Combine: Actionable first
+    const sortedResults = [...actionable, ...others];
+
+    sortedResults.forEach(r => {
+        // Resolve Action & Date Logic
+        const scanDateInput = document.getElementById('daily-scan-date').value;
+        const todayStr = new Date().toISOString().split('T')[0];
+        const refDate = scanDateInput || todayStr;
+
+        const resolveStat = (resObj) => {
+            if (!resObj || !resObj.action) return { action: '-', date: '-', isRecent: false };
+
+            let act = resObj.action;
+            let date = '-';
+            let isRecent = false;
+
+            if (resObj.trade) {
+                date = resObj.trade.entry_date;
+                // Calc Diff
+                const d1 = new Date(refDate);
+                const d2 = new Date(date);
+                const diffTime = d1 - d2;
+                const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+                // Highlight if recent (<= 5 days) & not future
+                if (diffDays >= 0 && diffDays <= 5) isRecent = true;
+
+                // Override BUY -> HOLD if strictly past
+                if (act === 'BUY' && date < refDate) {
+                    act = 'HOLD';
+                }
+
+                // Append Direction (LONG/SHORT)
+                if (resObj.trade.direction) {
+                    act += ` ${resObj.trade.direction}`;
+                }
+            }
+            return { action: act, date: date, isRecent: isRecent };
+        };
+
+        const fInfo = resolveStat(r.frozen);
+        const sInfo = resolveStat(r.sum);
+
+        const frozenAction = fInfo.action;
+        const sumAction = sInfo.action;
+
+        // Date Styles
+        let fDateStyle = "color:#888;";
+        if (fInfo.isRecent) fDateStyle = "color:#00ff88; font-weight:bold;";
+
+        let sDateStyle = "color:#888;";
+        if (sInfo.isRecent) sDateStyle = "color:#00ff88; font-weight:bold;";
+
+        const getActionStyle = (action) => {
+            if (action.includes('BUY')) return 'color:#00ff88; font-weight:bold;';
+            if (action.includes('SELL')) return 'color:#ff4444; font-weight:bold;';
+            return 'color:#888;';
+        };
+
+        const frozenStyle = getActionStyle(frozenAction);
+        const sumStyle = getActionStyle(sumAction);
+
+        // Final Action Logic (Combined recommendation)
+        let finalAction = "-";
+        let finalStyle = "color:#666;";
+
+        const isBuy = (a) => a.includes('BUY');
+        const isHold = (a) => a.includes('HOLD');
+        const isSell = (a) => a.includes('SELL');
+
+        if (isBuy(frozenAction) && isBuy(sumAction)) {
+            finalAction = "🚀 STRONG BUY";
+            finalStyle = "color:#00ff88; font-weight:900; background:rgba(0,255,136,0.2); padding:4px 8px; border-radius:4px;";
+        } else if (isBuy(frozenAction)) {
+            finalAction = "🟢 BUY (Trend)";
+            finalStyle = "color:#00ff88; font-weight:bold;";
+        } else if (isBuy(sumAction)) {
+            finalAction = "🟡 BUY (Speculative)";
+            finalStyle = "color:#ffcc00; font-weight:bold;";
+        } else if (isSell(frozenAction) || isSell(sumAction)) {
+            finalAction = "🔴 SELL / EXIT";
+            finalStyle = "color:#ff4444; font-weight:bold;";
+        }
+
+        const tradeDir = (frozenAction.includes('SHORT') || sumAction.includes('SHORT')) ? 'SHORT' : 'LONG';
+
+        html += `<tr style="border-bottom:1px solid #333;">
+            <td style="padding:12px; font-weight:bold; color:#fff;">${r.ticker}</td>
+            <td style="padding:12px; color:#ccc;">${r.frozen ? r.frozen.value : '-'} (Z)</td>
+            
+            <td style="padding:12px; ${fDateStyle}">${fInfo.date}</td>
+            <td style="padding:12px; ${frozenStyle}">${frozenAction}</td>
+            
+            <td style="padding:12px; ${sDateStyle}">${sInfo.date}</td>
+            <td style="padding:12px; ${sumStyle}">${sumAction}</td>
+            
+            <td style="padding:12px; ${finalStyle}">${finalAction}</td>
+            <td style="padding:12px;">
+                <div style="display:flex; justify-content:center; gap:8px;">
+                    <button onclick="pfQuickOpen('${r.ticker}', '${tradeDir}')" 
+                        style="background:#2d3342; border:1px solid #7d4bf0; color:#d9ccff; border-radius:4px; padding:4px 8px; cursor:pointer;" title="Apri in Portafoglio Reale">
+                        💼
+                    </button>
+                    <button onclick="loadTickerFromScanner('${r.ticker}')" 
+                        style="background:#333; border:1px solid #555; color:#fff; border-radius:4px; padding:4px 8px; cursor:pointer;" title="Carica nel Grafico">
+                        ⚡
+                    </button>
+                </div>
+            </td>
+        </tr>`;
+    });
+
+    tbody.innerHTML = html;
+}
+
+function loadTickerFromScanner(ticker) {
+    // 1. Sync Date (Time Travel)
+    const scanDate = document.getElementById('daily-scan-date').value;
+    if (scanDate) {
+        document.getElementById('end-date').value = scanDate;
+    }
+
+    // 2. Sync Ticker
+    document.getElementById('ticker').value = ticker;
+
+    // 3. UI
+    closeDailyScanModal();
+    runAnalysis(); // Trigger main analysis
+}
+
+/* =========================================
+   PORTFOLIO REAL SIMULATION
+   ========================================= */
+
+function openPortfolioModal() {
+    const m = document.getElementById('portfolio-modal');
+    if (m) {
+        m.style.display = 'flex';
+        pfLoadData();
+
+        // Setup Close
+        const closeBtn = m.querySelector('.close-modal');
+        if (closeBtn) closeBtn.onclick = () => m.style.display = 'none';
+
+        // Double check global close listener
+        m.onclick = (e) => {
+            if (e.target === m) m.style.display = 'none';
+        }
+    }
+}
+
+async function pfLoadData() {
+    const openList = document.getElementById('pf-open-list');
+    const closedList = document.getElementById('pf-closed-list');
+
+    // Clear (9 cols)
+    openList.innerHTML = '<tr><td colspan="9">Caricamento...</td></tr>';
+
+    try {
+        const res = await fetch(`${API_URL}/portfolio`);
+        const data = await res.json();
+
+        openList.innerHTML = '';
+        closedList.innerHTML = '';
+
+        const positions = data.positions || [];
+
+        // Split Open vs Closed
+        const openPos = positions.filter(p => p.status === 'OPEN').reverse(); // Newest first
+        const closedPos = positions.filter(p => p.status === 'CLOSED').reverse();
+
+        // Render OPEN
+        if (openPos.length === 0) {
+            openList.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#555;">Nessuna posizione aperta</td></tr>';
+        }
+
+        openPos.forEach(p => {
+            const color = p.pnl_pct >= 0 ? '#00ff88' : '#ff4444';
+            const sign = p.pnl_pct >= 0 ? '+' : '';
+            const dirIcon = p.direction === 'LONG' ? '🟢' : '🔴';
+            const safeStrat = (p.strategy || 'Manuale').replace(/'/g, "\\'");
+            const safeNotes = (p.notes || '').replace(/'/g, "\\'");
+
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid #333';
+            tr.innerHTML = `
+                <td style="padding:10px; font-weight:bold; color:#fff;">${p.ticker}</td>
+                <td style="padding:10px;">${dirIcon} ${p.direction}</td>
+                <td onclick="pfEditStrategy(this, '${p.id}', '${safeStrat}')" title="Clicca per modificare" style="padding:10px; color:#aaa; font-size:0.9em; cursor:pointer; border-bottom:1px dashed #444;">${p.strategy || 'Manuale'} ✏️</td>
+                <td onclick="pfUpdateField('${p.id}', 'notes', '${safeNotes}')" title="Clicca per modificare" style="padding:10px; color:#aaa; font-style:italic; font-size:0.9em; cursor:pointer; border-bottom:1px dashed #444;">${p.notes || '-'} ✏️</td>
+                <td style="padding:10px; color:#888;">${p.entry_date}</td>
+                <td style="padding:10px;">${p.entry_price}</td>
+                <td style="padding:10px; font-weight:bold;">${p.current_price}</td>
+                <td style="padding:10px; font-weight:bold; color:${color};">${sign}${p.pnl_pct}%</td>
+                <td style="padding:10px; text-align:right;">
+                    <button onclick="pfClosePosition('${p.id}')" 
+                        style="background:#333; border:1px solid #555; color:#fff; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.8rem;">
+                        CHIUDI 🔒
+                    </button>
+                </td>
+             `;
+            openList.appendChild(tr);
+        });
+
+        // Render CLOSED
+        closedPos.forEach(p => {
+            const color = p.pnl_pct >= 0 ? '#00ff88' : '#ff4444';
+            const sign = p.pnl_pct >= 0 ? '+' : '';
+            const dirIcon = p.direction === 'LONG' ? '🟢' : '🔴';
+            const safeStrat = (p.strategy || 'Manuale').replace(/'/g, "\\'");
+            const safeNotes = (p.notes || '').replace(/'/g, "\\'");
+
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid #333';
+            tr.innerHTML = `
+                <td style="padding:10px; font-weight:bold; color:#aaa;">${p.ticker}</td>
+                <td style="padding:10px;">${dirIcon} ${p.direction}</td>
+                <td onclick="pfEditStrategy(this, '${p.id}', '${safeStrat}')" title="Clicca per modificare" style="padding:10px; color:#666; font-size:0.9em; cursor:pointer; border-bottom:1px dashed #444;">${p.strategy || 'Manuale'} ✏️</td>
+                <td onclick="pfUpdateField('${p.id}', 'notes', '${safeNotes}')" title="Clicca per modificare" style="padding:10px; color:#666; font-style:italic; font-size:0.9em; cursor:pointer; border-bottom:1px dashed #444;">${p.notes || '-'} ✏️</td>
+                <td style="padding:10px; color:#666;">${p.entry_date}</td>
+                <td style="padding:10px; color:#666;">${p.exit_date}</td>
+                <td style="padding:10px; color:#888;">${p.entry_price}</td>
+                <td style="padding:10px; color:#888;">${p.exit_price}</td>
+                <td style="padding:10px; font-weight:bold; color:${color}; opacity:0.8;">${sign}${p.pnl_pct}%</td>
+             `;
+            closedList.appendChild(tr);
+        });
+
+    } catch (err) {
+        console.error(err);
+        openList.innerHTML = '<tr><td colspan="9" style="color:red;">Errore caricamento</td></tr>';
+    }
+}
+
+async function pfOpenPosition() {
+    const ticker = document.getElementById('pf-ticker-input').value.trim();
+    const direction = document.getElementById('pf-direction-input').value;
+    const strategy = document.getElementById('pf-strategy-input').value;
+    const notes = document.getElementById('pf-notes-input').value.trim();
+    const status = document.getElementById('pf-status');
+
+    if (!ticker) {
+        status.innerText = "Inserisci un ticker!";
+        status.style.color = "red";
+        return;
+    }
+
+    status.innerText = "Apertura in corso...";
+    status.style.color = "orange";
+
+    try {
+        const res = await fetch(`${API_URL}/portfolio/open`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ticker: ticker,
+                direction: direction,
+                strategy: strategy,
+                notes: notes
+            })
+        });
+
+        if (!res.ok) throw new Error('Errore API');
+
+        status.innerText = "Posizione aperta!";
+        status.style.color = "lime";
+
+        // Refresh
+        setTimeout(() => {
+            status.innerText = "";
+            pfLoadData();
+            document.getElementById('pf-ticker-input').value = "";
+            document.getElementById('pf-notes-input').value = "";
+        }, 1000);
+
+    } catch (err) {
+        status.innerText = "Errore: " + err.message;
+        status.style.color = "red";
+    }
+}
+
+async function pfClosePosition(id) {
+    if (!confirm("Chiudere questa posizione al prezzo di mercato attuale?")) return;
+
+    try {
+        const res = await fetch(`${API_URL}/portfolio/close/${id}`, { method: 'POST' });
+        if (res.ok) {
+            pfLoadData();
+        } else {
+            alert("Errore durante la chiusura");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Errore di connessione");
+    }
+}
+
+async function pfQuickOpen(ticker, direction) {
+    if (!confirm(`Aprire posizione ${direction} su ${ticker} al prezzo di mercato attuale?`)) return;
+
+    try {
+        const res = await fetch(`${API_URL}/portfolio/open`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ticker: ticker,
+                direction: direction,
+                strategy: "Scanner Daily",
+                notes: "⚡ Quick Trade"
+            })
+        });
+
+        if (!res.ok) throw new Error('Errore API');
+
+        const data = await res.json();
+        alert(`✅ Posizione ${data.direction} aperta su ${data.ticker} a ${data.entry_price}$`);
+    } catch (err) {
+        alert("Errore: " + err.message);
+    }
+}
+
+async function pfUpdateField(id, field, current) {
+    const newVal = prompt(`Modifica ${field}:`, current);
+    if (newVal === null || newVal === current) return;
+
+    try {
+        const payload = {};
+        payload[field] = newVal;
+
+        const res = await fetch(`${API_URL}/portfolio/update/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            pfLoadData();
+        } else {
+            alert("Errore update");
+        }
+    } catch (err) {
+        alert("Errore update: " + err.message);
+    }
+}
+
+function pfEditStrategy(td, id, current) {
+    // Prevent double clicking
+    td.onclick = null;
+
+    const options = [
+        "Manuale",
+        "Scanner Daily",
+        "Frozen Strategy",
+        "Sum Strategy",
+        "Kinetic Z"
+    ];
+
+    let html = `<select style="background:#1a1d2a; color:#fff; border:1px solid #555; padding:4px; border-radius:4px; width:100%;" 
+                onchange="pfSaveStrategy('${id}', this.value)" onblur="setTimeout(pfLoadData, 200)">`;
+
+    options.forEach(opt => {
+        const sel = opt === current ? 'selected' : '';
+        html += `<option value="${opt}" ${sel}>${opt}</option>`;
+    });
+
+    html += `</select>`;
+    td.innerHTML = html;
+    td.querySelector('select').focus();
+}
+
+async function pfSaveStrategy(id, val) {
+    try {
+        const res = await fetch(`${API_URL}/portfolio/update/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ strategy: val })
+        });
+        if (res.ok) {
+            pfLoadData(); // Will also refresh the view
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}

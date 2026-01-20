@@ -10,6 +10,10 @@ import pandas as pd
 from scipy.signal import butter, filtfilt
 import os
 import sys
+import json
+import uuid
+from datetime import datetime
+import yfinance as yf
 
 # Ensure the directory containing this file is in the Python path
 # This fixes "ModuleNotFoundError: No module named 'logic'" on Railway
@@ -58,7 +62,7 @@ async def scan_market(req: ScanRequest):
         return {"status": "error", "detail": str(e)}
 
 @app.post("/analyze")
-async def analyze_stock(req: AnalysisRequest):
+def analyze_stock(req: AnalysisRequest):
     try:
         print(f"Ricevuta richiesta: {req.dict()}")
         
@@ -927,6 +931,302 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
         traceback.print_exc()
         return {"status": "error", "detail": str(e)}
 
+
+class DailyScanRequest(BaseModel):
+    tickers: list[str] = []
+    as_of_date: str | None = None  # Optional: simulate this date as "today"
+
+@app.post("/scan-daily")
+def scan_daily_signals(req: DailyScanRequest):
+    """
+    Scans a list of tickers for actionable signals (BUY/SELL) for the CURRENT day.
+    Checks both FROZEN and SUM strategies.
+    """
+    try:
+        import concurrent.futures
+        
+        tickers = req.tickers
+        as_of_date = req.as_of_date  # Time travel date
+        results = []
+        
+        # Helper function for checking signals
+        def check_ticker_signal(ticker):
+            """
+            Call the /analyze endpoint internally to get backtest results,
+            then extract the current signal state from the trades.
+            This ensures 100% consistency with the main chart!
+            """
+            try:
+                import requests
+                
+                # Call analyze endpoint internally
+                analyze_req = {
+                    "ticker": ticker,
+                    "alpha": 200.0,
+                    "beta": 1.0,
+                    "start_date": "2023-01-20",
+                    "end_date": as_of_date,  # Time travel
+                    "use_cache": True
+                }
+                
+                # Since we're in the same process, call the function directly
+                # First, create an AnalysisRequest object
+                req_obj = AnalysisRequest(**analyze_req)
+                
+                # Call the analyze function directly
+                result = analyze_stock(req_obj)
+                
+                if "error" in result:
+                    return None
+                
+                # Extract backtest data
+                frozen_bt = result.get("frozen_strategy", {})
+                sum_bt = result.get("frozen_sum_strategy", {})
+                
+                frozen_trades = frozen_bt.get("trades", [])
+                sum_trades = sum_bt.get("trades", [])
+                
+                # Get last price date
+                dates = result.get("dates", [])
+                last_date = dates[-1] if dates else ""
+                
+                # Get Z-values from frozen series
+                frozen_data = result.get("frozen_data", {})
+                z_frozen_pot = frozen_data.get("pot", [])
+                z_frozen_sum = frozen_data.get("z_sum", [])
+                
+                last_z_pot = z_frozen_pot[-1] if z_frozen_pot else 0
+                last_z_sum = z_frozen_sum[-1] if z_frozen_sum else 0
+                
+                # Determine current state from trades
+                def get_signal_state(trades):
+                    """Determine BUY/SELL/HOLD/WAIT from backtest trades."""
+                    if not trades:
+                        return {"action": "WAIT", "trade": None}
+                        
+                    last_trade = trades[-1]
+                    exit_dt = last_trade.get("exit_date")
+                    
+                    # 1. OPEN POSITION
+                    if exit_dt is None or exit_dt == "OPEN" or last_trade.get("pnl_pct") is None:
+                        entry_date = last_trade.get("entry_date", "")
+                        if entry_date == last_date:
+                            return {"action": "BUY", "trade": last_trade}
+                        else:
+                            return {"action": "HOLD", "trade": last_trade}
+                    
+                    # 2. CLOSED POSITION (Check if just closed)
+                    if exit_dt == last_date:
+                        return {"action": "SELL", "trade": last_trade}
+                    
+                    # 3. NO ACTIVE POSITION
+                    return {"action": "WAIT", "trade": last_trade}
+                
+                frozen_res = get_signal_state(frozen_trades)
+                sum_res = get_signal_state(sum_trades)
+                
+                # Get market cap
+                market_cap = result.get("market_cap", 0)
+                
+                return {
+                    "ticker": ticker,
+                    "market_cap": market_cap,
+                    "last_date": last_date,
+                    "frozen": {
+                        "strategy": "FROZEN", 
+                        "action": frozen_res["action"], 
+                        "value": round(last_z_pot, 2), 
+                        "date": last_date,
+                        "trade": frozen_res["trade"]
+                    },
+                    "sum": {
+                        "strategy": "SUM", 
+                        "action": sum_res["action"], 
+                        "value": round(last_z_sum, 2), 
+                        "date": last_date,
+                        "trade": sum_res["trade"]
+                    }
+                }
+                
+            except Exception as e:
+                print(f"Error scanning {ticker}: {e}")
+                return None
+
+        # PARALLEL EXECUTION
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(check_ticker_signal, t) for t in tickers]
+            for f in concurrent.futures.as_completed(futures):
+                res = f.result()
+                if res:
+                    results.append(res)
+        
+        # Sort by Market Cap desc
+        results.sort(key=lambda x: x['market_cap'], reverse=True)
+        
+        return results
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- PORTFOLIO API ---
+PORTFOLIO_FILE = "portfolio.json"
+
+class PortfolioManager:
+    def __init__(self):
+        self.file = PORTFOLIO_FILE
+        self._ensure_file()
+
+    def _ensure_file(self):
+        if not os.path.exists(self.file):
+            with open(self.file, "w") as f:
+                json.dump({"positions": []}, f)
+
+    def load(self):
+        with open(self.file, "r") as f:
+            return json.load(f)
+
+    def save(self, data):
+        with open(self.file, "w") as f:
+            json.dump(data, f, indent=4)
+
+    def get_price(self, ticker):
+        try:
+            t = yf.Ticker(ticker)
+            hist = t.history(period="1d")
+            if not hist.empty:
+                return float(hist["Close"].iloc[-1])
+            return 0.0
+        except:
+            return 0.0
+
+portfolio_mgr = PortfolioManager()
+
+@app.get("/portfolio")
+def get_portfolio():
+    try:
+        data = portfolio_mgr.load()
+        positions = data.get("positions", [])
+        
+        updated_positions = []
+        for p in positions:
+            if p["status"] == "OPEN":
+                curr = portfolio_mgr.get_price(p["ticker"])
+                if curr > 0:
+                    p["current_price"] = round(curr, 2)
+                    entry = p["entry_price"]
+                    direction = p.get("direction", "LONG")
+                    
+                    if direction == "LONG":
+                        pnl = ((curr - entry) / entry) * 100
+                    else:
+                        pnl = ((entry - curr) / entry) * 100
+                    p["pnl_pct"] = round(pnl, 2)
+            updated_positions.append(p)
+            
+        return {"positions": updated_positions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class PortfolioTrade(BaseModel):
+    ticker: str
+    direction: str = "LONG"
+    strategy: str = "Manual"
+    notes: str = ""
+
+@app.post("/portfolio/open")
+def open_position(trade: PortfolioTrade):
+    ticker = trade.ticker.upper()
+    try:
+        price = portfolio_mgr.get_price(ticker)
+        if price == 0:
+            raise HTTPException(status_code=400, detail="Prezzo non disponibile")
+            
+        data = portfolio_mgr.load()
+        new_pos = {
+            "id": str(uuid.uuid4()),
+            "ticker": ticker,
+            "direction": trade.direction,
+            "strategy": trade.strategy,
+            "notes": trade.notes,
+            "entry_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "entry_price": round(price, 2),
+            "status": "OPEN",
+            "exit_date": None,
+            "exit_price": None,
+            "pnl_pct": 0.0,
+            "current_price": round(price, 2)
+        }
+        data["positions"].append(new_pos)
+        portfolio_mgr.save(data)
+        return new_pos
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class PortfolioUpdate(BaseModel):
+    strategy: str = None
+    notes: str = None
+
+@app.post("/portfolio/update/{pos_id}")
+def update_position(pos_id: str, update: PortfolioUpdate):
+    try:
+        data = portfolio_mgr.load()
+        positions = data.get("positions", [])
+        found = False
+        for p in positions:
+            if p["id"] == pos_id:
+                if update.strategy is not None:
+                    p["strategy"] = update.strategy
+                if update.notes is not None:
+                    p["notes"] = update.notes
+                found = True
+                break
+        
+        if not found:
+            raise HTTPException(status_code=404, detail="Posizione non trovata")
+            
+        portfolio_mgr.save(data)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/portfolio/close/{pos_id}")
+def close_position(pos_id: str):
+    try:
+        data = portfolio_mgr.load()
+        positions = data.get("positions", [])
+        found = False
+        for p in positions:
+            if p["id"] == pos_id and p["status"] == "OPEN":
+                price = portfolio_mgr.get_price(p["ticker"])
+                if price == 0:
+                     price = p.get("current_price", p["entry_price"])
+                
+                p["exit_price"] = round(price, 2)
+                p["exit_date"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                p["status"] = "CLOSED"
+                p["current_price"] = round(price, 2)
+                
+                entry = p["entry_price"]
+                direction = p.get("direction", "LONG")
+                if direction == "LONG":
+                    pnl = ((price - entry) / entry) * 100
+                else:
+                    pnl = ((entry - price) / entry) * 100
+                p["pnl_pct"] = round(pnl, 2)
+                
+                found = True
+                break
+        
+        if not found:
+            raise HTTPException(status_code=404, detail="Posizione non trovata")
+            
+        portfolio_mgr.save(data)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # --- STATIC FILES SERVING (Fallback) ---
 
 # Construct absolute path to frontend directory to avoid CWD issues
@@ -949,111 +1249,6 @@ async def serve_frontend_file(filename: str):
     if os.path.exists(file_path) and os.path.isfile(file_path):
         return FileResponse(file_path)
     raise HTTPException(status_code=404, detail="File not found")
-
-@app.post("/scan-signals")
-def scan_signals(request: ScanRequest):
-    """
-    Analizza una lista di ticker e determina i segnali operativi per Oggi.
-    Usa la logica di transizione stato (T-1 -> T) basata sulle curve PnL.
-    """
-    try:
-        tickers = request.tickers
-        if not tickers:
-            return {"error": "Nessun ticker fornito"}
-            
-        print(f"📡 Scanning signals for {len(tickers)} tickers...")
-        
-        # Use existing MarketScanner for parallel processing
-        # Note: MarketScanner.scan() returns a list of results with full history
-        scanner = MarketScanner(tickers)
-        results = scanner.scan()
-        
-        signals = []
-        
-        for res in results:
-            ticker = res['ticker']
-            last_price = res['price']
-            
-            # Helper to determine signal from PnL curve
-            def get_signal_state(pnl_curve, strat_name):
-                # Need at least 2 points to determine transition
-                if not pnl_curve or len(pnl_curve) < 2:
-                    return "NEUTRAL", ""
-                    
-                # Values: 0.0 = Flat. != 0.0 = Invested (Current PnL)
-                # Note: logic.py uses 0 for flat.
-                
-                t_curr = pnl_curve[-1] # Today
-                t_prev = pnl_curve[-2] # Yesterday
-                
-                # Check for None
-                if t_curr is None: t_curr = 0.0
-                if t_prev is None: t_prev = 0.0
-                
-                state = "NEUTRAL"
-                details = ""
-                
-                is_invested_curr = abs(t_curr) != 0
-                is_invested_prev = abs(t_prev) != 0
-                
-                if is_invested_curr and not is_invested_prev:
-                    state = "ENTER"
-                    details = f"New Entry (Prev Flat -> Curr {t_curr}%)"
-                elif not is_invested_curr and is_invested_prev:
-                    state = "EXIT"
-                    # If pnl was positive -> Take Profit, else Stop Loss? 
-                    # Actually t_prev is the PnL just before close.
-                    pnl = round(t_prev, 2)
-                    details = f"Exit Position (Result: {pnl}%)"
-                elif is_invested_curr and is_invested_prev:
-                    state = "HOLD"
-                    pnl = round(t_curr, 2)
-                    details = f"Holding (Current: {pnl}%)"
-                else:
-                    state = "WAIT"
-                    details = "Flat"
-                    
-                return state, details
-
-            # Analyze Frozen
-            frozen_curve = res['history']['strategy_pnl']
-            frozen_state, frozen_details = get_signal_state(frozen_curve, "FROZEN")
-            
-            if frozen_state != "WAIT":
-                signals.append({
-                    "ticker": ticker,
-                    "strategy": "FROZEN",
-                    "signal": frozen_state,
-                    "price": last_price,
-                    "details": frozen_details,
-                    "date": pd.Timestamp.now().strftime('%Y-%m-%d') # Scan Date
-                })
-                
-            # Analyze SUM
-            sum_curve = res['history']['sum_pnl']
-            sum_state, sum_details = get_signal_state(sum_curve, "SUM")
-            
-            if sum_state != "WAIT":
-                # Check if it matches Frozen? No, treat independent.
-                signals.append({
-                    "ticker": ticker,
-                    "strategy": "SUM ⚡",
-                    "signal": sum_state,
-                    "price": last_price,
-                    "details": sum_details,
-                    "date": pd.Timestamp.now().strftime('%Y-%m-%d')
-                })
-        
-        # Sort signals: ENTER/EXIT first, then HOLD
-        priority = {"ENTER": 1, "EXIT": 2, "HOLD": 3, "WAIT": 4}
-        signals.sort(key=lambda x: (priority.get(x['signal'], 99), x['ticker']))
-        
-        return {"signals": signals, "scanned_count": len(tickers)}
-        
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

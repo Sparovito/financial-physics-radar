@@ -369,17 +369,26 @@ class MarketScanner:
             z_slope_series = (slope - roll_slope_mean) / (roll_slope_std + 1e-6)
             z_slope_series = z_slope_series.fillna(0)
             
+            # [NEW] Calcola Z-Score del ROC (Istantaneo) - per Direzione
+            ROC_PERIOD = 20
+            roc = ((px - px.shift(ROC_PERIOD)) / px.shift(ROC_PERIOD) * 100).fillna(0)
+            roll_roc_mean = roc.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
+            roll_roc_std = roc.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
+            z_roc_series = ((roc - roll_roc_mean) / (roll_roc_std + 1e-6)).fillna(0)
+            
             # Prendi al massimo HISTORY_LEN finali
             segment_px = px.iloc[-HISTORY_LEN:]
             segment_z_kin = z_kin_series.iloc[-HISTORY_LEN:]
             segment_z_pot = z_pot_series.iloc[-HISTORY_LEN:]
             segment_z_slope = z_slope_series.iloc[-HISTORY_LEN:]
+            segment_z_roc = z_roc_series.iloc[-HISTORY_LEN:]
             
             # Converti in lista e padding
             hist_dates = pad_left(segment_px.index.strftime('%Y-%m-%d').tolist(), HISTORY_LEN, None)
             hist_z_kin = pad_left(segment_z_kin.tolist(), HISTORY_LEN, None)
             hist_z_pot = pad_left(segment_z_pot.tolist(), HISTORY_LEN, None)
             hist_z_slope = pad_left(segment_z_slope.tolist(), HISTORY_LEN, None)
+            hist_z_roc = pad_left(segment_z_roc.tolist(), HISTORY_LEN, None)
             hist_price = pad_left(segment_px.tolist(), HISTORY_LEN, None)
 
             # Snapshot Attuale (Ultimo valore valido)

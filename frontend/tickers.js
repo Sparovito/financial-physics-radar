@@ -718,3 +718,6 @@ const TICKERS_DATA = {
         { symbol: "ZTS", name: "Zoetis" }
     ]
 };
+
+// Export for global access
+window.TICKERS_DATA = TICKERS_DATA;
