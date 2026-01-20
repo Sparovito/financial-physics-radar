@@ -275,7 +275,8 @@ async def analyze_stock(req: AnalysisRequest):
                 "dates": f_dates,
                 "kin": f_kin,
                 "pot": f_pot,
-                "z_sum": z_frozen_sum
+                "z_sum": z_frozen_sum,
+                "raw_sum": f_sum  # [NEW] Save raw values for integrity check reruns
             }
             
             # Salva tutto in cache
@@ -592,36 +593,120 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
             # Simulate analysis at this point in time
             truncated_px = full_px.iloc[:end_idx+1]
             
-            # Calculate path and Z-scores FRESH at every step to capture detailed look-ahead bias
-            # FIX: Constructor requires price series, calculate is internal via _compute
-            path = ActionPath(truncated_px, alpha=req.alpha, beta=req.beta)
-            
-            # FIX: Attribute names from logic.py are kin_density/pot_density
-            kinetic = path.kin_density
-            potential = path.pot_density
-            
-            # Calculate Z-scores
-            z_kin_series = (kinetic - kinetic.rolling(252).mean()) / kinetic.rolling(252).std()
-            z_pot_series = (potential - potential.rolling(252).mean()) / potential.rolling(252).std()
-            z_slope_series = z_kin_series.diff(5) / 5
-            
-            dates_historical = [d.strftime('%Y-%m-%d') for d in truncated_px.index]
-            price_real = truncated_px.tolist()
-            
             # Run backtest based on strategy
             if req.strategy == "LIVE":
+                # Recalculate dynamic path (Live is always fresh)
+                path = ActionPath(truncated_px, alpha=req.alpha, beta=req.beta)
+                kinetic = path.kin_density
+                
+                # Calculate Z-scores
+                z_kin_series = (kinetic - kinetic.rolling(252).mean()) / kinetic.rolling(252).std()
                 z_signal = z_kin_series.tolist()
                 threshold = 0.0
                 use_z_roc = False
+                
             elif req.strategy == "FROZEN":
-                z_signal = z_pot_series.tolist()
+                # [FIXED LOGIC] Use Frozen Point-in-Time Data
+                # Retrieve raw_sum from cache logic if available, else skip or calc
+                # We need the RAW values to simulate the normalization/filter at time 'end_idx'
+                
+                # Check if we have frozen data
+                if isinstance(cached_obj, dict) and "frozen" in cached_obj and cached_obj["frozen"] is not None and "raw_sum" in cached_obj["frozen"]:
+                    # We have pre-calculated point-in-time raw sums (stable!)
+                    # Get raw sum up to current simulation point
+                    # Note: raw_sum list aligns with 'full_px' indices roughly? 
+                    # Actually, raw_sum is appended in loop min_points..n.
+                    # We need to map 'end_idx' to the raw_sum list index.
+                    # Or simpler: Re-calculate 'raw_sum' point-in-time if necessary, but that's slow.
+                    # Better: The 'raw_sum' list contains values [v_min, v_min+1, ..., v_end].
+                    # Let's align by dates.
+                    
+                    full_raw_sum = cached_obj["frozen"]["raw_sum"]
+                    full_frozen_dates = cached_obj["frozen"]["dates"]
+                    
+                    # Find index in frozen list corresponding to end_date_str
+                    # Optimized: Since we iterate step_every=1, we can track index. But binary search is safer.
+                    # Dates are sorted strings YYYY-MM-DD
+                    
+                    # Find subset of raw_sum available at time 'end_date_str'
+                    # It includes all points with date <= end_date_str
+                    
+                    # Optim: bisect_right for strings works
+                    from bisect import bisect_right
+                    cut_idx = bisect_right(full_frozen_dates, end_date_str)
+                    
+                    if cut_idx == 0:
+                        # No frozen data available yet at this time
+                        z_signal = []
+                    else:
+                        trunc_raw_sum = full_raw_sum[:cut_idx]
+                        
+                        # Apply Rolling Z-Score (Normalization)
+                        s_sum = pd.Series(trunc_raw_sum)
+                        roll_mean = s_sum.rolling(window=252, min_periods=20).mean()
+                        roll_std = s_sum.rolling(window=252, min_periods=20).std()
+                        z_frozen_raw = ((s_sum - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
+                        
+                        # Apply Filter (Butterworth)
+                        try:
+                            from scipy.signal import butter, filtfilt
+                            b, a = butter(N=2, Wn=0.05, btype='low')
+                            # filtfilt requires minimal length (padlen)
+                            if len(z_frozen_raw) > 15:
+                                z_frozen_sum_filtered = filtfilt(b, a, z_frozen_raw).tolist()
+                                z_signal = z_frozen_sum_filtered
+                            else:
+                                z_signal = z_frozen_raw
+                        except:
+                             z_signal = z_frozen_raw
+                else:
+                    # Fallback if cache missing raw_sum (should trigger reload in analyze, but here we defend)
+                    z_signal = []
+                
                 threshold = 0.0
-                use_z_roc = True
+                use_z_roc = True # Frozen uses Z-ROC logic
+                
+                
             else:  # SUM
-                z_sum = (z_kin_series + z_pot_series).tolist()
-                z_signal = z_sum
-                threshold = -0.3
-                use_z_roc = True
+                 # SUM Strategy typically uses the same underlying Frozen Sum Z signal in the frontend
+                 # So we reuse the FROZEN logic or copy it. Given the code above sets z_signal for FROZEN,
+                 # we can just use the same logic if we structured it better.
+                 # For now, let's treat SUM as FROZEN in terms of signal integrity check.
+                 
+                 # Copy-paste logic from FROZEN for safety within this block scope (or refactor later)
+                 if isinstance(cached_obj, dict) and "frozen" in cached_obj and cached_obj["frozen"] is not None and "raw_sum" in cached_obj["frozen"]:
+                    full_raw_sum = cached_obj["frozen"]["raw_sum"]
+                    full_frozen_dates = cached_obj["frozen"]["dates"]
+                    from bisect import bisect_right
+                    cut_idx = bisect_right(full_frozen_dates, end_date_str)
+                    
+                    if cut_idx == 0:
+                        z_signal = []
+                    else:
+                        trunc_raw_sum = full_raw_sum[:cut_idx]
+                        s_sum = pd.Series(trunc_raw_sum)
+                        roll_mean = s_sum.rolling(window=252, min_periods=20).mean()
+                        roll_std = s_sum.rolling(window=252, min_periods=20).std()
+                        z_frozen_raw = ((s_sum - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
+                        
+                        try:
+                            from scipy.signal import butter, filtfilt
+                            b, a = butter(N=2, Wn=0.05, btype='low')
+                            if len(z_frozen_raw) > 15:
+                                z_signal = filtfilt(b, a, z_frozen_raw).tolist()
+                            else:
+                                z_signal = z_frozen_raw
+                        except:
+                             z_signal = z_frozen_raw
+                 else:
+                    z_signal = []
+
+                 threshold = -0.3
+                 use_z_roc = True
+            
+            # Common backtest call
+            if not z_signal:
+                 continue # Skip if no signal generated yet
             
             backtest_result = backtest_strategy(
                 prices=price_real,
