@@ -853,6 +853,16 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                              record['disappeared'] = True
                              if "❌ DISSOLTO" not in record['changes']:
                                  record['changes'].append("❌ DISSOLTO")
+                else:
+                    # Trade is PRESENT in current simulation
+                    # Check if it was previously marked as disappeared (Resurrection)
+                    if record['disappeared']:
+                        record['disappeared'] = False
+                        if "❌ DISSOLTO" in record['changes']:
+                            record['changes'].remove("❌ DISSOLTO")
+                        # Mark as Unstable/Flickering instead
+                        if "⚠️ INSTABILE" not in record['changes']:
+                            record['changes'].append("⚠️ INSTABILE")
 
         # Collect corrupted trades
         for entry_date, data in trade_history.items():
