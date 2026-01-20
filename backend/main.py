@@ -540,19 +540,22 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
         
         print(f"🔍 Verifica integrità per {req.ticker} - Strategia: {req.strategy}")
         
-        # Get full cached data
-        if req.ticker not in TICKER_CACHE:
-            md = MarketData(req.ticker)
-            px = md.fetch()
-            # Initialize cache with dictionary structure matching main logic
-            TICKER_CACHE[req.ticker] = {"px": px}
-        
-        cached_obj = TICKER_CACHE[req.ticker]
-        if isinstance(cached_obj, dict):
-            full_px = cached_obj["px"].copy()
+        # IMPORTANT: Don't pollute the global cache with incomplete data.
+        # Read from cache if available, otherwise fetch locally without storing.
+        if req.ticker in TICKER_CACHE:
+            cached_obj = TICKER_CACHE[req.ticker]
+            if isinstance(cached_obj, dict):
+                full_px = cached_obj["px"].copy()
+            else:
+                full_px = cached_obj.copy()
         else:
-            # Fallback if somehow it's just the Series (legacy)
-            full_px = cached_obj.copy()
+            # Fetch locally WITHOUT writing to cache
+            # Use start_date 3 years ago to ensure enough data for Z-score (252*2 = 504 days minimum)
+            from datetime import datetime, timedelta
+            three_years_ago = (datetime.now() - timedelta(days=365*3)).strftime('%Y-%m-%d')
+            md = MarketData(req.ticker, start_date=three_years_ago)
+            full_px = md.fetch()
+            # DO NOT write to TICKER_CACHE to avoid polluting it
         
         # Determine date range
         all_dates = full_px.index.tolist()
