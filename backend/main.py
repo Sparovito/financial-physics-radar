@@ -1079,25 +1079,46 @@ class PortfolioManager:
         self.db = None
         self.local_file = PORTFOLIO_FILE
         
-        # Tentativo connessione Firebase
-        key_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "serviceAccountKey.json")
-        if os.path.exists(key_path):
-            try:
-                import firebase_admin
-                from firebase_admin import credentials, firestore
-                
-                if not firebase_admin._apps:
+        try:
+            import firebase_admin
+            from firebase_admin import credentials, firestore
+            import base64
+            import json
+
+            cred = None
+            
+            # 1. Check Env Var (for Railway/Cloud)
+            env_key_b64 = os.getenv("FIREBASE_SERVICE_ACCOUNT_BASE64")
+            if env_key_b64:
+                try:
+                    # Decode Base64 -> JSON String -> Dict
+                    decoded_json = base64.b64decode(env_key_b64).decode('utf-8')
+                    cred_dict = json.loads(decoded_json)
+                    cred = credentials.Certificate(cred_dict)
+                    print("☁️ Configurazione Firebase caricata da ENV (Base64).")
+                except Exception as e:
+                    print(f"⚠️ Errore decodifica Base64 Firebase Key: {e}")
+
+            # 2. Check Local File (for Local Dev)
+            if not cred:
+                key_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "serviceAccountKey.json")
+                if os.path.exists(key_path):
                     cred = credentials.Certificate(key_path)
+                    print("📂 Configurazione Firebase caricata da file locale.")
+
+            # 3. Initialize App
+            if cred:
+                if not firebase_admin._apps:
                     firebase_admin.initialize_app(cred)
-                
                 self.db = firestore.client()
                 self.use_firebase = True
                 print("🔥 Firebase Portfolio Connesso! (Firestore)")
-            except Exception as e:
-                print(f"⚠️ Errore inizializzazione Firebase: {e}")
-                self._ensure_local_file()
-        else:
-            print("📂 Firebase Key non trovata. Uso file locale.")
+            else:
+                 print("⚠️ Nessuna credenziale Firebase trovata (File o Env). Uso locale.")
+                 self._ensure_local_file()
+                 
+        except Exception as e:
+            print(f"⚠️ Errore inizializzazione Firebase generale: {e}")
             self._ensure_local_file()
 
     def _ensure_local_file(self):
