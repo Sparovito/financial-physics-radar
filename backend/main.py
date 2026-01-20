@@ -31,9 +31,18 @@ scheduler = BackgroundScheduler(timezone="Europe/Rome")
 
 def scheduled_scan_job():
     """Runs daily at 18:30 Rome time."""
-    print("⏰ Scheduled scan triggered!")
-    from scanner import run_market_scan
-    run_market_scan(send_email=True)
+    import sys
+    import traceback
+    print("⏰ Scheduled scan triggered!", flush=True)
+    try:
+        from scanner import run_market_scan
+        print("🚀 Starting run_market_scan...", flush=True)
+        run_market_scan(send_email=True)
+        print("✅ run_market_scan completed.", flush=True)
+    except Exception as e:
+        print(f"❌ ERROR in scheduled_scan_job: {e}", flush=True)
+        traceback.print_exc()
+        sys.stdout.flush()
 
 # Schedule: Every day at 18:30
 scheduler.add_job(
