@@ -35,10 +35,11 @@ def scheduled_scan_job():
     from scanner import run_market_scan
     run_market_scan(send_email=True)
 
-# Schedule: Every day at 18:30
+# Schedule: Every day at 19:02 (TEST)
+# Note: Changing back to 18:30 for production after test
 scheduler.add_job(
     scheduled_scan_job,
-    CronTrigger(hour=18, minute=30),
+    CronTrigger(hour=19, minute=2),
     id="daily_scan",
     replace_existing=True
 )
