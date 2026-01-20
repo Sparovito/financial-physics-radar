@@ -552,15 +552,15 @@ function renderCharts(data) {
     if (traceFrozenSumStrat) traces.push(traceFrozenSumStrat);
 
     // [NEW] Min Action Strategy Trace (Blue)
-    if (showBacktest && data.frozen_min_action_strategy && data.frozen_min_action_strategy.equity_curve) {
+    if (showBacktest && data.frozen_min_action_strategy && data.frozen_min_action_strategy.trade_pnl_curve) {
         const traceMaStrat = {
             x: data.dates,
-            y: data.frozen_min_action_strategy.equity_curve,
-            name: '🔵 Min Action Strat',
+            y: data.frozen_min_action_strategy.trade_pnl_curve,
+            name: `🔵 MA Strat (Avg: ${data.frozen_min_action_strategy.stats?.avg_trade_pct || 0}%)`,
             type: 'scatter',
             mode: 'lines',
             line: { color: '#00aaff', width: 2 }, // Bright Blue
-            opacity: 0.9,
+            xaxis: 'x',
             yaxis: 'y5' // P/L Panel (same as other strategies)
         };
         traces.push(traceMaStrat);
