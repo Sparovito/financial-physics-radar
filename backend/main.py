@@ -38,7 +38,7 @@ def scheduled_scan_job():
 # Schedule: Every day at 18:30
 scheduler.add_job(
     scheduled_scan_job,
-    CronTrigger(hour=18, minute=30),
+    CronTrigger(hour=19, minute=46),
     id="daily_scan",
     replace_existing=True
 )
@@ -63,7 +63,7 @@ def debug_time():
 @app.on_event("startup")
 def start_scheduler():
     scheduler.start()
-    print("🕡 Scheduler attivato: Scansione giornaliera alle 18:30 (Europe/Rome)")
+    print("🕡 Scheduler attivato: Scansione giornaliera alle 18:30 (Europe/Rome) questo è il test di andrea")
 
 @app.on_event("shutdown")
 def shutdown_scheduler():
