@@ -605,33 +605,58 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
             equity_curve.append(last_eq)
             continue
             
+            continue
+            
+        # [NEW] Determine Strategy Mode
+        is_curve_mode = (trend_mode == 'PRICE_VS_CURVE' and trend_curve is not None)
+        
+        should_enter = False
+        should_exit = False
+        curve_direction = None
+        
+        if is_curve_mode:
+            # Curve Logic: Price vs Trend Curve
+            # Handle possible padding/alignment issues if trend_curve is shorter?
+            # Assuming aligned by caller (main.py does alignment or passes full length array)
+            # Safe access
+            t_val = trend_curve[i] if i < len(trend_curve) else None
+            
+            if t_val is not None and price is not None:
+                if price > t_val:
+                    curve_direction = 'LONG'
+                else:
+                    curve_direction = 'SHORT'
+                
+                # Entry Condition: Always enter if we define a direction (Always In System)
+                # Or we could add a hysteresis/buffer? For now pure crossover.
+                should_enter = True
+            else:
+                should_enter = False
+        else:
+            # Standard Kinetic/Potential Logic
+            should_enter = z_kin > threshold
+
         if not in_position:
             # Check for entry signal
-            if z_kin > threshold:
+            if should_enter:
                 in_position = True
                 entry_price = price
                 entry_date = date
-                # Direction: Z-ROC for Frozen/SUM, z_slope for LIVE
-                z_prev = z_kinetic[i-1] if i > 0 and z_kinetic[i-1] is not None else 0
-                z_roc = z_kin - z_prev
-                if use_z_roc:
-                    if trend_mode == 'PRICE_VS_CURVE' and trend_curve:
-                        # [NEW] Min Action Strategy Direction
-                        # If Price > Curve -> LONG, Else SHORT
-                        # Find valid index, handle padding
-                        t_val = trend_curve[i]
-                        p_val = price
-                        if t_val and p_val > t_val:
-                             position_direction = 'LONG'
-                        else:
-                             position_direction = 'SHORT'
-                    else:
-                        position_direction = 'LONG' if z_roc >= 0 else 'SHORT'
+                
+                if is_curve_mode:
+                     position_direction = curve_direction
                 else:
-                    position_direction = 'LONG' if z_sl > 0 else 'SHORT'
+                     # Direction: Z-ROC for Frozen/SUM, z_slope for LIVE
+                     z_prev = z_kinetic[i-1] if i > 0 and i-1 < len(z_kinetic) and z_kinetic[i-1] is not None else 0
+                     z_roc = z_kin - z_prev
+                     if use_z_roc:
+                         position_direction = 'LONG' if z_roc >= 0 else 'SHORT'
+                     else:
+                         position_direction = 'LONG' if z_sl > 0 else 'SHORT'
+
                 # Snapshot: save decision data at entry time
-                entry_z_snapshot = round(z_kin, 4)
-                entry_z_roc_snapshot = round(z_roc, 4)
+                entry_z_snapshot = round(z_kin, 4) if not is_curve_mode else 0
+                entry_z_roc_snapshot = 0
                 trade_pnl_curve.append(0)
             else:
                 trade_pnl_curve.append(0)
@@ -642,12 +667,17 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
 
         else:
             # [NEW] Check if we WOULD have entered here if we weren't in position
-            if z_kin > threshold:
+            # [NEW] Check if we WOULD have entered here if we weren't in position
+            if should_enter:
                  # This is a potential skipped signal
                  # Direction check
-                 z_prev = z_kinetic[i-1] if i > 0 and z_kinetic[i-1] is not None else 0
-                 z_roc = z_kin - z_prev
-                 potential_direction = 'LONG' if (use_z_roc and z_roc >= 0) or (not use_z_roc and z_sl > 0) else 'SHORT'
+                 potential_direction = 'LONG'
+                 if is_curve_mode:
+                     potential_direction = curve_direction
+                 else:
+                     z_prev = z_kinetic[i-1] if i > 0 and i-1 < len(z_kinetic) and z_kinetic[i-1] is not None else 0
+                     z_roc = z_kin - z_prev
+                     potential_direction = 'LONG' if (use_z_roc and z_roc >= 0) or (not use_z_roc and z_sl > 0) else 'SHORT'
                  
                  skipped_trades.append({
                      "date": date,
@@ -664,7 +694,14 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                 current_pnl = ((entry_price - price) / entry_price) * 100
             
             # Check for exit signal
-            if z_kin < threshold:
+            # Check for exit signal
+            if is_curve_mode:
+                # Exit if direction flips (Reversal)
+                should_exit = (position_direction != curve_direction)
+            else:
+                should_exit = z_kin < threshold
+
+            if should_exit:
                 # Close the trade
                 pnl_pct = current_pnl
                 capital = capital * (1 + pnl_pct / 100)
