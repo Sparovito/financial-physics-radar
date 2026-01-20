@@ -27,8 +27,14 @@ class NotificationManager:
 
             msg.attach(MIMEText(body, 'html'))
 
-            server = smtplib.SMTP(self.smtp_server, self.smtp_port)
-            server.starttls()
+            if self.smtp_port == 465:
+                # SSL Connection (bypass firewall for 587)
+                server = smtplib.SMTP_SSL(self.smtp_server, self.smtp_port)
+            else:
+                # Standard TLS Connection
+                server = smtplib.SMTP(self.smtp_server, self.smtp_port)
+                server.starttls()
+            
             server.login(self.sender, self.password)
             text = msg.as_string()
             server.sendmail(self.sender, self.recipient, text)
