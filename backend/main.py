@@ -704,11 +704,26 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                             # filtfilt requires minimal length (padlen)
                             if len(z_frozen_raw) > 15:
                                 z_frozen_sum_filtered = filtfilt(b, a, z_frozen_raw).tolist()
-                                z_signal = z_frozen_sum_filtered
+                                z_signal_short = z_frozen_sum_filtered
                             else:
-                                z_signal = z_frozen_raw
+                                z_signal_short = z_frozen_raw
                         except:
-                             z_signal = z_frozen_raw
+                             z_signal_short = z_frozen_raw
+                             
+                        # [CRITICAL] ALIGNMENT & PADDING
+                        # z_signal_short corresponds to trunc_dates (which starts at MIN_POINTS)
+                        # We must align it to truncated_px (which starts at 0) to avoid IndexError and Time Shift
+                        
+                        # Create Series map: Date(str) -> Value
+                        # trunc_dates are strings from cache
+                        z_series_map = pd.Series(z_signal_short, index=trunc_dates)
+                        
+                        # Target keys: valid string dates from price index
+                        target_keys = [d.strftime('%Y-%m-%d') for d in truncated_px.index]
+                        
+                        # Reindex (pads missing dates with NaN -> fillna 0)
+                        z_signal = z_series_map.reindex(target_keys).fillna(0).tolist()
+                        
                 else:
                     # Fallback if cache missing raw_sum (should trigger reload in analyze, but here we defend)
                     z_signal = []
@@ -743,11 +758,18 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                             from scipy.signal import butter, filtfilt
                             b, a = butter(N=2, Wn=0.05, btype='low')
                             if len(z_frozen_raw) > 15:
-                                z_signal = filtfilt(b, a, z_frozen_raw).tolist()
+                                z_frozen_sum_filtered = filtfilt(b, a, z_frozen_raw).tolist()
+                                z_signal_short = z_frozen_sum_filtered
                             else:
-                                z_signal = z_frozen_raw
+                                z_signal_short = z_frozen_raw
                         except:
-                             z_signal = z_frozen_raw
+                             z_signal_short = z_frozen_raw
+                             
+                        # [CRITICAL] ALIGNMENT & PADDING for SUM
+                        z_series_map = pd.Series(z_signal_short, index=trunc_dates)
+                        target_keys = [d.strftime('%Y-%m-%d') for d in truncated_px.index]
+                        z_signal = z_series_map.reindex(target_keys).fillna(0).tolist()
+                        
                  else:
                     z_signal = []
 
