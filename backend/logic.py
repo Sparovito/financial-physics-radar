@@ -587,11 +587,18 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
             continue
             
         price = prices[i]
-        z_kin = z_kinetic[i]
-        z_sl = z_slope[i]
         
-        # Skip if data is missing
-        if price is None or z_kin is None or z_sl is None:
+        # Safe access to optional arrays
+        z_kin = z_kinetic[i] if i < len(z_kinetic) else 0
+        z_sl = z_slope[i] if i < len(z_slope) else 0
+        
+        # Skip if price is missing (z_kin/z_sl are allowed to be 0/mocked in curve mode)
+        if price is None:
+            trade_pnl_curve.append(0)
+            # Equity curve: keep last value or 0 if start?
+            last_eq = equity_curve[-1] if equity_curve else 0
+            equity_curve.append(last_eq)
+            continue
             trade_pnl_curve.append(0)
             # Equity curve: keep last value or 0 if start?
             last_eq = equity_curve[-1] if equity_curve else 0
