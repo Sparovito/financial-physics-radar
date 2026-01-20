@@ -44,10 +44,10 @@ def scheduled_scan_job():
         traceback.print_exc()
         sys.stdout.flush()
 
-# Schedule: Every day at 18:30
+# Schedule: Every day at 20:05 (DEBUG TEST)
 scheduler.add_job(
     scheduled_scan_job,
-    CronTrigger(hour=19, minute=56),
+    CronTrigger(hour=20, minute=5),
     id="daily_scan",
     replace_existing=True
 )
@@ -69,10 +69,38 @@ def debug_time():
     except Exception as e:
         return {"error": str(e), "utc_time": now_utc.isoformat()}
 
+@app.get("/scheduler-status")
+def scheduler_status():
+    """Returns detailed APScheduler status for debugging."""
+    import pytz
+    rome = pytz.timezone("Europe/Rome")
+    now_rome = datetime.now(rome)
+    
+    jobs_info = []
+    for job in scheduler.get_jobs():
+        jobs_info.append({
+            "id": job.id,
+            "name": job.name,
+            "next_run_time": str(job.next_run_time) if job.next_run_time else "NOT SCHEDULED",
+            "trigger": str(job.trigger)
+        })
+    
+    return {
+        "scheduler_running": scheduler.running,
+        "scheduler_state": str(scheduler.state),
+        "current_rome_time": now_rome.isoformat(),
+        "timezone": str(scheduler.timezone),
+        "jobs": jobs_info
+    }
+
 @app.on_event("startup")
 def start_scheduler():
     scheduler.start()
-    print("🕡 Scheduler attivato: Scansione giornaliera alle 18:30 (Europe/Rome) (nuovo andrea e 50)")
+    # Log scheduler state after start
+    jobs = scheduler.get_jobs()
+    print(f"🕡 Scheduler attivato. Running: {scheduler.running}. Jobs: {len(jobs)}", flush=True)
+    for job in jobs:
+        print(f"   Job '{job.id}': next run at {job.next_run_time}", flush=True)
 
 @app.on_event("shutdown")
 def shutdown_scheduler():
