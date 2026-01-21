@@ -2655,7 +2655,7 @@ function getTradeMarkerShapes() {
     if (!showMarkers) return [];
 
     const strategy = document.getElementById('trade-strategy-select')?.value || 'LIVE';
-    const cachedData = window.CACHED_DATA;
+    const cachedData = window.LAST_ANALYSIS_DATA;
     if (!cachedData) return [];
 
     let trades = [];
