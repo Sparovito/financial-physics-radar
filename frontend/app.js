@@ -2067,7 +2067,12 @@ async function startBulkScan() {
                 }
 
                 const row = `
-                    <tr class="scan-row" data-trend="${trendType}" style="border-bottom:1px solid #333;">
+                    <tr class="scan-row" data-trend="${trendType}" 
+                        data-live-win="${liveStats.win_rate}" data-live-ret="${liveRet}"
+                        data-frozen-win="${frozenStats.win_rate}" data-frozen-ret="${frozenRet}"
+                        data-sum-win="${sumWin}" data-sum-ret="${sumRet}"
+                        data-ma-win="${maWin}" data-ma-ret="${maRet}"
+                        style="border-bottom:1px solid #333;">
                         <td style="padding:10px; text-align:center;">
                             <input type="checkbox" class="scan-ticker-checkbox" data-ticker="${ticker}" checked>
                         </td>
@@ -2109,7 +2114,7 @@ async function startBulkScan() {
         const avgDelta = (avgLiveRet - avgFrozenRet).toFixed(2);
 
         const statsRow = `
-            <tr style="border-top: 3px solid #eba834; background: rgba(235, 168, 52, 0.15); font-weight: bold; font-size: 1.05em;">
+            <tr id="scanner-stats-row" style="border-top: 3px solid #eba834; background: rgba(235, 168, 52, 0.15); font-weight: bold; font-size: 1.05em;">
                 <td></td>
                 <td colspan="3" style="padding:15px; color:#eba834; text-align:center;">📊 MEDIA (${countStats})</td>
                 <td style="color:${avgWinLive >= 50 ? '#00ff88' : '#bbb'}">${avgWinLive}%</td>
@@ -2424,6 +2429,12 @@ function applyScanFilters() {
     const trendFilter = document.getElementById('filter-trend')?.value || 'all';
 
     const rows = document.querySelectorAll('.scan-row');
+    let visibleCount = 0;
+    let totalLiveWin = 0, totalLiveRet = 0;
+    let totalFrozenWin = 0, totalFrozenRet = 0;
+    let totalSumWin = 0, totalSumRet = 0;
+    let totalMaWin = 0, totalMaRet = 0;
+
     rows.forEach(row => {
         const trend = row.dataset.trend;
 
@@ -2431,7 +2442,58 @@ function applyScanFilters() {
         if (trendFilter !== 'all' && trend !== trendFilter) visible = false;
 
         row.style.display = visible ? '' : 'none';
+
+        // Accumulate stats for visible rows
+        if (visible) {
+            visibleCount++;
+            totalLiveWin += parseFloat(row.dataset.liveWin) || 0;
+            totalLiveRet += parseFloat(row.dataset.liveRet) || 0;
+            totalFrozenWin += parseFloat(row.dataset.frozenWin) || 0;
+            totalFrozenRet += parseFloat(row.dataset.frozenRet) || 0;
+            totalSumWin += parseFloat(row.dataset.sumWin) || 0;
+            totalSumRet += parseFloat(row.dataset.sumRet) || 0;
+            totalMaWin += parseFloat(row.dataset.maWin) || 0;
+            totalMaRet += parseFloat(row.dataset.maRet) || 0;
+        }
     });
+
+    // Update the stats row
+    const statsRow = document.getElementById('scanner-stats-row');
+    if (statsRow && visibleCount > 0) {
+        const avgLiveWin = (totalLiveWin / visibleCount).toFixed(1);
+        const avgLiveRet = (totalLiveRet / visibleCount).toFixed(2);
+        const avgFrozenWin = (totalFrozenWin / visibleCount).toFixed(1);
+        const avgFrozenRet = (totalFrozenRet / visibleCount).toFixed(2);
+        const avgSumWin = (totalSumWin / visibleCount).toFixed(1);
+        const avgSumRet = (totalSumRet / visibleCount).toFixed(2);
+        const avgMaWin = (totalMaWin / visibleCount).toFixed(1);
+        const avgMaRet = (totalMaRet / visibleCount).toFixed(2);
+        const avgDelta = (avgLiveRet - avgFrozenRet).toFixed(2);
+
+        statsRow.innerHTML = `
+            <td></td>
+            <td colspan="3" style="padding:15px; color:#eba834; text-align:center;">📊 MEDIA (${visibleCount})</td>
+            <td style="color:${avgLiveWin >= 50 ? '#00ff88' : '#bbb'}">${avgLiveWin}%</td>
+            <td style="color:${avgLiveRet > 0 ? '#00ff88' : '#ff4444'}">${avgLiveRet}%</td>
+            <td style="color:${avgFrozenWin >= 50 ? '#ff9900' : '#bbb'}">${avgFrozenWin}%</td>
+            <td style="color:${avgFrozenRet > 0 ? '#ff9900' : '#ff4444'}">${avgFrozenRet}%</td>
+            <td style="color:${avgSumWin >= 50 ? '#ff4444' : '#bbb'}">${avgSumWin}%</td>
+            <td style="color:${avgSumRet > 0 ? '#ff4444' : '#888'}">${avgSumRet}%</td>
+            <td style="color:${avgMaWin >= 50 ? '#00aaff' : '#bbb'}">${avgMaWin}%</td>
+            <td style="color:${avgMaRet > 0 ? '#00aaff' : '#888'}">${avgMaRet}%</td>
+            <td style="color:#eba834;">${avgDelta}%</td>
+            <td>
+                <button onclick="openSimulatorModal()" style="background:#00ff88; color:#000; font-weight:bold; border:none; padding:6px 10px; cursor:pointer; border-radius:4px; box-shadow:0 2px 5px rgba(0,0,0,0.5);">
+                    💰 SIMULA
+                </button>
+            </td>
+        `;
+    } else if (statsRow) {
+        statsRow.innerHTML = `
+            <td></td>
+            <td colspan="13" style="padding:15px; color:#888; text-align:center;">Nessun risultato con questo filtro</td>
+        `;
+    }
 }
 
 // --- CHART VISIBILITY TOGGLE LISTENERS ---
