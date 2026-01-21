@@ -2048,7 +2048,7 @@ async function startBulkScan() {
                 const deltaColor = parseFloat(delta) > 20 ? '#ff4444' : (parseFloat(delta) < -5 ? '#00ff88' : '#888');
 
                 // Calculate price trend
-                let trendIcon = '➡️';
+                let trendIcon = '●';
                 let trendColor = '#888';
                 let trendType = 'stable';
                 if (data.prices && data.prices.length > 1) {
@@ -2056,11 +2056,11 @@ async function startBulkScan() {
                     const endPrice = data.prices[data.prices.length - 1];
                     const pctChange = ((endPrice - startPrice) / startPrice) * 100;
                     if (pctChange > 15) {
-                        trendIcon = '📈';
+                        trendIcon = '▲';
                         trendColor = '#00ff88';
                         trendType = 'up';
                     } else if (pctChange < -15) {
-                        trendIcon = '📉';
+                        trendIcon = '▼';
                         trendColor = '#ff4444';
                         trendType = 'down';
                     }
