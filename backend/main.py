@@ -44,10 +44,10 @@ def scheduled_scan_job():
         traceback.print_exc()
         sys.stdout.flush()
 
-# Schedule: Every day at 20:12 (DEBUG TEST - FIX TIMEZONE)
+# Schedule: Every day at 16:30 Rome time
 scheduler.add_job(
     scheduled_scan_job,
-    CronTrigger(hour=20, minute=12, timezone="Europe/Rome"),
+    CronTrigger(hour=16, minute=30, timezone="Europe/Rome"),
     id="daily_scan",
     replace_existing=True
 )
