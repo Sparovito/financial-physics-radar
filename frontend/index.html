@@ -457,18 +457,16 @@
                 style="padding:10px 15px; background:#1e1e1e; border-bottom:1px solid #333; display:flex; gap:15px; flex-wrap:wrap; align-items:center;">
                 <span style="color:#888; font-size:0.8rem; font-weight:bold;">FILTRI:</span>
 
-                <!-- Kinetic Filter -->
+                <!-- Trend Filter -->
                 <div style="display:flex; align-items:center; gap:5px;">
-                    <label style="color:#aaa; font-size:0.8rem;">⚡ Kin ></label>
-                    <input type="number" id="filter-kin-min" step="0.1" oninput="applyScanFilters()"
-                        style="background:#333; border:1px solid #444; color:#fff; padding:4px; width:60px; border-radius:4px;">
-                </div>
-
-                <!-- Market Cap Filter -->
-                <div style="display:flex; align-items:center; gap:5px;">
-                    <label style="color:#aaa; font-size:0.8rem;">💰 Cap (B) ></label>
-                    <input type="number" id="filter-cap-min" step="10" oninput="applyScanFilters()"
-                        style="background:#333; border:1px solid #444; color:#fff; padding:4px; width:60px; border-radius:4px;">
+                    <label style="color:#aaa; font-size:0.8rem;">📊 Trend:</label>
+                    <select id="filter-trend" onchange="applyScanFilters()"
+                        style="background:#333; border:1px solid #444; color:#fff; padding:4px; border-radius:4px;">
+                        <option value="all">Tutti</option>
+                        <option value="up">📈 Su</option>
+                        <option value="down">📉 Giù</option>
+                        <option value="stable">➡️ Stabile</option>
+                    </select>
                 </div>
             </div>
 
@@ -482,8 +480,7 @@
                                 <input type="checkbox" id="scan-select-all" checked onclick="toggleAllScanRows(this)">
                             </th>
                             <th style="padding:12px;">Ticker</th>
-                            <th style="padding:12px; color:#aaa;" title="Forza Cinetica Media">⚡ Kin</th>
-                            <th style="padding:12px; color:#aaa;">💰 Cap</th>
+                            <th style="padding:12px; color:#aaa;" title="Trend Prezzo nel Periodo">📊 Trend</th>
                             <th style="padding:12px; color:#aaa;"># Trades</th>
                             <th style="padding:12px; color:#00ff88;">✅ Win% (Live)</th>
                             <th style="padding:12px; color:#00ff88;">📈 ROI (Live)</th>

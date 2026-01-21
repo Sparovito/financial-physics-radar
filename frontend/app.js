@@ -2047,14 +2047,32 @@ async function startBulkScan() {
                 const delta = (liveRet - frozenRet).toFixed(2);
                 const deltaColor = parseFloat(delta) > 20 ? '#ff4444' : (parseFloat(delta) < -5 ? '#00ff88' : '#888');
 
+                // Calculate price trend
+                let trendIcon = '➡️';
+                let trendColor = '#888';
+                let trendType = 'stable';
+                if (data.prices && data.prices.length > 1) {
+                    const startPrice = data.prices[0];
+                    const endPrice = data.prices[data.prices.length - 1];
+                    const pctChange = ((endPrice - startPrice) / startPrice) * 100;
+                    if (pctChange > 15) {
+                        trendIcon = '📈';
+                        trendColor = '#00ff88';
+                        trendType = 'up';
+                    } else if (pctChange < -15) {
+                        trendIcon = '📉';
+                        trendColor = '#ff4444';
+                        trendType = 'down';
+                    }
+                }
+
                 const row = `
-                    <tr class="scan-row" data-kin="${data.avg_abs_kin || 0}" data-cap="${data.market_cap || 0}" style="border-bottom:1px solid #333;">
+                    <tr class="scan-row" data-trend="${trendType}" style="border-bottom:1px solid #333;">
                         <td style="padding:10px; text-align:center;">
                             <input type="checkbox" class="scan-ticker-checkbox" data-ticker="${ticker}" checked>
                         </td>
                         <td style="padding:10px; font-weight:bold;">${ticker}</td>
-                        <td style="padding:10px; color:#ccc;">${data.avg_abs_kin || '-'}</td>
-                        <td style="padding:10px; color:#ccc;">${formatMarketCap(data.market_cap)}</td>
+                        <td style="padding:10px; color:${trendColor}; font-size:1.2em;">${trendIcon}</td>
                         <td style="padding:10px; color:#ccc;">${data.backtest?.trades?.length || 0}</td>
                         <td style="color:${liveStats.win_rate >= 50 ? '#00ff88' : '#888'}">${liveStats.win_rate}%</td>
                         <td style="color:${liveRet > 0 ? '#00ff88' : '#ff4444'}">${liveRet}%</td>
@@ -2093,7 +2111,7 @@ async function startBulkScan() {
         const statsRow = `
             <tr style="border-top: 3px solid #eba834; background: rgba(235, 168, 52, 0.15); font-weight: bold; font-size: 1.05em;">
                 <td></td>
-                <td colspan="4" style="padding:15px; color:#eba834; text-align:center;">📊 MEDIA (${countStats})</td>
+                <td colspan="3" style="padding:15px; color:#eba834; text-align:center;">📊 MEDIA (${countStats})</td>
                 <td style="color:${avgWinLive >= 50 ? '#00ff88' : '#bbb'}">${avgWinLive}%</td>
                 <td style="color:${avgLiveRet > 0 ? '#00ff88' : '#ff4444'}">${avgLiveRet}%</td>
                 <td style="color:${avgWinFrozen >= 50 ? '#ff9900' : '#bbb'}">${avgWinFrozen}%</td>
@@ -2403,18 +2421,14 @@ function formatMarketCap(value) {
 
 // APPLY FILTERS
 function applyScanFilters() {
-    const minKin = parseFloat(document.getElementById('filter-kin-min').value) || 0;
-    const minCapB = parseFloat(document.getElementById('filter-cap-min').value) || 0;
-    const minCapVal = minCapB * 1e9; // Convert Billions
+    const trendFilter = document.getElementById('filter-trend')?.value || 'all';
 
     const rows = document.querySelectorAll('.scan-row');
     rows.forEach(row => {
-        const kin = parseFloat(row.dataset.kin);
-        const cap = parseFloat(row.dataset.cap);
+        const trend = row.dataset.trend;
 
         let visible = true;
-        if (kin < minKin) visible = false;
-        if (cap < minCapVal) visible = false;
+        if (trendFilter !== 'all' && trend !== trendFilter) visible = false;
 
         row.style.display = visible ? '' : 'none';
     });
