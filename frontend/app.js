@@ -2619,7 +2619,8 @@ function setAnnotationMode(mode) {
 
 // Convert annotations to Plotly shapes
 function getAnnotationShapes() {
-    return window.CHART_ANNOTATIONS.map(anno => {
+    // Manual annotations
+    const manualShapes = window.CHART_ANNOTATIONS.map(anno => {
         let color = '#ffffff';
         if (anno.color === 'green') color = '#00ff88';
         if (anno.color === 'red') color = '#ff4444';
@@ -2641,6 +2642,103 @@ function getAnnotationShapes() {
             layer: 'below'
         };
     });
+
+    // Trade marker shapes
+    const tradeShapes = getTradeMarkerShapes();
+
+    return [...manualShapes, ...tradeShapes];
+}
+
+// Get trade marker shapes based on selected strategy
+function getTradeMarkerShapes() {
+    const showMarkers = document.getElementById('show-trade-markers')?.checked;
+    if (!showMarkers) return [];
+
+    const strategy = document.getElementById('trade-strategy-select')?.value || 'LIVE';
+    const cachedData = window.CACHED_DATA;
+    if (!cachedData) return [];
+
+    let trades = [];
+    let buyColor = '#00ff88';
+    let sellColor = '#ff4444';
+
+    if (strategy === 'LIVE') {
+        trades = cachedData.backtest?.trades || [];
+        buyColor = '#00ff88';
+        sellColor = '#ff4444';
+    } else if (strategy === 'FROZEN') {
+        trades = cachedData.frozen_strategy?.trades || [];
+        buyColor = '#ff9900';
+        sellColor = '#cc6600';
+    } else if (strategy === 'SUM') {
+        trades = cachedData.frozen_sum_strategy?.trades || [];
+        buyColor = '#ff4444';
+        sellColor = '#aa0000';
+    } else if (strategy === 'MA') {
+        trades = cachedData.frozen_min_action_strategy?.trades || [];
+        buyColor = '#00aaff';
+        sellColor = '#0066aa';
+    }
+
+    const shapes = [];
+
+    trades.forEach(trade => {
+        // Entry line (BUY - green/colored)
+        if (trade.entry_date) {
+            shapes.push({
+                type: 'line',
+                x0: trade.entry_date,
+                x1: trade.entry_date,
+                y0: 0,
+                y1: 1,
+                yref: 'paper',
+                line: {
+                    color: buyColor,
+                    width: 1.5,
+                    dash: 'dash'
+                },
+                layer: 'below'
+            });
+        }
+
+        // Exit line (SELL - darker)
+        if (trade.exit_date) {
+            shapes.push({
+                type: 'line',
+                x0: trade.exit_date,
+                x1: trade.exit_date,
+                y0: 0,
+                y1: 1,
+                yref: 'paper',
+                line: {
+                    color: sellColor,
+                    width: 1.5,
+                    dash: 'dot'
+                },
+                layer: 'below'
+            });
+        }
+    });
+
+    return shapes;
+}
+
+// Toggle trade markers visibility
+function toggleTradeMarkers() {
+    const checkbox = document.getElementById('show-trade-markers');
+    const icon = checkbox?.parentElement?.querySelector('.toggle-icon');
+
+    if (icon) {
+        icon.style.opacity = checkbox.checked ? '1' : '0.5';
+        icon.dataset.active = checkbox.checked ? 'true' : 'false';
+    }
+
+    // Update chart shapes
+    const chartDiv = document.getElementById('chart-combined');
+    if (chartDiv && chartDiv.layout) {
+        const newShapes = getAnnotationShapes();
+        Plotly.relayout(chartDiv, { shapes: newShapes });
+    }
 }
 
 // Setup click handler for the chart (called after Plotly.newPlot)
