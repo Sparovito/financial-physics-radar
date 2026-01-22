@@ -2659,25 +2659,17 @@ function getTradeMarkerShapes() {
     if (!cachedData) return [];
 
     let trades = [];
-    let buyColor = '#00ff88';
-    let sellColor = '#ff4444';
+    const buyColor = '#00ff88';   // Always green for entry
+    const sellColor = '#ff4444';  // Always red for exit
 
     if (strategy === 'LIVE') {
         trades = cachedData.backtest?.trades || [];
-        buyColor = '#00ff88';
-        sellColor = '#ff4444';
     } else if (strategy === 'FROZEN') {
         trades = cachedData.frozen_strategy?.trades || [];
-        buyColor = '#ff9900';
-        sellColor = '#cc6600';
     } else if (strategy === 'SUM') {
         trades = cachedData.frozen_sum_strategy?.trades || [];
-        buyColor = '#ff4444';
-        sellColor = '#aa0000';
     } else if (strategy === 'MA') {
         trades = cachedData.frozen_min_action_strategy?.trades || [];
-        buyColor = '#00aaff';
-        sellColor = '#0066aa';
     }
 
     const shapes = [];
