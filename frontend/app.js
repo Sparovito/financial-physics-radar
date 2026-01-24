@@ -3098,6 +3098,21 @@ function openPortfolioModal() {
     }
 }
 
+// Global storage for portfolio positions
+window.PORTFOLIO_POSITIONS = [];
+
+async function fetchPortfolioData() {
+    try {
+        const res = await fetch(`${API_URL}/portfolio`);
+        const data = await res.json();
+        window.PORTFOLIO_POSITIONS = data.positions || [];
+        return data;
+    } catch (err) {
+        console.error("Error fetching portfolio:", err);
+        return { positions: [] };
+    }
+}
+
 async function pfLoadData() {
     const openList = document.getElementById('pf-open-list');
     const closedList = document.getElementById('pf-closed-list');
@@ -3106,8 +3121,8 @@ async function pfLoadData() {
     openList.innerHTML = '<tr><td colspan="9">Caricamento...</td></tr>';
 
     try {
-        const res = await fetch(`${API_URL}/portfolio`);
-        const data = await res.json();
+        const data = await fetchPortfolioData(); // Use shared fetcher
+
 
         openList.innerHTML = '';
         closedList.innerHTML = '';
