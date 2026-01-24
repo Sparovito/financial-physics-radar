@@ -585,6 +585,12 @@ function renderCharts(data) {
         traces.push(traceZigZag);
     }
 
+    // [NEW] Portfolio Markers Trace (Dots)
+    const tracePortfolio = getPortfolioTrace();
+    if (tracePortfolio) {
+        traces.push(tracePortfolio);
+    }
+
     // Add saved annotation shapes to layout
     loadAnnotations();
     layout.shapes = getAnnotationShapes();
