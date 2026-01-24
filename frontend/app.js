@@ -588,6 +588,7 @@ function renderCharts(data) {
     // Add saved annotation shapes to layout
     loadAnnotations();
     layout.shapes = getAnnotationShapes();
+    layout.annotations = getPortfolioAnnotations();
 
     Plotly.newPlot('chart-combined', traces, layout, config);
 
@@ -2689,6 +2690,47 @@ function getPortfolioMarkers() {
     });
 
     return markers;
+}
+
+// Get annotations for open portfolio positions
+function getPortfolioAnnotations() {
+    const currentTicker = document.getElementById('ticker')?.value.toUpperCase();
+    if (!currentTicker || !window.PORTFOLIO_POSITIONS) return [];
+
+    // Filter for current ticker and OPEN status
+    const openPositions = window.PORTFOLIO_POSITIONS.filter(p =>
+        p.ticker === currentTicker && p.status === 'OPEN'
+    );
+
+    const annotations = [];
+    openPositions.forEach(p => {
+        const color = p.direction === 'LONG' ? '#00ff88' : '#ff4444'; // Green/Red
+        const label = p.direction === 'LONG' ? 'LONG' : 'SHORT';
+
+        annotations.push({
+            x: p.entry_date,
+            y: 1, // Top of the chart
+            xref: 'x',
+            yref: 'paper',
+            text: label,
+            showarrow: true,
+            arrowhead: 2,
+            ax: 0,
+            ay: -20, // Arrow points down to the line start
+            font: {
+                color: '#ffffff',
+                size: 11,
+                weight: 'bold'
+            },
+            bgcolor: color,
+            bordercolor: color,
+            borderwidth: 1,
+            borderpad: 4,
+            opacity: 0.9
+        });
+    });
+
+    return annotations;
 }
 
 // Get trade marker shapes based on selected strategy
