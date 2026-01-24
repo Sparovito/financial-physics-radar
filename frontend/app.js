@@ -3361,6 +3361,11 @@ async function runAlertScan() {
 }
 
 // Add this new function to handle clicks
+function closePortfolioModal() {
+    const m = document.getElementById('portfolio-modal');
+    if (m) m.style.display = 'none';
+}
+
 function pfAnalyzeTicker(ticker) {
     // 1. Set the main input
     const input = document.getElementById('ticker');
