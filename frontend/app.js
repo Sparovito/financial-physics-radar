@@ -3119,8 +3119,20 @@ async function pfLoadData() {
         const closedPos = positions.filter(p => p.status === 'CLOSED').reverse();
 
         // Render OPEN
+        let avgPnl = 0;
         if (openPos.length === 0) {
             openList.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#555;">Nessuna posizione aperta</td></tr>';
+        } else {
+            const totalPnl = openPos.reduce((sum, p) => sum + (parseFloat(p.pnl_pct) || 0), 0);
+            avgPnl = totalPnl / openPos.length;
+        }
+
+        // Update Header with Open Positions Average
+        const openHeader = document.querySelector('#portfolio-modal h4');
+        if (openHeader) {
+            const avgColor = avgPnl >= 0 ? '#00ff88' : '#ff4444';
+            const avgSign = avgPnl >= 0 ? '+' : '';
+            openHeader.innerHTML = `Posizioni Aperte <span style="font-size:0.9em; margin-left:10px; color:${avgColor}">(${avgSign}${avgPnl.toFixed(2)}%)</span>`;
         }
 
         openPos.forEach(p => {
@@ -3133,7 +3145,7 @@ async function pfLoadData() {
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid #333';
             tr.innerHTML = `
-                <td style="padding:10px; font-weight:bold; color:#fff;">${p.ticker}</td>
+                <td onclick="pfAnalyzeTicker('${p.ticker}')" style="padding:10px; font-weight:bold; color:#fff; cursor:pointer; text-decoration:underline;" title="Analizza">${p.ticker}</td>
                 <td style="padding:10px;">${dirIcon} ${p.direction}</td>
                 <td onclick="pfEditStrategy(this, '${p.id}', '${safeStrat}')" title="Clicca per modificare" style="padding:10px; color:#aaa; font-size:0.9em; cursor:pointer; border-bottom:1px dashed #444;">${p.strategy || 'Manuale'} ✏️</td>
                 <td onclick="pfUpdateField('${p.id}', 'notes', '${safeNotes}')" title="Clicca per modificare" style="padding:10px; color:#aaa; font-style:italic; font-size:0.9em; cursor:pointer; border-bottom:1px dashed #444;">${p.notes || '-'} ✏️</td>
@@ -3162,7 +3174,7 @@ async function pfLoadData() {
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid #333';
             tr.innerHTML = `
-                <td style="padding:10px; font-weight:bold; color:#aaa;">${p.ticker}</td>
+                <td onclick="pfAnalyzeTicker('${p.ticker}')" style="padding:10px; font-weight:bold; color:#aaa; cursor:pointer; text-decoration:underline;" title="Analizza">${p.ticker}</td>
                 <td style="padding:10px;">${dirIcon} ${p.direction}</td>
                 <td onclick="pfEditStrategy(this, '${p.id}', '${safeStrat}')" title="Clicca per modificare" style="padding:10px; color:#666; font-size:0.9em; cursor:pointer; border-bottom:1px dashed #444;">${p.strategy || 'Manuale'} ✏️</td>
                 <td onclick="pfUpdateField('${p.id}', 'notes', '${safeNotes}')" title="Clicca per modificare" style="padding:10px; color:#666; font-style:italic; font-size:0.9em; cursor:pointer; border-bottom:1px dashed #444;">${p.notes || '-'} ✏️</td>
