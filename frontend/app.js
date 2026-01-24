@@ -3372,6 +3372,4 @@ function pfAnalyzeTicker(ticker) {
         runAnalysis();
     }, 100);
 }
-alert("Errore: " + e.message);
-    }
-}
+
