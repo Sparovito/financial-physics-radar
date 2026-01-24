@@ -2646,11 +2646,54 @@ function getAnnotationShapes() {
     // Trade marker shapes
     const tradeShapes = getTradeMarkerShapes();
 
-    return [...manualShapes, ...tradeShapes];
+    return [...manualShapes, ...tradeShapes, ...getPortfolioMarkers()];
+}
+
+// Get shapes for open portfolio positions
+function getPortfolioMarkers() {
+    const currentTicker = document.getElementById('ticker')?.value.toUpperCase();
+    if (!currentTicker || !window.PORTFOLIO_POSITIONS) return [];
+
+    // Filter for current ticker and OPEN status
+    const openPositions = window.PORTFOLIO_POSITIONS.filter(p =>
+        p.ticker === currentTicker && p.status === 'OPEN'
+    );
+
+    const markers = [];
+    openPositions.forEach(p => {
+        const color = p.direction === 'LONG' ? '#00ff88' : '#ff4444'; // Green/Red
+        const label = p.direction === 'LONG' ? 'LONG' : 'SHORT';
+
+        // Vertical Line
+        markers.push({
+            type: 'line',
+            x0: p.entry_date,
+            x1: p.entry_date,
+            y0: 0,
+            y1: 1,
+            yref: 'paper',
+            line: {
+                color: color,
+                width: 2,
+                dash: 'dot'
+            },
+            layer: 'below'
+        });
+
+        // Label Annotation (We can't add annotation in shapes array easily for Plotly)
+        // Plotly shapes are just lines/rects. Text is annotation.
+        // We need to return annotations separately or handle them in layout.annotations.
+        // Quick fix: Use a fake "line" that is actually handled? No.
+        // We will handle annotations in `renderCharts` separately.
+        // For now, let's just return the line shapes here.
+    });
+
+    return markers;
 }
 
 // Get trade marker shapes based on selected strategy
 function getTradeMarkerShapes() {
+
     const showMarkers = document.getElementById('show-trade-markers')?.checked;
     if (!showMarkers) return [];
 
