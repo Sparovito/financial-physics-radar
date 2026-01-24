@@ -2647,52 +2647,52 @@ function getAnnotationShapes() {
     // Trade marker shapes
     const tradeShapes = getTradeMarkerShapes();
 
-    return [...manualShapes, ...tradeShapes, ...getPortfolioMarkers()];
+    return [...manualShapes, ...tradeShapes];
 }
 
-// Get shapes for open portfolio positions
-function getPortfolioMarkers() {
+// Get Scatter Trace for open portfolio positions (Dots)
+function getPortfolioTrace() {
     const currentTicker = document.getElementById('ticker')?.value.toUpperCase();
-    if (!currentTicker || !window.PORTFOLIO_POSITIONS) return [];
+    if (!currentTicker || !window.PORTFOLIO_POSITIONS) return null;
 
     // Filter for current ticker and OPEN status
     const openPositions = window.PORTFOLIO_POSITIONS.filter(p =>
         p.ticker === currentTicker && p.status === 'OPEN'
     );
 
-    const markers = [];
+    if (openPositions.length === 0) return null;
+
+    const x = [];
+    const y = [];
+    const colors = [];
+    const text = [];
+
     openPositions.forEach(p => {
-        const color = p.direction === 'LONG' ? '#00ff88' : '#ff4444'; // Green/Red
-        const label = p.direction === 'LONG' ? 'LONG' : 'SHORT';
-
-        // Vertical Line
-        markers.push({
-            type: 'line',
-            x0: p.entry_date,
-            x1: p.entry_date,
-            y0: 0,
-            y1: 1,
-            yref: 'paper',
-            line: {
-                color: color,
-                width: 2,
-                dash: 'dot'
-            },
-            layer: 'below'
-        });
-
-        // Label Annotation (We can't add annotation in shapes array easily for Plotly)
-        // Plotly shapes are just lines/rects. Text is annotation.
-        // We need to return annotations separately or handle them in layout.annotations.
-        // Quick fix: Use a fake "line" that is actually handled? No.
-        // We will handle annotations in `renderCharts` separately.
-        // For now, let's just return the line shapes here.
+        x.push(p.entry_date);
+        y.push(p.entry_price || p.current_price); // Fallback if entry price missing
+        colors.push(p.direction === 'LONG' ? '#00ff88' : '#ff4444');
+        text.push(`${p.direction}<br>${p.entry_price}`);
     });
 
-    return markers;
+    return {
+        x: x,
+        y: y,
+        mode: 'markers',
+        type: 'scatter',
+        name: 'My Trades',
+        marker: {
+            size: 12,
+            color: colors,
+            line: { color: '#fff', width: 2 }
+        },
+        text: text,
+        hoverinfo: 'text+x+y',
+        xaxis: 'x',
+        yaxis: 'y' // Price axis
+    };
 }
 
-// Get annotations for open portfolio positions
+// Get annotations for open portfolio positions (Text above dot)
 function getPortfolioAnnotations() {
     const currentTicker = document.getElementById('ticker')?.value.toUpperCase();
     if (!currentTicker || !window.PORTFOLIO_POSITIONS) return [];
@@ -2709,14 +2709,14 @@ function getPortfolioAnnotations() {
 
         annotations.push({
             x: p.entry_date,
-            y: 1, // Top of the chart
+            y: p.entry_price, // At price level
             xref: 'x',
-            yref: 'paper',
+            yref: 'y',
             text: label,
             showarrow: true,
             arrowhead: 2,
             ax: 0,
-            ay: -20, // Arrow points down to the line start
+            ay: -25, // Point down to the dot
             font: {
                 color: '#ffffff',
                 size: 11,
