@@ -3351,6 +3351,27 @@ async function runAlertScan() {
         const data = await res.json();
         alert(data.message);
     } catch (e) {
-        alert("Errore: " + e.message);
+        console.error(e);
+        alert("Errore scansione email");
+    }
+}
+
+// Add this new function to handle clicks
+function pfAnalyzeTicker(ticker) {
+    // 1. Set the main input
+    const input = document.getElementById('ticker');
+    if (input) {
+        input.value = ticker;
+    }
+
+    // 2. Close the portfolio modal
+    closePortfolioModal();
+
+    // 3. Trigger analysis (small delay to ensure modal closes smoothly)
+    setTimeout(() => {
+        runAnalysis();
+    }, 100);
+}
+alert("Errore: " + e.message);
     }
 }
