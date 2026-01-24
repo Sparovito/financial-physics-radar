@@ -3145,7 +3145,7 @@ async function pfLoadData() {
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid #333';
             tr.innerHTML = `
-                <td onclick="pfAnalyzeTicker('${p.ticker}')" style="padding:10px; font-weight:bold; color:#fff; cursor:pointer; text-decoration:underline;" title="Analizza">${p.ticker}</td>
+                <td style="padding:10px; font-weight:bold; color:#fff;">${p.ticker}</td>
                 <td style="padding:10px;">${dirIcon} ${p.direction}</td>
                 <td onclick="pfEditStrategy(this, '${p.id}', '${safeStrat}')" title="Clicca per modificare" style="padding:10px; color:#aaa; font-size:0.9em; cursor:pointer; border-bottom:1px dashed #444;">${p.strategy || 'Manuale'} ✏️</td>
                 <td onclick="pfUpdateField('${p.id}', 'notes', '${safeNotes}')" title="Clicca per modificare" style="padding:10px; color:#aaa; font-style:italic; font-size:0.9em; cursor:pointer; border-bottom:1px dashed #444;">${p.notes || '-'} ✏️</td>
@@ -3154,6 +3154,10 @@ async function pfLoadData() {
                 <td style="padding:10px; font-weight:bold;">${p.current_price}</td>
                 <td style="padding:10px; font-weight:bold; color:${color};">${sign}${p.pnl_pct}%</td>
                 <td style="padding:10px; text-align:right;">
+                    <button onclick="pfAnalyzeTicker('${p.ticker}')" 
+                        style="background:#eba834; border:1px solid #eba834; color:#000; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.8rem; margin-right:5px; font-weight:bold;" title="Analizza Grafico">
+                        📊
+                    </button>
                     <button onclick="pfClosePosition('${p.id}')" 
                         style="background:#333; border:1px solid #555; color:#fff; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.8rem;">
                         CHIUDI 🔒
@@ -3174,7 +3178,7 @@ async function pfLoadData() {
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid #333';
             tr.innerHTML = `
-                <td onclick="pfAnalyzeTicker('${p.ticker}')" style="padding:10px; font-weight:bold; color:#aaa; cursor:pointer; text-decoration:underline;" title="Analizza">${p.ticker}</td>
+                <td style="padding:10px; font-weight:bold; color:#aaa;">${p.ticker}</td>
                 <td style="padding:10px;">${dirIcon} ${p.direction}</td>
                 <td onclick="pfEditStrategy(this, '${p.id}', '${safeStrat}')" title="Clicca per modificare" style="padding:10px; color:#666; font-size:0.9em; cursor:pointer; border-bottom:1px dashed #444;">${p.strategy || 'Manuale'} ✏️</td>
                 <td onclick="pfUpdateField('${p.id}', 'notes', '${safeNotes}')" title="Clicca per modificare" style="padding:10px; color:#666; font-style:italic; font-size:0.9em; cursor:pointer; border-bottom:1px dashed #444;">${p.notes || '-'} ✏️</td>
