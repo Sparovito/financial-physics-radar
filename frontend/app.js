@@ -3482,3 +3482,9 @@ function pfAnalyzeTicker(ticker) {
     }, 100);
 }
 
+// Init
+window.onload = function () {
+    // Other init logic if needed
+    fetchPortfolioData(); // Ensure portfolio is loaded for chart markers
+};
+
