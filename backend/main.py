@@ -19,7 +19,7 @@ import yfinance as yf
 # This fixes "ModuleNotFoundError: No module named 'logic'" on Railway
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from logic import MarketData, ActionPath, FourierEngine, MarketScanner
+from logic import MarketData, ActionPath, FourierEngine, MarketScanner, backtest_strategy, backtest_frozen_strategy, backtest_frozen_sum_strategy, backtest_ma_crossover
 
 app = FastAPI(title="Financial Physics API")
 
