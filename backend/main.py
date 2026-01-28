@@ -489,12 +489,47 @@ def analyze_stock(req: AnalysisRequest):
         # Prepare ZigZag List
         zigzag_line = zigzag_series.values.tolist() if zigzag_series is not None else []
         
-        # 2. Calcola Minima Azione (Live su dati tranciati)
-        mechanics = ActionPath(px, alpha=req.alpha, beta=req.beta)
-        
-        # 3. Calcola Fourier
+        # 2. Fourier Calculation (MOVED EALIER for Ghost Path)
+        # We need Fourier first to extend the series into the future
         fourier = FourierEngine(px, top_k=req.top_k)
         future_idx, future_vals = fourier.reconstruct_scenario(future_horizon=req.forecast_days)
+        
+        # 3. Calcola Minima Azione (con Ghost Future per risolvere Slope=0)
+        # Strategy: Extend px by 14 days (Ghost Future) using Fourier projection
+        # This prevents the solver from stopping ("hitting the wall") at the last real date.
+        GHOST_horizon = 14
+        
+        # Estrai i primi N giorni dal futuro Fourier
+        ghost_vals = future_vals[:GHOST_horizon]
+        
+        # Crea indice esteso (solo per calcolo)
+        last_date = px.index[-1]
+        freq = pd.infer_freq(px.index) or 'B'
+        ghost_dates = pd.date_range(last_date, periods=GHOST_horizon + 1, freq=freq)[1:]
+        
+        ghost_series = pd.Series(ghost_vals, index=ghost_dates)
+        px_extended = pd.concat([px, ghost_series])
+        
+        # Run Mechanics on extended series
+        mechanics_extended = ActionPath(px_extended, alpha=req.alpha, beta=req.beta)
+        
+        # Slice results to keep only REAL history (original length)
+        # The slope at the end of this slice will now point towards the ghost future!
+        real_len = len(px)
+        
+        # Helper to slice extended properties safely
+        class MechanicsProxy:
+            pass
+            
+        mechanics = MechanicsProxy()
+        mechanics.px_star = mechanics_extended.px_star.iloc[:real_len]
+        mechanics.F = mechanics_extended.F.iloc[:real_len]
+        mechanics.kin_density = mechanics_extended.kin_density.iloc[:real_len]
+        mechanics.pot_density = mechanics_extended.pot_density.iloc[:real_len]
+        mechanics.cumulative_action = mechanics_extended.cumulative_action.iloc[:real_len]
+        mechanics.dX = mechanics_extended.dX.iloc[:real_len]
+        mechanics.z_residuo = mechanics_extended.z_residuo.iloc[:real_len]
+
         
         # 4. Prepara Risposta JSON
         dates_historical = px.index.strftime('%Y-%m-%d').tolist()
