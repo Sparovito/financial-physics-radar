@@ -176,6 +176,19 @@ def analyze_stock(req: AnalysisRequest):
                 print(f"⚠️ Cache partial miss (Dati Frozen mancanti). Ricalcolo...")
                 use_cache_data = False
 
+            # [NEW] Check for STALE DATA (if older than 2 days)
+            if use_cache_data:
+                last_dt = cached_px.index[-1]
+                now_dt = datetime.now()
+                # Consider weekend gaps (e.g. 4 days max tolerance if holiday?). 
+                # If market is active, > 1 day is stale. 
+                # Let's say > 3 days is definitely stale even with weekend.
+                delta_days = (now_dt - last_dt).days
+                if delta_days > 3:
+                     print(f"⚠️ Cache Stale (Old): Last={last_dt.date()} Now={now_dt.date()} Delta={delta_days}d. Ricarico...")
+                     use_cache_data = False
+
+
         if use_cache_data:
             print(f"⚡ CACHE HIT: Uso dati in memoria per {req.ticker}")
             cached_obj = TICKER_CACHE[req.ticker]
