@@ -373,7 +373,6 @@ function renderCharts(data) {
     const showFrozen = document.getElementById('show-frozen')?.checked ?? true;
     const showIndicators = document.getElementById('show-indicators')?.checked ?? true;
     const showZigZag = document.getElementById('show-zigzag')?.checked ?? true;
-    const showSlope = document.getElementById('show-slope')?.checked ?? true; // [NEW]
     const showVolume = document.getElementById('show-volume')?.checked ?? false;
     const showKineticZ = document.getElementById('show-kinetic-z')?.checked ?? false;
     // showBacktest is already defined above
@@ -385,7 +384,7 @@ function renderCharts(data) {
     if (showEnergy) visiblePanels.push('energy');
     if (showFrozen) visiblePanels.push('frozen');
     if (showZigZag && data.indicators?.zigzag) visiblePanels.push('zigzag');
-    if (showIndicators || showSlope) visiblePanels.push('indicators'); // [MODIFIED] Shared panel
+    if (showIndicators) visiblePanels.push('indicators');
     if (showKineticZ) visiblePanels.push('kineticz');
     if (showBacktest) visiblePanels.push('backtest');
 
@@ -455,9 +454,9 @@ function renderCharts(data) {
         yaxis3: {
             domain: domains.indicators || defaultDomain,
             gridcolor: '#333333',
-            title: (showIndicators || showSlope) ? 'Ind.' : '',
+            title: showIndicators ? 'Ind.' : '',
             tickfont: { color: '#ff9966' },
-            visible: (showIndicators || showSlope)
+            visible: showIndicators
         },
         yaxis4: {
             // Z-Score Axis (Right side of Indicators panel)
@@ -549,12 +548,7 @@ function renderCharts(data) {
 
     // Indicators group
     if (showIndicators) {
-        traces.push(traceZ, traceZRoc);
-    }
-
-    // [NEW] Slope MA (Independent)
-    if (showSlope) {
-        traces.push(traceSlope);
+        traces.push(traceSlope, traceZ, traceZRoc);
     }
 
     // Backtest / Strategy traces
@@ -2516,7 +2510,7 @@ function applyScanFilters() {
 
 // --- CHART VISIBILITY TOGGLE LISTENERS ---
 // Re-render chart when toggles change (uses cached data)
-['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag', 'show-slope', 'show-backtest', 'show-volume', 'show-kinetic-z'].forEach(id => {
+['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag', 'show-backtest', 'show-volume', 'show-kinetic-z'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
         el.addEventListener('change', (e) => {
