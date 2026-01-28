@@ -1,7 +1,6 @@
 const API_URL = ""; // Relative path for production (same origin)
 
-// 3: async function runAnalysis(forceRefresh = false) {
-async function runAnalysis(forceRefresh = false) {
+async function runAnalysis() {
     const btn = document.querySelector('.btn-analyze');
     const status = document.getElementById('status-bar');
     const statusText = document.getElementById('status-text');
@@ -13,11 +12,7 @@ async function runAnalysis(forceRefresh = false) {
     const forecast = parseInt(document.getElementById('forecast').value);
     const lookbackYears = parseInt(document.getElementById('lookback-years').value) || 3;
     const endDate = document.getElementById('end-date').value || null; // null if empty
-
-    // Logic:
-    // If forceRefresh is TRUE -> useCache = FALSE (Always fetch fresh)
-    // If forceRefresh is FALSE -> useCache = Checkbox State (Respect user setting)
-    const useCache = !forceRefresh && document.getElementById('use-cache').checked;
+    const useCache = document.getElementById('use-cache').checked;
 
     // Calculate Start Date
     const d = new Date();
@@ -113,7 +108,7 @@ function shiftDate(days) {
 
     // Throttle calls to runAnalysis
     if (!isThrottled) {
-        runAnalysis(false); // Respect User Checkbox for navigation
+        runAnalysis();
         isThrottled = true;
         setTimeout(() => { isThrottled = false; }, THROTTLE_DELAY);
     }
@@ -163,38 +158,15 @@ function renderCharts(data) {
         yaxis: 'y'
     };
 
-    // [NEW] Multiple Forecast Scenarios
-    const forecastTraces = [];
-    if (data.forecast && data.forecast.scenarios) {
-        data.forecast.scenarios.forEach((scenarioValues, index) => {
-            forecastTraces.push({
-                x: data.forecast.dates,
-                y: scenarioValues,
-                name: `Scenario ${index + 1}`,
-                type: 'scatter',
-                line: {
-                    color: '#ab63fa',
-                    width: 1,
-                    dash: 'dot'
-                },
-                opacity: 0.7,
-                xaxis: 'x',
-                yaxis: 'y',
-                showlegend: index === 0 // Show legend only for the first one to avoid clutter
-            });
-        });
-    } else if (data.forecast && data.forecast.values) {
-        // Fallback for old single scenario
-        forecastTraces.push({
-            x: data.forecast.dates,
-            y: data.forecast.values,
-            name: 'Proiezione Fourier',
-            type: 'scatter',
-            line: { color: '#ab63fa', width: 2, dash: 'dot' },
-            xaxis: 'x',
-            yaxis: 'y'
-        });
-    }
+    const traceForecast = {
+        x: data.forecast.dates,
+        y: data.forecast.values,
+        name: 'Proiezione Fourier',
+        type: 'scatter',
+        line: { color: '#ab63fa', width: 2, dash: 'dot' },
+        xaxis: 'x',
+        yaxis: 'y'
+    };
 
     // Calculate Volume Colors (Green if Close >= PrevClose, Red if Lower)
     const volumeColors = (data.volume || []).map((v, i) => {
@@ -279,8 +251,8 @@ function renderCharts(data) {
 
     // --- FROZEN SUM TRACE (Cyan) ---
     const traceFrozenSum = {
-        x: data.frozen_data?.dates || [],
-        y: data.frozen_data?.z_sum || [],
+        x: data.frozen?.dates || [],
+        y: data.frozen?.z_sum || [],
         name: 'Frozen Sum Z',
         type: 'scatter',
         mode: 'lines',
@@ -519,7 +491,7 @@ function renderCharts(data) {
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
         font: { color: '#aaa', size: isMobile ? 10 : 12 },
-        showlegend: !!document.getElementById('show-legend')?.checked,
+        showlegend: !isMobile,
         legend: isMobile ? {
             orientation: 'h',
             x: 0,
@@ -556,7 +528,7 @@ function renderCharts(data) {
     if (showPrice) {
         // Volume first so it's behind candles
         if (showVolume) traces.push(traceVolume);
-        traces.push(tracePrice, tracePath, traceFund, ...forecastTraces);
+        traces.push(tracePrice, tracePath, traceFund, traceForecast);
     }
 
     // Energy group
@@ -597,29 +569,6 @@ function renderCharts(data) {
     // Kinetic Z Trace
     if (showKineticZ) {
         traces.push(traceKineticZ, traceFrozenSum);
-    }
-
-    // [NEW] Predictive Slope (Frozen Ghost)
-    const showPredictiveSlope = document.getElementById('show-slope')?.checked ?? true;
-    if (showPredictiveSlope && data.frozen_data && data.frozen_data.z_slope) {
-        const traceFrozenSlope = {
-            x: data.frozen_data.dates,
-            y: data.frozen_data.z_slope,
-            name: '🔮 Slope Predittivo (Ghost)',
-            type: 'scatter',
-            mode: 'lines',
-            line: {
-                color: '#ff00ff', // Magenta
-                width: 2,
-                dash: 'dot'
-            },
-            xaxis: 'x',
-            yaxis: 'y4' // Use Z-Score axis (overlay on indicators)
-        };
-        // Add to indicators panel
-        if (showIndicators) {
-            traces.push(traceFrozenSlope);
-        }
     }
 
     // ZigZag Indicator Trace
@@ -2556,7 +2505,7 @@ function applyScanFilters() {
 
 // --- CHART VISIBILITY TOGGLE LISTENERS ---
 // Re-render chart when toggles change (uses cached data)
-['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag', 'show-backtest', 'show-volume', 'show-kinetic-z', 'show-slope'].forEach(id => {
+['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag', 'show-backtest', 'show-volume', 'show-kinetic-z'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
         el.addEventListener('change', (e) => {
@@ -2771,21 +2720,19 @@ function getPortfolioAnnotations() {
             yref: 'y',
             text: label,
             showarrow: true,
-            arrowhead: 0, // Simple line
-            arrowwidth: 1,
-            arrowcolor: color,
+            arrowhead: 2,
             ax: 0,
-            ay: -25,
+            ay: -25, // Point down to the dot
             font: {
-                color: color, // Colored text
-                size: 10,
+                color: '#ffffff',
+                size: 11,
                 weight: 'bold'
             },
-            bgcolor: 'rgba(20, 20, 30, 0.7)', // Semi-transparent dark
+            bgcolor: color,
             bordercolor: color,
             borderwidth: 1,
-            borderpad: 2,
-            opacity: 0.8
+            borderpad: 4,
+            opacity: 0.9
         });
     });
 
@@ -2860,7 +2807,6 @@ function getTradeMarkerShapes() {
 }
 
 // Toggle trade markers visibility
-// Toggle trade markers visibility
 function toggleTradeMarkers() {
     const checkbox = document.getElementById('show-trade-markers');
     const icon = checkbox?.parentElement?.querySelector('.toggle-icon');
@@ -2870,23 +2816,11 @@ function toggleTradeMarkers() {
         icon.dataset.active = checkbox.checked ? 'true' : 'false';
     }
 
-    if (window.LAST_ANALYSIS_DATA) {
-        renderCharts(window.LAST_ANALYSIS_DATA);
-    }
-}
-
-// Toggle chart legend visibility
-function toggleLegend() {
-    const checkbox = document.getElementById('show-legend');
-    const icon = checkbox?.parentElement?.querySelector('.toggle-icon');
-
-    if (icon) {
-        icon.style.opacity = checkbox.checked ? '1' : '0.5';
-        icon.dataset.active = checkbox.checked ? 'true' : 'false';
-    }
-
-    if (window.LAST_ANALYSIS_DATA) {
-        renderCharts(window.LAST_ANALYSIS_DATA);
+    // Update chart shapes
+    const chartDiv = document.getElementById('chart-combined');
+    if (chartDiv && chartDiv.layout) {
+        const newShapes = getAnnotationShapes();
+        Plotly.relayout(chartDiv, { shapes: newShapes });
     }
 }
 

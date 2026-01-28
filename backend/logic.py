@@ -79,8 +79,7 @@ class MarketData:
              self.data = self.data.iloc[:, 0]
              
         self.data.name = self.ticker
-        if not self.data.empty:
-            print(f"Caricati {len(self.data)} punti dati reali. Ultima data: {self.data.index[-1]}")
+        print(f"Caricati {len(self.data)} punti dati reali.")
         return self.data
 
     def _generate_mock_data(self):
@@ -159,7 +158,7 @@ class FourierEngine:
             self.top_amps = []
             self.top_phase = []
 
-    def reconstruct_scenario(self, future_horizon=60, amp_scale=1.0, phase_jitter=0.0, seed=None):
+    def reconstruct_scenario(self, future_horizon=60, amp_scale=1.0, phase_jitter=0.0):
         # Vettore tempo: Passato + Futuro
         t2 = np.arange(self.N + future_horizon)
         
@@ -169,7 +168,7 @@ class FourierEngine:
         # Ricostruisci oscillazione
         phases = self.top_phase.copy()
         if phase_jitter > 0:
-            rng = np.random.default_rng(seed)
+            rng = np.random.default_rng()
             phases += rng.normal(0.0, phase_jitter, size=len(phases))
             
         resid2 = np.zeros_like(t2, dtype=float)

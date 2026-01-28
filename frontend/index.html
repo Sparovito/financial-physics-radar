@@ -31,9 +31,8 @@
 
 
 
-        <button class="btn-analyze" onclick="runAnalysis(true)">
-            <span class="icon">🚀</span>
-            Analizza
+        <button class="btn-analyze" onclick="runAnalysis()">
+            ANALIZZA
         </button>
 
         <button class="btn-radar" onclick="openRadar()"
@@ -92,7 +91,7 @@
                 </div>
 
                 <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="use-cache" style="width: auto;">
+                    <input type="checkbox" id="use-cache" checked style="width: auto;">
                     <label for="use-cache" style="margin:0; font-size: 0.9em; cursor: pointer;">⚡ Modalità Veloce
                         (Cache)</label>
                 </div>
@@ -169,10 +168,6 @@
                         <input type="checkbox" id="show-zigzag" checked style="display: none;">
                         <span class="toggle-icon" data-active="true" style="font-size: 1.5rem; opacity: 1;">🔀</span>
                     </label>
-                    <label title="🔮 Slope Predittivo" style="cursor: pointer;">
-                        <input type="checkbox" id="show-slope" checked style="display: none;">
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.5rem; opacity: 1;">🔮</span>
-                    </label>
                     <label title="📊 Volume" style="cursor: pointer;">
                         <input type="checkbox" id="show-volume" checked style="display: none;">
                         <span class="toggle-icon" data-active="true" style="font-size: 1.5rem; opacity: 1;">📶</span>
@@ -230,12 +225,6 @@
                         <option value="SUM" style="color:#ff4444;">Sum</option>
                         <option value="MA" style="color:#00aaff;">MA</option>
                     </select>
-
-                    <!-- LEGEND TOGGLE -->
-                    <label title="Mostra Legenda" style="cursor: pointer; margin-top: 8px;">
-                        <input type="checkbox" id="show-legend" style="display: none;" onchange="toggleLegend()">
-                        <span class="toggle-icon" data-active="false" style="font-size: 1.3rem; opacity: 0.5;">📋</span>
-                    </label>
                 </div>
 
                 <!-- Center Handle -->

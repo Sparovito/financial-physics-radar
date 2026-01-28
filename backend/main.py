@@ -19,7 +19,7 @@ import yfinance as yf
 # This fixes "ModuleNotFoundError: No module named 'logic'" on Railway
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from logic import MarketData, ActionPath, FourierEngine, MarketScanner, backtest_strategy, backtest_frozen_strategy, backtest_frozen_sum_strategy, backtest_ma_crossover
+from logic import MarketData, ActionPath, FourierEngine, MarketScanner
 
 app = FastAPI(title="Financial Physics API")
 
@@ -176,19 +176,6 @@ def analyze_stock(req: AnalysisRequest):
                 print(f"⚠️ Cache partial miss (Dati Frozen mancanti). Ricalcolo...")
                 use_cache_data = False
 
-            # [NEW] Check for STALE DATA (if older than 2 days)
-            if use_cache_data:
-                last_dt = cached_px.index[-1]
-                now_dt = datetime.now()
-                # Consider weekend gaps (e.g. 4 days max tolerance if holiday?). 
-                # If market is active, > 1 day is stale. 
-                # Let's say > 3 days is definitely stale even with weekend.
-                delta_days = (now_dt - last_dt).days
-                if delta_days > 3:
-                     print(f"⚠️ Cache Stale (Old): Last={last_dt.date()} Now={now_dt.date()} Delta={delta_days}d. Ricarico...")
-                     use_cache_data = False
-
-
         if use_cache_data:
             print(f"⚡ CACHE HIT: Uso dati in memoria per {req.ticker}")
             cached_obj = TICKER_CACHE[req.ticker]
@@ -235,10 +222,7 @@ def analyze_stock(req: AnalysisRequest):
                         "dates": full_frozen_data["dates"][idx_start:],
                         "kin": full_frozen_data["kin"][idx_start:],
                         "pot": full_frozen_data["pot"][idx_start:],
-                        "z_sum": full_frozen_data.get("z_sum", [])[idx_start:],
-                        "z_slope": full_frozen_data.get("z_slope", [])[idx_start:],
-                        "raw_sum": full_frozen_data.get("raw_sum", [])[idx_start:],
-                        "raw_slope": full_frozen_data.get("raw_slope", [])[idx_start:]
+                        "z_sum": full_frozen_data.get("z_sum", [])[idx_start:] 
                     }
         else:
             # Scarica storia COMPLETA
@@ -318,102 +302,42 @@ def analyze_stock(req: AnalysisRequest):
                 print(f"⚠️ Errore calcolo ZigZag: {e}")
                 zigzag_series = pd.Series([0]*len(px), index=px.index)
             
-            # 2. Fourier Calculation
-            fourier = FourierEngine(px, top_k=req.top_k)
-            future_idx, future_vals = fourier.reconstruct_scenario(future_horizon=req.forecast_days)
-            
-            # 3. Calcola Minima Azione (STANDARD - slope goes to 0)
-            # User requested to keep standard slope "as is" (0 at end)
-            mechanics = ActionPath(px, alpha=req.alpha, beta=req.beta)
-            
             # --- PRE-CALCOLO FROZEN HISTORY (Heavy Computation) ---
             print(f"🧊 Pre-calcolo Frozen History completa (può richiedere tempo)...")
-            # Increase sampling step to avoid slowness due to repeated Fourier
-            SAMPLE_EVERY = 2 
+            SAMPLE_EVERY = 1
             MIN_POINTS = 100
             
-            f_kin, f_pot, f_sum, f_slope, f_dates = [], [], [], [], []
+            f_kin, f_pot, f_sum, f_dates = [], [], [], []
             n_total = len(px)
             
             for t in range(MIN_POINTS, n_total, SAMPLE_EVERY):
                 px_t = px.iloc[:t+1]
                 try:
-                    # A. Standard Frozen Metrics
                     mech_t = ActionPath(px_t, alpha=req.alpha, beta=req.beta)
                     
-                    # 1. Kinetic Frozen (Shifted T-25)
+                    # 1. Kinetic Frozen (Shifted T-25 for prediction comparison)
                     lag_idx = -25
                     if len(mech_t.kin_density) >= 25:
                         val_kin = round(float(mech_t.kin_density.iloc[lag_idx]), 2)
                     else:
                         val_kin = 0.0
+                    f_kin.append(val_kin)
                     
                     # 2. Potential Frozen (Current T)
                     val_pot = round(float(mech_t.pot_density.iloc[-1]), 2)
+                    f_pot.append(val_pot)
                     
-                    # 3. Frozen Sum (Current T)
+                    # 3. [NEW] Frozen Sum Index (Sum of Current Kin & Current Pot)
+                    # We use Current Kin (iloc[-1]) for this index, not the shifted one
                     curr_kin_raw = float(mech_t.kin_density.iloc[-1])
                     curr_pot_raw = float(mech_t.pot_density.iloc[-1])
                     val_sum = curr_kin_raw + curr_pot_raw
-                    
-                    # B. [NEW] PREDICTIVE SLOPE (Ghost Future at time T)
-                    # We must simulate what the slope WOULD be if we extended into the future known at time T
-                    
-                    # 1. Fourier on px_t
-                    four_t = FourierEngine(px_t, top_k=req.top_k)
-                    # We only need short horizon for ghost
-                    _, fut_vals_t = four_t.reconstruct_scenario(future_horizon=14)
-                    
-                    # 2. Extend px_t
-                    # Generating future dates safely
-                    last_date = px_t.index[-1]
-                    future_dates = pd.date_range(last_date + pd.Timedelta(days=1), periods=14)
-                    
-                    # Ensure same length
-                    if len(fut_vals_t) != len(future_dates):
-                         min_len = min(len(fut_vals_t), len(future_dates))
-                         fut_vals_t = fut_vals_t[:min_len]
-                         future_dates = future_dates[:min_len]
-
-                    ghost_series_t = pd.Series(fut_vals_t, index=future_dates)
-                    px_t_extended = pd.concat([px_t, ghost_series_t])
-                    
-                    # 3. ActionPath on Extended
-                    mech_t_ext = ActionPath(px_t_extended, alpha=req.alpha, beta=req.beta)
-                    
-                    # 4. Capture Slope at time T (which is at index len(px_t)-1)
-                    # The slope is now "unlocked" by the ghost future
-                    # Note: mech_t_ext has length len(px_t) + 14
-                    # We want slope at T, which corresponds to index len(px_t)-1
-                    idx_T = len(px_t) - 1
-                    if idx_T < len(mech_t_ext.dX):
-                         val_slope = float(mech_t_ext.dX.iloc[idx_T])
-                    else:
-                         val_slope = 0.0
-                    
-                    # --- COMMIT TO LISTS ---
-                    f_kin.append(val_kin)
-                    f_pot.append(val_pot)
                     f_sum.append(val_sum)
-                    f_slope.append(round(val_slope, 4))
-                    f_dates.append(px.index[t].strftime('%Y-%m-%d'))
                     
-                except Exception as e:
-                    print(f"Err frozen loop at {px.index[t]}: {e}")
-                    # traceback.print_exc()
+                    f_dates.append(px.index[t].strftime('%Y-%m-%d'))
+                except:
                     continue
             
-            # [NEW] Normalize Frozen Slope (Rolling Z-Score)
-            # Raw slope is hard to read. Z-Score makes it an oscillator.
-            f_slope_series = pd.Series(f_slope)
-            roll_fslope_mean = f_slope_series.rolling(window=252, min_periods=20).mean()
-            roll_fslope_std = f_slope_series.rolling(window=252, min_periods=20).std()
-            
-            # Z-Score
-            z_frozen_slope = ((f_slope_series - roll_fslope_mean) / (roll_fslope_std + 1e-6)).fillna(0).tolist()
-            z_frozen_slope = [round(x, 2) for x in z_frozen_slope]
-
-                
             # [NEW] Normalize Frozen Sum Index (Rolling Z-Score 252)
             f_sum_series = pd.Series(f_sum)
             roll_fsum_mean = f_sum_series.rolling(window=252, min_periods=20).mean()
@@ -423,7 +347,6 @@ def analyze_stock(req: AnalysisRequest):
             # [NEW] Apply Zero-Phase Low-Pass Filter (Butterworth)
             # This smooths the signal without introducing lag
             try:
-                from scipy.signal import butter, filtfilt
                 # Filter parameters: order=2, cutoff=0.05 (normalized frequency)
                 # Lower cutoff = more smoothing. Range [0.01, 0.1] typical.
                 b, a = butter(N=2, Wn=0.05, btype='low')
@@ -431,7 +354,7 @@ def analyze_stock(req: AnalysisRequest):
                 z_frozen_sum = z_frozen_sum_filtered
             except Exception as e:
                 print(f"⚠️ Filter failed (keeping raw): {e}")
-                
+            
             # Round for JSON
             z_frozen_sum = [round(x, 2) for x in z_frozen_sum]
             
@@ -440,9 +363,7 @@ def analyze_stock(req: AnalysisRequest):
                 "kin": f_kin,
                 "pot": f_pot,
                 "z_sum": z_frozen_sum,
-                "z_slope": z_frozen_slope,
-                "raw_sum": f_sum,
-                "raw_slope": f_slope # [NEW] Save raw slope for strict re-simulation
+                "raw_sum": f_sum  # [NEW] Save raw values for integrity check reruns
             }
             
             # Salva tutto in cache
@@ -477,13 +398,10 @@ def analyze_stock(req: AnalysisRequest):
             trunc_kin = []
             trunc_pot = []
             trunc_z_sum = []
-            trunc_z_slope = []
             
             if full_frozen_data and "raw_sum" in full_frozen_data:
                 full_dates = full_frozen_data["dates"]
                 full_raw_sum = full_frozen_data["raw_sum"]
-                # Fallback for old cache (though we should have invalidated)
-                full_raw_slope = full_frozen_data.get("raw_slope", []) 
                 
                 # Find cut-off index
                 from bisect import bisect_right
@@ -495,14 +413,16 @@ def analyze_stock(req: AnalysisRequest):
                     trunc_kin = full_frozen_data["kin"][:cut_idx]
                     trunc_pot = full_frozen_data["pot"][:cut_idx]
                     
-                    # --- Recalculate SUM Indicator ---
+                    # Recalculate Indicator on Truncated Data
                     trunc_raw = full_raw_sum[:cut_idx]
+                    
+                    # 1. Rolling Z-Score
                     s_trunc = pd.Series(trunc_raw)
                     roll_mean = s_trunc.rolling(window=252, min_periods=20).mean()
                     roll_std = s_trunc.rolling(window=252, min_periods=20).std()
                     z_trunc = ((s_trunc - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
                     
-                    # Filter (Butterworth)
+                    # 2. Filter (Butterworth)
                     try:
                         from scipy.signal import butter, filtfilt
                         b, a = butter(N=2, Wn=0.05, btype='low')
@@ -512,23 +432,9 @@ def analyze_stock(req: AnalysisRequest):
                             trunc_z_sum = z_trunc
                     except:
                         trunc_z_sum = z_trunc
+                    
                     # Rounding
                     trunc_z_sum = [round(x, 2) for x in trunc_z_sum]
-                    
-                    # --- Recalculate SLOPE Indicator ---
-                    if full_raw_slope:
-                         trunc_raw_slope = full_raw_slope[:cut_idx]
-                         s_slope = pd.Series(trunc_raw_slope)
-                         roll_mean = s_slope.rolling(window=252, min_periods=20).mean()
-                         roll_std = s_slope.rolling(window=252, min_periods=20).std()
-                         trunc_z_slope_val = ((s_slope - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
-                         trunc_z_slope = [round(x, 2) for x in trunc_z_slope_val]
-                    else:
-                         # Fallback if raw slope missing 
-                         if "z_slope" in full_frozen_data:
-                             trunc_z_slope = full_frozen_data["z_slope"][:cut_idx]
-                         else:
-                             trunc_z_slope = []
                 else:
                     # No data before date
                     pass
@@ -542,8 +448,6 @@ def analyze_stock(req: AnalysisRequest):
                         trunc_kin.append(full_frozen_data["kin"][i])
                         trunc_pot.append(full_frozen_data["pot"][i])
                         trunc_z_sum.append(full_frozen_data["z_sum"][i])
-                        if "z_slope" in full_frozen_data and i < len(full_frozen_data["z_slope"]):
-                            trunc_z_slope.append(full_frozen_data["z_slope"][i])
                     else:
                         break # Stop appena superiamo la data
             
@@ -553,16 +457,13 @@ def analyze_stock(req: AnalysisRequest):
                 "kin": trunc_kin,
                 "pot": trunc_pot,
                 "z_sum": trunc_z_sum,
-                "z_slope": trunc_z_slope,
-                "raw_sum": [],
-                "raw_slope": []
+                "raw_sum": [] # Not needed in frontend
             }
             
             frozen_dates = trunc_dates
             frozen_z_kin = trunc_kin
             frozen_z_pot = trunc_pot
             frozen_z_sum = trunc_z_sum
-            # Slope is handled in frontend via full_frozen_data["z_slope"] since it's an overlay trace
             
             print(f"🕐 Simulating past: data truncated to {req.end_date}")
         else:
@@ -575,34 +476,12 @@ def analyze_stock(req: AnalysisRequest):
         # Prepare ZigZag List
         zigzag_line = zigzag_series.values.tolist() if zigzag_series is not None else []
         
-        # --- LIVE CALCULATIONS (Run on potentially time-sliced data) ---
-        # These MUST run AFTER time travel slicing and are needed for API response
-        
-        # Calcola Minima Azione (LIVE - on current px, possibly sliced)
+        # 2. Calcola Minima Azione (Live su dati tranciati)
         mechanics = ActionPath(px, alpha=req.alpha, beta=req.beta)
         
-        # Fourier Calculation (LIVE)
+        # 3. Calcola Fourier
         fourier = FourierEngine(px, top_k=req.top_k)
-        
-        # [NEW] Generate Multiple Scenarios (as per notebook)
-        N_SCENARIOS = 5
-        PHASE_JITTER = 0.8 # As per User's notebook
-        
-        future_scenarios = []
-        future_idx = None
-        
-        for i in range(1, N_SCENARIOS + 1):
-            # Pass seed for deterministic jitter (seed=i to match notebook loop)
-            # Note: Notebook used range(N_SCENARIOS) i.e. 0..4. I'll use 1..5 for seed variance or 0..4.
-            # Notebook: "for i in range(N_SCENARIOS)"
-            idx, vals = fourier.reconstruct_scenario(
-                future_horizon=req.forecast_days, 
-                phase_jitter=PHASE_JITTER, 
-                seed=i
-            )
-            future_scenarios.append(vals.tolist())
-            if future_idx is None:
-                future_idx = idx
+        future_idx, future_vals = fourier.reconstruct_scenario(future_horizon=req.forecast_days)
         
         # 4. Prepara Risposta JSON
         dates_historical = px.index.strftime('%Y-%m-%d').tolist()
@@ -637,19 +516,18 @@ def analyze_stock(req: AnalysisRequest):
         ZSCORE_WINDOW = 252
         
         kin = mechanics.kin_density
-        pot = mechanics.pot_density
-        
         roll_kin_mean = kin.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
         roll_kin_std = kin.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
-        z_kin_series = ((kin - roll_kin_mean) / (roll_kin_std + 1e-6)).fillna(0).tolist()
+        z_kin_series = ((kin - roll_kin_mean) / (roll_kin_std + 1e-6)).fillna(0).values.tolist()
         
-        # Z-Slope Calculation (Rolling)
-        slope_series = mechanics.dX
-        roll_slope_mean = slope_series.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
-        roll_slope_std = slope_series.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
-        z_slope_series = ((slope_series - roll_slope_mean) / (roll_slope_std + 1e-6)).fillna(0).tolist()
+        slope = mechanics.dX
+        roll_slope_mean = slope.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
+        roll_slope_std = slope.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
+        z_slope_series = ((slope - roll_slope_mean) / (roll_slope_std + 1e-6)).fillna(0).values.tolist()
         
-        # Backtest - Strategy 1 (Live Z-Kinetic)
+        from logic import backtest_strategy
+        
+        # --- STRATEGIA 1: LIVE KINETIC (Originale) ---
         backtest_result = backtest_strategy(
             prices=price_real,
             z_kinetic=z_kin_series,
@@ -780,12 +658,13 @@ def analyze_stock(req: AnalysisRequest):
                 "values": future_scenario
             },
             "fourier_components": fourier_comps,
-            "frozen_data": {
+            "frozen": {
+                "dates": frozen_dates,
+                "z_kinetic": frozen_z_kin,
                 "dates": frozen_dates,
                 "z_kinetic": frozen_z_kin,
                 "z_potential": frozen_z_pot,
-                "z_sum": frozen_z_sum,
-                "z_slope": full_frozen_data.get("z_slope", [])  # [NEW] Predictive Slope
+                "z_sum": frozen_z_sum
             }
         }
 
