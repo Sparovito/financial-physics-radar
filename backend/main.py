@@ -235,7 +235,10 @@ def analyze_stock(req: AnalysisRequest):
                         "dates": full_frozen_data["dates"][idx_start:],
                         "kin": full_frozen_data["kin"][idx_start:],
                         "pot": full_frozen_data["pot"][idx_start:],
-                        "z_sum": full_frozen_data.get("z_sum", [])[idx_start:] 
+                        "z_sum": full_frozen_data.get("z_sum", [])[idx_start:],
+                        "z_slope": full_frozen_data.get("z_slope", [])[idx_start:],
+                        "raw_sum": full_frozen_data.get("raw_sum", [])[idx_start:],
+                        "raw_slope": full_frozen_data.get("raw_slope", [])[idx_start:]
                     }
         else:
             # Scarica storia COMPLETA
@@ -409,27 +412,27 @@ def analyze_stock(req: AnalysisRequest):
         except Exception as e:
             print(f"⚠️ Filter failed (keeping raw): {e}")
             
-            # Round for JSON
-            z_frozen_sum = [round(x, 2) for x in z_frozen_sum]
-            
-            full_frozen_data = {
-                "dates": f_dates,
-                "kin": f_kin,
-                "pot": f_pot,
-                "z_sum": z_frozen_sum,
-                "z_slope": z_frozen_slope,
-                "raw_sum": f_sum,
-                "raw_slope": f_slope # [NEW] Save raw slope for strict re-simulation
-            }
-            
-            # Salva tutto in cache
-            TICKER_CACHE[req.ticker] = {
-                "px": px,
-                "frozen": full_frozen_data,
-                "zigzag": zigzag_series,
-                "volume": volume_series,
-                "mkt_cap": mkt_cap
-            }
+        # Round for JSON
+        z_frozen_sum = [round(x, 2) for x in z_frozen_sum]
+        
+        full_frozen_data = {
+            "dates": f_dates,
+            "kin": f_kin,
+            "pot": f_pot,
+            "z_sum": z_frozen_sum,
+            "z_slope": z_frozen_slope,
+            "raw_sum": f_sum,
+            "raw_slope": f_slope # [NEW] Save raw slope for strict re-simulation
+        }
+        
+        # Salva tutto in cache
+        TICKER_CACHE[req.ticker] = {
+            "px": px,
+            "frozen": full_frozen_data,
+            "zigzag": zigzag_series,
+            "volume": volume_series,
+            "mkt_cap": mkt_cap
+        }
 
         # --- SIMULATION TIME TRAVEL (True Point-in-Time Calculation) ---
         if req.end_date:
