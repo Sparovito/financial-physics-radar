@@ -2814,31 +2814,34 @@ function getTradeMarkerShapes() {
 }
 
 // Toggle trade markers visibility
+// Toggle trade markers visibility
 function toggleTradeMarkers() {
+    const checkbox = document.getElementById('show-trade-markers');
+    const icon = checkbox?.parentElement?.querySelector('.toggle-icon');
+
+    if (icon) {
+        icon.style.opacity = checkbox.checked ? '1' : '0.5';
+        icon.dataset.active = checkbox.checked ? 'true' : 'false';
+    }
+
     if (window.LAST_ANALYSIS_DATA) {
         renderCharts(window.LAST_ANALYSIS_DATA);
     }
 }
 
+// Toggle chart legend visibility
 function toggleLegend() {
+    const checkbox = document.getElementById('show-legend');
+    const icon = checkbox?.parentElement?.querySelector('.toggle-icon');
+
+    if (icon) {
+        icon.style.opacity = checkbox.checked ? '1' : '0.5';
+        icon.dataset.active = checkbox.checked ? 'true' : 'false';
+    }
+
     if (window.LAST_ANALYSIS_DATA) {
         renderCharts(window.LAST_ANALYSIS_DATA);
     }
-}
-const checkbox = document.getElementById('show-trade-markers');
-const icon = checkbox?.parentElement?.querySelector('.toggle-icon');
-
-if (icon) {
-    icon.style.opacity = checkbox.checked ? '1' : '0.5';
-    icon.dataset.active = checkbox.checked ? 'true' : 'false';
-}
-
-// Update chart shapes
-const chartDiv = document.getElementById('chart-combined');
-if (chartDiv && chartDiv.layout) {
-    const newShapes = getAnnotationShapes();
-    Plotly.relayout(chartDiv, { shapes: newShapes });
-}
 }
 
 // Setup click handler for the chart (called after Plotly.newPlot)
