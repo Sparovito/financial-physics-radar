@@ -111,7 +111,7 @@ function shiftDate(days) {
 
     // Throttle calls to runAnalysis
     if (!isThrottled) {
-        runAnalysis();
+        runAnalysis(true); // Always use cache when navigating history for speed
         isThrottled = true;
         setTimeout(() => { isThrottled = false; }, THROTTLE_DELAY);
     }
