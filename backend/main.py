@@ -417,8 +417,9 @@ def analyze_stock(req: AnalysisRequest):
                 "kin": f_kin,
                 "pot": f_pot,
                 "z_sum": z_frozen_sum,
-                "z_slope": z_frozen_slope,  # [NEW] Predictive Slope Z-Score
-                "raw_sum": f_sum
+                "z_slope": z_frozen_slope,
+                "raw_sum": f_sum,
+                "raw_slope": f_slope # [NEW] Save raw slope for strict re-simulation
             }
             
             # Salva tutto in cache
@@ -453,10 +454,13 @@ def analyze_stock(req: AnalysisRequest):
             trunc_kin = []
             trunc_pot = []
             trunc_z_sum = []
+            trunc_z_slope = []
             
             if full_frozen_data and "raw_sum" in full_frozen_data:
                 full_dates = full_frozen_data["dates"]
                 full_raw_sum = full_frozen_data["raw_sum"]
+                # Fallback for old cache (though we should have invalidated)
+                full_raw_slope = full_frozen_data.get("raw_slope", []) 
                 
                 # Find cut-off index
                 from bisect import bisect_right
@@ -468,16 +472,14 @@ def analyze_stock(req: AnalysisRequest):
                     trunc_kin = full_frozen_data["kin"][:cut_idx]
                     trunc_pot = full_frozen_data["pot"][:cut_idx]
                     
-                    # Recalculate Indicator on Truncated Data
+                    # --- Recalculate SUM Indicator ---
                     trunc_raw = full_raw_sum[:cut_idx]
-                    
-                    # 1. Rolling Z-Score
                     s_trunc = pd.Series(trunc_raw)
                     roll_mean = s_trunc.rolling(window=252, min_periods=20).mean()
                     roll_std = s_trunc.rolling(window=252, min_periods=20).std()
                     z_trunc = ((s_trunc - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
                     
-                    # 2. Filter (Butterworth)
+                    # Filter (Butterworth)
                     try:
                         from scipy.signal import butter, filtfilt
                         b, a = butter(N=2, Wn=0.05, btype='low')
@@ -487,9 +489,23 @@ def analyze_stock(req: AnalysisRequest):
                             trunc_z_sum = z_trunc
                     except:
                         trunc_z_sum = z_trunc
-                    
                     # Rounding
                     trunc_z_sum = [round(x, 2) for x in trunc_z_sum]
+                    
+                    # --- Recalculate SLOPE Indicator ---
+                    if full_raw_slope:
+                         trunc_raw_slope = full_raw_slope[:cut_idx]
+                         s_slope = pd.Series(trunc_raw_slope)
+                         roll_mean = s_slope.rolling(window=252, min_periods=20).mean()
+                         roll_std = s_slope.rolling(window=252, min_periods=20).std()
+                         trunc_z_slope_val = ((s_slope - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
+                         trunc_z_slope = [round(x, 2) for x in trunc_z_slope_val]
+                    else:
+                         # Fallback if raw slope missing 
+                         if "z_slope" in full_frozen_data:
+                             trunc_z_slope = full_frozen_data["z_slope"][:cut_idx]
+                         else:
+                             trunc_z_slope = []
                 else:
                     # No data before date
                     pass
@@ -503,6 +519,8 @@ def analyze_stock(req: AnalysisRequest):
                         trunc_kin.append(full_frozen_data["kin"][i])
                         trunc_pot.append(full_frozen_data["pot"][i])
                         trunc_z_sum.append(full_frozen_data["z_sum"][i])
+                        if "z_slope" in full_frozen_data and i < len(full_frozen_data["z_slope"]):
+                            trunc_z_slope.append(full_frozen_data["z_slope"][i])
                     else:
                         break # Stop appena superiamo la data
             
@@ -512,13 +530,16 @@ def analyze_stock(req: AnalysisRequest):
                 "kin": trunc_kin,
                 "pot": trunc_pot,
                 "z_sum": trunc_z_sum,
-                "raw_sum": [] # Not needed in frontend
+                "z_slope": trunc_z_slope,
+                "raw_sum": [],
+                "raw_slope": []
             }
             
             frozen_dates = trunc_dates
             frozen_z_kin = trunc_kin
             frozen_z_pot = trunc_pot
             frozen_z_sum = trunc_z_sum
+            # Slope is handled in frontend via full_frozen_data["z_slope"] since it's an overlay trace
             
             print(f"🕐 Simulating past: data truncated to {req.end_date}")
         else:
