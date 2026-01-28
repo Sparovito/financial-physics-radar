@@ -347,17 +347,14 @@ def analyze_stock(req: AnalysisRequest):
                         val_kin = round(float(mech_t.kin_density.iloc[lag_idx]), 2)
                     else:
                         val_kin = 0.0
-                    f_kin.append(val_kin)
                     
                     # 2. Potential Frozen (Current T)
                     val_pot = round(float(mech_t.pot_density.iloc[-1]), 2)
-                    f_pot.append(val_pot)
                     
                     # 3. Frozen Sum (Current T)
                     curr_kin_raw = float(mech_t.kin_density.iloc[-1])
                     curr_pot_raw = float(mech_t.pot_density.iloc[-1])
                     val_sum = curr_kin_raw + curr_pot_raw
-                    f_sum.append(val_sum)
                     
                     # B. [NEW] PREDICTIVE SLOPE (Ghost Future at time T)
                     # We must simulate what the slope WOULD be if we extended into the future known at time T
@@ -368,7 +365,17 @@ def analyze_stock(req: AnalysisRequest):
                     _, fut_vals_t = four_t.reconstruct_scenario(future_horizon=14)
                     
                     # 2. Extend px_t
-                    ghost_series_t = pd.Series(fut_vals_t, index=pd.date_range(px_t.index[-1], periods=15)[1:])
+                    # Generating future dates safely
+                    last_date = px_t.index[-1]
+                    future_dates = pd.date_range(last_date + pd.Timedelta(days=1), periods=14)
+                    
+                    # Ensure same length
+                    if len(fut_vals_t) != len(future_dates):
+                         min_len = min(len(fut_vals_t), len(future_dates))
+                         fut_vals_t = fut_vals_t[:min_len]
+                         future_dates = future_dates[:min_len]
+
+                    ghost_series_t = pd.Series(fut_vals_t, index=future_dates)
                     px_t_extended = pd.concat([px_t, ghost_series_t])
                     
                     # 3. ActionPath on Extended
@@ -376,12 +383,24 @@ def analyze_stock(req: AnalysisRequest):
                     
                     # 4. Capture Slope at time T (which is at index len(px_t)-1)
                     # The slope is now "unlocked" by the ghost future
-                    val_slope = float(mech_t_ext.dX.iloc[len(px_t)-1])
-                    f_slope.append(round(val_slope, 4))
+                    # Note: mech_t_ext has length len(px_t) + 14
+                    # We want slope at T, which corresponds to index len(px_t)-1
+                    idx_T = len(px_t) - 1
+                    if idx_T < len(mech_t_ext.dX):
+                         val_slope = float(mech_t_ext.dX.iloc[idx_T])
+                    else:
+                         val_slope = 0.0
                     
+                    # --- COMMIT TO LISTS ---
+                    f_kin.append(val_kin)
+                    f_pot.append(val_pot)
+                    f_sum.append(val_sum)
+                    f_slope.append(round(val_slope, 4))
                     f_dates.append(px.index[t].strftime('%Y-%m-%d'))
+                    
                 except Exception as e:
-                    # print(f"Err frozen loop: {e}")
+                    print(f"Err frozen loop at {px.index[t]}: {e}")
+                    # traceback.print_exc()
                     continue
             
             # [NEW] Normalize Frozen Slope (Rolling Z-Score)
