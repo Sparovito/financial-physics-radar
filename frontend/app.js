@@ -1,7 +1,7 @@
 const API_URL = ""; // Relative path for production (same origin)
 
-// 3: async function runAnalysis(forceCache = false) {
-async function runAnalysis(forceCache = false) {
+// 3: async function runAnalysis(forceRefresh = false) {
+async function runAnalysis(forceRefresh = false) {
     const btn = document.querySelector('.btn-analyze');
     const status = document.getElementById('status-bar');
     const statusText = document.getElementById('status-text');
@@ -14,8 +14,10 @@ async function runAnalysis(forceCache = false) {
     const lookbackYears = parseInt(document.getElementById('lookback-years').value) || 3;
     const endDate = document.getElementById('end-date').value || null; // null if empty
 
-    // Use cache if forced OR if checkbox is checked
-    const useCache = forceCache || document.getElementById('use-cache').checked;
+    // Logic:
+    // If forceRefresh is TRUE -> useCache = FALSE (Always fetch fresh)
+    // If forceRefresh is FALSE -> useCache = Checkbox State (Respect user setting)
+    const useCache = !forceRefresh && document.getElementById('use-cache').checked;
 
     // Calculate Start Date
     const d = new Date();
@@ -111,7 +113,7 @@ function shiftDate(days) {
 
     // Throttle calls to runAnalysis
     if (!isThrottled) {
-        runAnalysis(true); // Always use cache when navigating history for speed
+        runAnalysis(false); // Respect User Checkbox for navigation
         isThrottled = true;
         setTimeout(() => { isThrottled = false; }, THROTTLE_DELAY);
     }
