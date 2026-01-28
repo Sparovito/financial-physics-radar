@@ -735,13 +735,12 @@ def analyze_stock(req: AnalysisRequest):
                 "values": future_scenario
             },
             "fourier_components": fourier_comps,
-            "frozen": {
-                "dates": frozen_dates,
-                "z_kinetic": frozen_z_kin,
+            "frozen_data": {
                 "dates": frozen_dates,
                 "z_kinetic": frozen_z_kin,
                 "z_potential": frozen_z_pot,
-                "z_sum": frozen_z_sum
+                "z_sum": frozen_z_sum,
+                "z_slope": full_frozen_data.get("z_slope", [])  # [NEW] Predictive Slope
             }
         }
 
