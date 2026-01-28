@@ -496,7 +496,7 @@ function renderCharts(data) {
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
         font: { color: '#aaa', size: isMobile ? 10 : 12 },
-        showlegend: !isMobile,
+        showlegend: !!document.getElementById('show-legend')?.checked,
         legend: isMobile ? {
             orientation: 'h',
             x: 0,
@@ -2815,20 +2815,30 @@ function getTradeMarkerShapes() {
 
 // Toggle trade markers visibility
 function toggleTradeMarkers() {
-    const checkbox = document.getElementById('show-trade-markers');
-    const icon = checkbox?.parentElement?.querySelector('.toggle-icon');
-
-    if (icon) {
-        icon.style.opacity = checkbox.checked ? '1' : '0.5';
-        icon.dataset.active = checkbox.checked ? 'true' : 'false';
+    if (window.LAST_ANALYSIS_DATA) {
+        renderCharts(window.LAST_ANALYSIS_DATA);
     }
+}
 
-    // Update chart shapes
-    const chartDiv = document.getElementById('chart-combined');
-    if (chartDiv && chartDiv.layout) {
-        const newShapes = getAnnotationShapes();
-        Plotly.relayout(chartDiv, { shapes: newShapes });
+function toggleLegend() {
+    if (window.LAST_ANALYSIS_DATA) {
+        renderCharts(window.LAST_ANALYSIS_DATA);
     }
+}
+const checkbox = document.getElementById('show-trade-markers');
+const icon = checkbox?.parentElement?.querySelector('.toggle-icon');
+
+if (icon) {
+    icon.style.opacity = checkbox.checked ? '1' : '0.5';
+    icon.dataset.active = checkbox.checked ? 'true' : 'false';
+}
+
+// Update chart shapes
+const chartDiv = document.getElementById('chart-combined');
+if (chartDiv && chartDiv.layout) {
+    const newShapes = getAnnotationShapes();
+    Plotly.relayout(chartDiv, { shapes: newShapes });
+}
 }
 
 // Setup click handler for the chart (called after Plotly.newPlot)
