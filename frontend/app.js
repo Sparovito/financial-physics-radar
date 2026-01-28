@@ -163,15 +163,38 @@ function renderCharts(data) {
         yaxis: 'y'
     };
 
-    const traceForecast = {
-        x: data.forecast.dates,
-        y: data.forecast.values,
-        name: 'Proiezione Fourier',
-        type: 'scatter',
-        line: { color: '#ab63fa', width: 2, dash: 'dot' },
-        xaxis: 'x',
-        yaxis: 'y'
-    };
+    // [NEW] Multiple Forecast Scenarios
+    const forecastTraces = [];
+    if (data.forecast && data.forecast.scenarios) {
+        data.forecast.scenarios.forEach((scenarioValues, index) => {
+            forecastTraces.push({
+                x: data.forecast.dates,
+                y: scenarioValues,
+                name: `Scenario ${index + 1}`,
+                type: 'scatter',
+                line: {
+                    color: '#ab63fa',
+                    width: 1,
+                    dash: 'dot'
+                },
+                opacity: 0.7,
+                xaxis: 'x',
+                yaxis: 'y',
+                showlegend: index === 0 // Show legend only for the first one to avoid clutter
+            });
+        });
+    } else if (data.forecast && data.forecast.values) {
+        // Fallback for old single scenario
+        forecastTraces.push({
+            x: data.forecast.dates,
+            y: data.forecast.values,
+            name: 'Proiezione Fourier',
+            type: 'scatter',
+            line: { color: '#ab63fa', width: 2, dash: 'dot' },
+            xaxis: 'x',
+            yaxis: 'y'
+        });
+    }
 
     // Calculate Volume Colors (Green if Close >= PrevClose, Red if Lower)
     const volumeColors = (data.volume || []).map((v, i) => {
@@ -533,7 +556,7 @@ function renderCharts(data) {
     if (showPrice) {
         // Volume first so it's behind candles
         if (showVolume) traces.push(traceVolume);
-        traces.push(tracePrice, tracePath, traceFund, traceForecast);
+        traces.push(tracePrice, tracePath, traceFund, ...forecastTraces);
     }
 
     // Energy group

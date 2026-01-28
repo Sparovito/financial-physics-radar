@@ -159,7 +159,7 @@ class FourierEngine:
             self.top_amps = []
             self.top_phase = []
 
-    def reconstruct_scenario(self, future_horizon=60, amp_scale=1.0, phase_jitter=0.0):
+    def reconstruct_scenario(self, future_horizon=60, amp_scale=1.0, phase_jitter=0.0, seed=None):
         # Vettore tempo: Passato + Futuro
         t2 = np.arange(self.N + future_horizon)
         
@@ -169,7 +169,7 @@ class FourierEngine:
         # Ricostruisci oscillazione
         phases = self.top_phase.copy()
         if phase_jitter > 0:
-            rng = np.random.default_rng()
+            rng = np.random.default_rng(seed)
             phases += rng.normal(0.0, phase_jitter, size=len(phases))
             
         resid2 = np.zeros_like(t2, dtype=float)

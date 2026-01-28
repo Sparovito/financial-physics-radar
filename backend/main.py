@@ -583,7 +583,26 @@ def analyze_stock(req: AnalysisRequest):
         
         # Fourier Calculation (LIVE)
         fourier = FourierEngine(px, top_k=req.top_k)
-        future_idx, future_vals = fourier.reconstruct_scenario(future_horizon=req.forecast_days)
+        
+        # [NEW] Generate Multiple Scenarios (as per notebook)
+        N_SCENARIOS = 5
+        PHASE_JITTER = 0.8 # As per User's notebook
+        
+        future_scenarios = []
+        future_idx = None
+        
+        for i in range(1, N_SCENARIOS + 1):
+            # Pass seed for deterministic jitter (seed=i to match notebook loop)
+            # Note: Notebook used range(N_SCENARIOS) i.e. 0..4. I'll use 1..5 for seed variance or 0..4.
+            # Notebook: "for i in range(N_SCENARIOS)"
+            idx, vals = fourier.reconstruct_scenario(
+                future_horizon=req.forecast_days, 
+                phase_jitter=PHASE_JITTER, 
+                seed=i
+            )
+            future_scenarios.append(vals.tolist())
+            if future_idx is None:
+                future_idx = idx
         
         # 4. Prepara Risposta JSON
         dates_historical = px.index.strftime('%Y-%m-%d').tolist()
@@ -618,18 +637,19 @@ def analyze_stock(req: AnalysisRequest):
         ZSCORE_WINDOW = 252
         
         kin = mechanics.kin_density
+        pot = mechanics.pot_density
+        
         roll_kin_mean = kin.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
         roll_kin_std = kin.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
-        z_kin_series = ((kin - roll_kin_mean) / (roll_kin_std + 1e-6)).fillna(0).values.tolist()
+        z_kin_series = ((kin - roll_kin_mean) / (roll_kin_std + 1e-6)).fillna(0).tolist()
         
-        slope = mechanics.dX
-        roll_slope_mean = slope.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
-        roll_slope_std = slope.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
-        z_slope_series = ((slope - roll_slope_mean) / (roll_slope_std + 1e-6)).fillna(0).values.tolist()
+        # Z-Slope Calculation (Rolling)
+        slope_series = mechanics.dX
+        roll_slope_mean = slope_series.rolling(window=ZSCORE_WINDOW, min_periods=20).mean()
+        roll_slope_std = slope_series.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
+        z_slope_series = ((slope_series - roll_slope_mean) / (roll_slope_std + 1e-6)).fillna(0).tolist()
         
-        from logic import backtest_strategy
-        
-        # --- STRATEGIA 1: LIVE KINETIC (Originale) ---
+        # Backtest - Strategy 1 (Live Z-Kinetic)
         backtest_result = backtest_strategy(
             prices=price_real,
             z_kinetic=z_kin_series,
