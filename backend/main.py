@@ -315,41 +315,82 @@ def analyze_stock(req: AnalysisRequest):
                 print(f"⚠️ Errore calcolo ZigZag: {e}")
                 zigzag_series = pd.Series([0]*len(px), index=px.index)
             
-            # --- PRE-CALCOLO FROZEN HISTORY (Heavy Computation) ---
-            print(f"🧊 Pre-calcolo Frozen History completa (può richiedere tempo)...")
-            SAMPLE_EVERY = 1
-            MIN_POINTS = 100
-            
-            f_kin, f_pot, f_sum, f_dates = [], [], [], []
-            n_total = len(px)
-            
-            for t in range(MIN_POINTS, n_total, SAMPLE_EVERY):
-                px_t = px.iloc[:t+1]
-                try:
-                    mech_t = ActionPath(px_t, alpha=req.alpha, beta=req.beta)
-                    
-                    # 1. Kinetic Frozen (Shifted T-25 for prediction comparison)
-                    lag_idx = -25
-                    if len(mech_t.kin_density) >= 25:
-                        val_kin = round(float(mech_t.kin_density.iloc[lag_idx]), 2)
-                    else:
-                        val_kin = 0.0
-                    f_kin.append(val_kin)
-                    
-                    # 2. Potential Frozen (Current T)
-                    val_pot = round(float(mech_t.pot_density.iloc[-1]), 2)
-                    f_pot.append(val_pot)
-                    
-                    # 3. [NEW] Frozen Sum Index (Sum of Current Kin & Current Pot)
-                    # We use Current Kin (iloc[-1]) for this index, not the shifted one
-                    curr_kin_raw = float(mech_t.kin_density.iloc[-1])
-                    curr_pot_raw = float(mech_t.pot_density.iloc[-1])
-                    val_sum = curr_kin_raw + curr_pot_raw
-                    f_sum.append(val_sum)
-                    
-                    f_dates.append(px.index[t].strftime('%Y-%m-%d'))
-                except:
-                    continue
+        # 2. Fourier Calculation
+        fourier = FourierEngine(px, top_k=req.top_k)
+        future_idx, future_vals = fourier.reconstruct_scenario(future_horizon=req.forecast_days)
+        
+        # 3. Calcola Minima Azione (STANDARD - slope goes to 0)
+        # User requested to keep standard slope "as is" (0 at end)
+        mechanics = ActionPath(px, alpha=req.alpha, beta=req.beta)
+        
+        # --- PRE-CALCOLO FROZEN HISTORY (Heavy Computation) ---
+        print(f"🧊 Pre-calcolo Frozen History completa (può richiedere tempo)...")
+        # Increase sampling step to avoid slowness due to repeated Fourier
+        SAMPLE_EVERY = 2 
+        MIN_POINTS = 100
+        
+        f_kin, f_pot, f_sum, f_slope, f_dates = [], [], [], [], []
+        n_total = len(px)
+        
+        for t in range(MIN_POINTS, n_total, SAMPLE_EVERY):
+            px_t = px.iloc[:t+1]
+            try:
+                # A. Standard Frozen Metrics
+                mech_t = ActionPath(px_t, alpha=req.alpha, beta=req.beta)
+                
+                # 1. Kinetic Frozen (Shifted T-25)
+                lag_idx = -25
+                if len(mech_t.kin_density) >= 25:
+                    val_kin = round(float(mech_t.kin_density.iloc[lag_idx]), 2)
+                else:
+                    val_kin = 0.0
+                f_kin.append(val_kin)
+                
+                # 2. Potential Frozen (Current T)
+                val_pot = round(float(mech_t.pot_density.iloc[-1]), 2)
+                f_pot.append(val_pot)
+                
+                # 3. Frozen Sum (Current T)
+                curr_kin_raw = float(mech_t.kin_density.iloc[-1])
+                curr_pot_raw = float(mech_t.pot_density.iloc[-1])
+                val_sum = curr_kin_raw + curr_pot_raw
+                f_sum.append(val_sum)
+                
+                # B. [NEW] PREDICTIVE SLOPE (Ghost Future at time T)
+                # We must simulate what the slope WOULD be if we extended into the future known at time T
+                
+                # 1. Fourier on px_t
+                four_t = FourierEngine(px_t, top_k=req.top_k)
+                # We only need short horizon for ghost
+                _, fut_vals_t = four_t.reconstruct_scenario(future_horizon=14)
+                
+                # 2. Extend px_t
+                ghost_series_t = pd.Series(fut_vals_t, index=pd.date_range(px_t.index[-1], periods=15)[1:])
+                px_t_extended = pd.concat([px_t, ghost_series_t])
+                
+                # 3. ActionPath on Extended
+                mech_t_ext = ActionPath(px_t_extended, alpha=req.alpha, beta=req.beta)
+                
+                # 4. Capture Slope at time T (which is at index len(px_t)-1)
+                # The slope is now "unlocked" by the ghost future
+                val_slope = float(mech_t_ext.dX.iloc[len(px_t)-1])
+                f_slope.append(round(val_slope, 4))
+                
+                f_dates.append(px.index[t].strftime('%Y-%m-%d'))
+            except Exception as e:
+                # print(f"Err frozen loop: {e}")
+                continue
+        
+        # [NEW] Normalize Frozen Slope (Rolling Z-Score)
+        # Raw slope is hard to read. Z-Score makes it an oscillator.
+        f_slope_series = pd.Series(f_slope)
+        roll_fslope_mean = f_slope_series.rolling(window=252, min_periods=20).mean()
+        roll_fslope_std = f_slope_series.rolling(window=252, min_periods=20).std()
+        
+        # Z-Score
+        z_frozen_slope = ((f_slope_series - roll_fslope_mean) / (roll_fslope_std + 1e-6)).fillna(0).tolist()
+        z_frozen_slope = [round(x, 2) for x in z_frozen_slope]
+
             
             # [NEW] Normalize Frozen Sum Index (Rolling Z-Score 252)
             f_sum_series = pd.Series(f_sum)
@@ -376,7 +417,8 @@ def analyze_stock(req: AnalysisRequest):
                 "kin": f_kin,
                 "pot": f_pot,
                 "z_sum": z_frozen_sum,
-                "raw_sum": f_sum  # [NEW] Save raw values for integrity check reruns
+                "z_slope": z_frozen_slope,  # [NEW] Predictive Slope Z-Score
+                "raw_sum": f_sum
             }
             
             # Salva tutto in cache
@@ -494,41 +536,7 @@ def analyze_stock(req: AnalysisRequest):
         fourier = FourierEngine(px, top_k=req.top_k)
         future_idx, future_vals = fourier.reconstruct_scenario(future_horizon=req.forecast_days)
         
-        # 3. Calcola Minima Azione (con Ghost Future per risolvere Slope=0)
-        # Strategy: Extend px by 14 days (Ghost Future) using Fourier projection
-        # This prevents the solver from stopping ("hitting the wall") at the last real date.
-        GHOST_horizon = 14
-        
-        # Estrai i primi N giorni dal futuro Fourier
-        ghost_vals = future_vals[:GHOST_horizon]
-        
-        # Crea indice esteso (solo per calcolo)
-        last_date = px.index[-1]
-        freq = pd.infer_freq(px.index) or 'B'
-        ghost_dates = pd.date_range(last_date, periods=GHOST_horizon + 1, freq=freq)[1:]
-        
-        ghost_series = pd.Series(ghost_vals, index=ghost_dates)
-        px_extended = pd.concat([px, ghost_series])
-        
-        # Run Mechanics on extended series
-        mechanics_extended = ActionPath(px_extended, alpha=req.alpha, beta=req.beta)
-        
-        # Slice results to keep only REAL history (original length)
-        # The slope at the end of this slice will now point towards the ghost future!
-        real_len = len(px)
-        
-        # Helper to slice extended properties safely
-        class MechanicsProxy:
-            pass
-            
-        mechanics = MechanicsProxy()
-        mechanics.px_star = mechanics_extended.px_star.iloc[:real_len]
-        mechanics.F = mechanics_extended.F.iloc[:real_len]
-        mechanics.kin_density = mechanics_extended.kin_density.iloc[:real_len]
-        mechanics.pot_density = mechanics_extended.pot_density.iloc[:real_len]
-        mechanics.cumulative_action = mechanics_extended.cumulative_action.iloc[:real_len]
-        mechanics.dX = mechanics_extended.dX.iloc[:real_len]
-        mechanics.z_residuo = mechanics_extended.z_residuo.iloc[:real_len]
+
 
         
         # 4. Prepara Risposta JSON
