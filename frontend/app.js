@@ -2725,19 +2725,21 @@ function getPortfolioAnnotations() {
             yref: 'y',
             text: label,
             showarrow: true,
-            arrowhead: 2,
+            arrowhead: 0, // Simple line
+            arrowwidth: 1,
+            arrowcolor: color,
             ax: 0,
-            ay: -25, // Point down to the dot
+            ay: -25,
             font: {
-                color: '#ffffff',
-                size: 11,
+                color: color, // Colored text
+                size: 10,
                 weight: 'bold'
             },
-            bgcolor: color,
+            bgcolor: 'rgba(20, 20, 30, 0.7)', // Semi-transparent dark
             bordercolor: color,
             borderwidth: 1,
-            borderpad: 4,
-            opacity: 0.9
+            borderpad: 2,
+            opacity: 0.8
         });
     });
 
