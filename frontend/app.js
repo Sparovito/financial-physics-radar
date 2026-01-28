@@ -1,6 +1,7 @@
 const API_URL = ""; // Relative path for production (same origin)
 
-async function runAnalysis() {
+// 3: async function runAnalysis(forceCache = false) {
+async function runAnalysis(forceCache = false) {
     const btn = document.querySelector('.btn-analyze');
     const status = document.getElementById('status-bar');
     const statusText = document.getElementById('status-text');
@@ -12,7 +13,9 @@ async function runAnalysis() {
     const forecast = parseInt(document.getElementById('forecast').value);
     const lookbackYears = parseInt(document.getElementById('lookback-years').value) || 3;
     const endDate = document.getElementById('end-date').value || null; // null if empty
-    const useCache = document.getElementById('use-cache').checked;
+
+    // Use cache if forced OR if checkbox is checked
+    const useCache = forceCache || document.getElementById('use-cache').checked;
 
     // Calculate Start Date
     const d = new Date();
