@@ -373,6 +373,7 @@ function renderCharts(data) {
     const showFrozen = document.getElementById('show-frozen')?.checked ?? true;
     const showIndicators = document.getElementById('show-indicators')?.checked ?? true;
     const showZigZag = document.getElementById('show-zigzag')?.checked ?? true;
+    const showSlope = document.getElementById('show-slope')?.checked ?? true; // [NEW]
     const showVolume = document.getElementById('show-volume')?.checked ?? false;
     const showKineticZ = document.getElementById('show-kinetic-z')?.checked ?? false;
     // showBacktest is already defined above
@@ -382,9 +383,10 @@ function renderCharts(data) {
     const visiblePanels = [];
     if (showPrice) visiblePanels.push('price');
     if (showEnergy) visiblePanels.push('energy');
+    if (showFft) visiblePanels.push('fft'); // Assuming FFT logic exists or place-holding
     if (showFrozen) visiblePanels.push('frozen');
     if (showZigZag && data.indicators?.zigzag) visiblePanels.push('zigzag');
-    if (showIndicators) visiblePanels.push('indicators');
+    if (showIndicators || showSlope) visiblePanels.push('indicators'); // [MODIFIED] Shared panel
     if (showKineticZ) visiblePanels.push('kineticz');
     if (showBacktest) visiblePanels.push('backtest');
 
@@ -454,9 +456,9 @@ function renderCharts(data) {
         yaxis3: {
             domain: domains.indicators || defaultDomain,
             gridcolor: '#333333',
-            title: showIndicators ? 'Ind.' : '',
+            title: (showIndicators || showSlope) ? 'Ind.' : '',
             tickfont: { color: '#ff9966' },
-            visible: showIndicators
+            visible: (showIndicators || showSlope)
         },
         yaxis4: {
             // Z-Score Axis (Right side of Indicators panel)
@@ -548,7 +550,12 @@ function renderCharts(data) {
 
     // Indicators group
     if (showIndicators) {
-        traces.push(traceSlope, traceZ, traceZRoc);
+        traces.push(traceZ, traceZRoc);
+    }
+
+    // [NEW] Slope MA (Independent)
+    if (showSlope) {
+        traces.push(traceSlope);
     }
 
     // Backtest / Strategy traces
