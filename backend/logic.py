@@ -79,7 +79,8 @@ class MarketData:
              self.data = self.data.iloc[:, 0]
              
         self.data.name = self.ticker
-        print(f"Caricati {len(self.data)} punti dati reali.")
+        if not self.data.empty:
+            print(f"Caricati {len(self.data)} punti dati reali. Ultima data: {self.data.index[-1]}")
         return self.data
 
     def _generate_mock_data(self):
