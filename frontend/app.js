@@ -256,8 +256,8 @@ function renderCharts(data) {
 
     // --- FROZEN SUM TRACE (Cyan) ---
     const traceFrozenSum = {
-        x: data.frozen?.dates || [],
-        y: data.frozen?.z_sum || [],
+        x: data.frozen_data?.dates || [],
+        y: data.frozen_data?.z_sum || [],
         name: 'Frozen Sum Z',
         type: 'scatter',
         mode: 'lines',
