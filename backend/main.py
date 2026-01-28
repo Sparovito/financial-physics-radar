@@ -555,13 +555,15 @@ def analyze_stock(req: AnalysisRequest):
         # Prepare ZigZag List
         zigzag_line = zigzag_series.values.tolist() if zigzag_series is not None else []
         
-        # 2. Fourier Calculation (MOVED EALIER for Ghost Path)
-        # We need Fourier first to extend the series into the future
+        # --- LIVE CALCULATIONS (Run on potentially time-sliced data) ---
+        # These MUST run AFTER time travel slicing and are needed for API response
+        
+        # Calcola Minima Azione (LIVE - on current px, possibly sliced)
+        mechanics = ActionPath(px, alpha=req.alpha, beta=req.beta)
+        
+        # Fourier Calculation (LIVE)
         fourier = FourierEngine(px, top_k=req.top_k)
         future_idx, future_vals = fourier.reconstruct_scenario(future_horizon=req.forecast_days)
-        
-
-
         
         # 4. Prepara Risposta JSON
         dates_historical = px.index.strftime('%Y-%m-%d').tolist()
