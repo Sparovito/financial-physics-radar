@@ -158,44 +158,61 @@ class FourierEngine:
             self.top_amps = []
             self.top_phase = []
 
-    def reconstruct_scenario(self, future_horizon=60, amp_scale=1.0, phase_jitter=0.0):
-        # Vettore tempo: Passato + Futuro
+    def reconstruct_scenario(self, future_horizon=60, amp_scale=1.0, phase_jitter=0.8, n_scenarios=5):
+        """
+        Generates multiple synthetic future scenarios using Fourier components with phase jitter.
+        Matematica basata su 'Untitled1 (2).ipynb' Block 14.
+        """
+        # 1. Base Time Vector (Past + Future)
         t2 = np.arange(self.N + future_horizon)
         
-        # Estendi Trend Lineare
+        # 2. Extend Linear Trend
         trend2 = np.polyval(self.coef, t2)
         
-        # Ricostruisci oscillazione
-        phases = self.top_phase.copy()
-        if phase_jitter > 0:
-            rng = np.random.default_rng()
-            phases += rng.normal(0.0, phase_jitter, size=len(phases))
-            
-        resid2 = np.zeros_like(t2, dtype=float)
-        for A, w, ph in zip(self.top_amps * amp_scale, 2 * np.pi * self.top_freqs, phases):
-            resid2 += A * np.cos(w * t2 + ph)
-            
-        lp2 = trend2 + resid2
-        px2 = np.exp(lp2)
+        # 3. Generate Scenarios
+        scenarios = []
         
-        # Genera Indice Temporale corretto
+        # Use a reproducible seed base? Or purely random?
+        # Notebook uses: rng = np.random.default_rng(seed=i)
+        
+        for i in range(n_scenarios):
+            rng = np.random.default_rng(seed=i if i < 100 else None) # Consistent seeds for first few
+            
+            # Add Jitter to Phases
+            phases = self.top_phase.copy()
+            if phase_jitter > 0:
+                phases += rng.normal(0.0, phase_jitter, size=len(phases))
+            
+            # Reconstruct Residual (Sum of Cosines)
+            resid2 = np.zeros_like(t2, dtype=float)
+            # Use top_amps * amp_scale
+            for A, w, ph in zip(self.top_amps * amp_scale, 2 * np.pi * self.top_freqs, phases):
+                resid2 += A * np.cos(w * t2 + ph)
+            
+            # Linear Trend + Residual
+            lp2 = trend2 + resid2
+            # Inverse Log (Exp)
+            px2 = np.exp(lp2)
+            
+            # Return FULL series (Past + Future)
+            # This allows the user to see the "Fit" on the past 252 days
+            # and the "Projection" for the future.
+            scenarios.append(px2.tolist())
+            
+        # 4. Generate Future Dates Index
+        # We need the FULL index (Past + Future)
         try:
             last_date = self.px.index[-1]
-            # Inferisci frequenza o default a Business Day 'B'
             freq = pd.infer_freq(self.px.index)
             if not freq: freq = 'B'
-            
             future_dates = pd.date_range(last_date, periods=future_horizon + 1, freq=freq)[1:]
             
-            # Combina index passato + futuro
-            # Nota: px.index potrebbe avere timezone, future_dates no. 
-            # Per semplicità, convertiamo tutto in stringa ISO o naive timestamp nel main.
-            # Qui ritorniamo solo i valori o una Series con indice best-effort.
+            # Combine Past + Future Dates
             full_idx = self.px.index.tolist() + future_dates.tolist()
         except:
-            full_idx = range(len(px2))
-            
-        return full_idx, px2
+            full_idx = []
+
+        return full_idx, scenarios
 
     def get_components(self):
         if len(self.top_freqs) == 0:

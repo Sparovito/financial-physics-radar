@@ -611,7 +611,14 @@ def analyze_stock(req: AnalysisRequest):
             # Fallback se non sono date
             dates_future = [str(d) for d in future_idx]
             
-        future_scenario = future_vals.tolist()
+        # future_vals is now a LIST OF LISTS (5 scenarios)
+        # We pass it directly.
+        future_scenarios = future_vals
+        
+        # NOTE: Frontend expects 'values' to be array of arrays now? 
+        # Or we keep 'values' for backward compatibility (maybe mean?) and add 'scenarios'?
+        # User asked to REPLACE. So 'values' will become list of lists.
+        # Frontend check is needed.
         
         # Componenti Fourier
         fourier_comps = fourier.get_components()
@@ -655,7 +662,7 @@ def analyze_stock(req: AnalysisRequest):
             "frozen_min_action_strategy": backtest_result_ma,   # [NEW] Min Action Trend
             "forecast": {
                 "dates": dates_future,
-                "values": future_scenario
+                "scenarios": future_scenarios # Renaming clear to avoiding confusion
             },
             "fourier_components": fourier_comps,
             "frozen": {

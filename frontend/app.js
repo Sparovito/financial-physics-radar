@@ -158,15 +158,39 @@ function renderCharts(data) {
         yaxis: 'y'
     };
 
-    const traceForecast = {
-        x: data.forecast.dates,
-        y: data.forecast.values,
-        name: 'Proiezione Fourier',
-        type: 'scatter',
-        line: { color: '#ab63fa', width: 2, dash: 'dot' },
-        xaxis: 'x',
-        yaxis: 'y'
-    };
+    // --- TRACCE GRAFICO PRINCIPALE (Prezzo) ---
+    // [MODIFIED] Multi-Scenario Fourier
+    // [MODIFIED] Multi-Scenario Fourier
+    const traceForecasts = [];
+    const scenarioColors = ['#ab63fa', '#19d3f3', '#00cc96', '#ffa15a', '#ff6692']; // Purple, Cyan, Teal, Orange, Pink
+
+    if (data.forecast.scenarios && Array.isArray(data.forecast.scenarios)) {
+        data.forecast.scenarios.forEach((scenario, i) => {
+            const color = scenarioColors[i % scenarioColors.length];
+            traceForecasts.push({
+                x: data.forecast.dates,
+                y: scenario,
+                name: `Scenario ${i + 1}`,
+                type: 'scatter',
+                line: { color: color, width: 2, dash: 'dot' },
+                opacity: 0.8,
+                xaxis: 'x',
+                yaxis: 'y',
+                showlegend: true
+            });
+        });
+    } else if (data.forecast.values) {
+        // Fallback for legacy format
+        traceForecasts.push({
+            x: data.forecast.dates,
+            y: data.forecast.values,
+            name: 'Proiezione Fourier',
+            type: 'scatter',
+            line: { color: '#ab63fa', width: 2, dash: 'dot' },
+            xaxis: 'x',
+            yaxis: 'y'
+        });
+    }
 
     // Calculate Volume Colors (Green if Close >= PrevClose, Red if Lower)
     const volumeColors = (data.volume || []).map((v, i) => {
@@ -491,7 +515,9 @@ function renderCharts(data) {
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
         font: { color: '#aaa', size: isMobile ? 10 : 12 },
-        showlegend: !isMobile,
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        font: { color: '#aaa', size: isMobile ? 10 : 12 },
+        showlegend: (typeof window.SHOW_LEGEND === 'undefined' ? true : window.SHOW_LEGEND) && !isMobile,
         legend: isMobile ? {
             orientation: 'h',
             x: 0,
@@ -509,7 +535,12 @@ function renderCharts(data) {
         margin: isMobile ?
             { t: 40, r: 10, l: 35, b: 30 } :
             { t: 60, r: 50, l: 50, b: 40 },
-        hovermode: 'x unified'
+        hovermode: 'x unified',
+        hoverlabel: {
+            bgcolor: 'rgba(20, 20, 30, 0.8)',
+            bordercolor: '#444',
+            font: { color: '#fff' }
+        }
     };
 
     // Add yaxis5 for backtest if visible
@@ -528,7 +559,7 @@ function renderCharts(data) {
     if (showPrice) {
         // Volume first so it's behind candles
         if (showVolume) traces.push(traceVolume);
-        traces.push(tracePrice, tracePath, traceFund, traceForecast);
+        traces.push(tracePrice, tracePath, traceFund, ...traceForecasts);
     }
 
     // Energy group
@@ -2549,6 +2580,23 @@ function toggleSidebar() {
     setTimeout(() => {
         window.dispatchEvent(new Event('resize'));
     }, 320);
+}
+
+// --- LEGEND TOGGLE ---
+window.SHOW_LEGEND = true;
+function toggleLegend() {
+    window.SHOW_LEGEND = !window.SHOW_LEGEND;
+
+    // Update button visual state
+    const btn = document.getElementById('btn-toggle-legend');
+    if (btn) {
+        btn.style.opacity = window.SHOW_LEGEND ? '1' : '0.3';
+    }
+
+    // Re-render if data exists
+    if (window.LAST_ANALYSIS_DATA) {
+        renderCharts(window.LAST_ANALYSIS_DATA);
+    }
 }
 
 // ============================================

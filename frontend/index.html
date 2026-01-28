@@ -165,8 +165,8 @@
                         <span class="toggle-icon" data-active="true" style="font-size: 1.5rem; opacity: 1;">📊</span>
                     </label>
                     <label title="🔀 ZigZag" style="cursor: pointer;">
-                        <input type="checkbox" id="show-zigzag" checked style="display: none;">
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.5rem; opacity: 1;">🔀</span>
+                        <input type="checkbox" id="show-zigzag" style="display: none;">
+                        <span class="toggle-icon" data-active="false" style="font-size: 1.5rem; opacity: 0.3;">🔀</span>
                     </label>
                     <label title="📊 Volume" style="cursor: pointer;">
                         <input type="checkbox" id="show-volume" checked style="display: none;">
@@ -225,6 +225,16 @@
                         <option value="SUM" style="color:#ff4444;">Sum</option>
                         <option value="MA" style="color:#00aaff;">MA</option>
                     </select>
+                    </select>
+
+                    <!-- SEPARATOR -->
+                    <div style="width: 30px; height: 1px; background: #444; margin: 4px 0;"></div>
+
+                    <!-- LEGEND TOGGLE -->
+                    <div title="Nascondi/Mostra Legenda" onclick="toggleLegend()" id="btn-toggle-legend"
+                        style="cursor: pointer; font-size: 1.3rem; padding: 4px; border-radius: 6px; transition: all 0.2s; opacity: 1;">
+                        📝
+                    </div>
                 </div>
 
                 <!-- Center Handle -->
