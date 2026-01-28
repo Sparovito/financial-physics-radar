@@ -576,6 +576,29 @@ function renderCharts(data) {
         traces.push(traceKineticZ, traceFrozenSum);
     }
 
+    // [NEW] Predictive Slope (Frozen Ghost)
+    const showPredictiveSlope = document.getElementById('show-slope')?.checked ?? true;
+    if (showPredictiveSlope && data.frozen_data && data.frozen_data.z_slope) {
+        const traceFrozenSlope = {
+            x: data.frozen_data.dates,
+            y: data.frozen_data.z_slope,
+            name: '🔮 Slope Predittivo (Ghost)',
+            type: 'scatter',
+            mode: 'lines',
+            line: {
+                color: '#ff00ff', // Magenta
+                width: 2,
+                dash: 'dot'
+            },
+            xaxis: 'x',
+            yaxis: 'y4' // Use Z-Score axis (overlay on indicators)
+        };
+        // Add to indicators panel
+        if (showIndicators) {
+            traces.push(traceFrozenSlope);
+        }
+    }
+
     // ZigZag Indicator Trace
     if (showZigZag && data.indicators && data.indicators.zigzag) {
         const traceZigZag = {
@@ -2510,7 +2533,7 @@ function applyScanFilters() {
 
 // --- CHART VISIBILITY TOGGLE LISTENERS ---
 // Re-render chart when toggles change (uses cached data)
-['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag', 'show-backtest', 'show-volume', 'show-kinetic-z'].forEach(id => {
+['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag', 'show-backtest', 'show-volume', 'show-kinetic-z', 'show-slope'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
         el.addEventListener('change', (e) => {
