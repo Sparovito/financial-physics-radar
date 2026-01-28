@@ -404,6 +404,7 @@ def analyze_stock(req: AnalysisRequest):
             # [NEW] Apply Zero-Phase Low-Pass Filter (Butterworth)
             # This smooths the signal without introducing lag
             try:
+                from scipy.signal import butter, filtfilt
                 # Filter parameters: order=2, cutoff=0.05 (normalized frequency)
                 # Lower cutoff = more smoothing. Range [0.01, 0.1] typical.
                 b, a = butter(N=2, Wn=0.05, btype='low')
