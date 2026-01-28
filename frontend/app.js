@@ -383,7 +383,6 @@ function renderCharts(data) {
     const visiblePanels = [];
     if (showPrice) visiblePanels.push('price');
     if (showEnergy) visiblePanels.push('energy');
-    if (showFft) visiblePanels.push('fft'); // Assuming FFT logic exists or place-holding
     if (showFrozen) visiblePanels.push('frozen');
     if (showZigZag && data.indicators?.zigzag) visiblePanels.push('zigzag');
     if (showIndicators || showSlope) visiblePanels.push('indicators'); // [MODIFIED] Shared panel
