@@ -122,6 +122,7 @@ class AnalysisRequest(BaseModel):
     beta: float = 1.0
     top_k: int = 5
     forecast_days: int = 60
+    fourier_days: int = 504 # New parameter for Fourier Analysis Window
     start_date: Optional[str] = "2023-01-01"
     end_date: Optional[str] = None  # If set, truncate data to this date (simulate past)
     use_cache: bool = False # If True, try to use cached full history
@@ -480,8 +481,8 @@ def analyze_stock(req: AnalysisRequest):
         mechanics = ActionPath(px, alpha=req.alpha, beta=req.beta)
         
         # 3. Calcola Fourier
-        fourier = FourierEngine(px, top_k=req.top_k)
-        future_idx, future_vals = fourier.reconstruct_scenario(future_horizon=req.forecast_days)
+        fourier = FourierEngine(px, top_k=req.top_k, window_size=req.fourier_days)
+        future_idx, future_vals = fourier.reconstruct_scenario(future_horizon=req.forecast_days, n_scenarios=5)
         
         # 4. Prepara Risposta JSON
         dates_historical = px.index.strftime('%Y-%m-%d').tolist()

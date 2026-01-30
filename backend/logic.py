@@ -114,10 +114,9 @@ class FourierEngine:
     """
     Esegue l'Analisi Spettrale e la Generazione di Futuri Sintetici.
     """
-    def __init__(self, price_series, top_k=8):
-        # Restriction: Use only the last 252 trading days (1 year) for Fourier Analysis
-        # This focuses the cycle detection on the current market regime.
-        WINDOW_SIZE = 252
+    def __init__(self, price_series, top_k=8, window_size=504):
+        # Restriction: Use only the last N trading days (defined by window_size)
+        WINDOW_SIZE = int(window_size)
         if len(price_series) > WINDOW_SIZE:
             self.px = price_series[-WINDOW_SIZE:]
             # print(f"🔹 Fourier Engine: analyzing last {WINDOW_SIZE} days only.")

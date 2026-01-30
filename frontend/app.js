@@ -11,6 +11,7 @@ async function runAnalysis() {
     const beta = parseFloat(document.getElementById('beta').value);
     const forecast = parseInt(document.getElementById('forecast').value);
     const lookbackYears = parseInt(document.getElementById('lookback-years').value) || 3;
+    const fourierDays = parseInt(document.getElementById('fourier-days').value) || 504;
     const endDate = document.getElementById('end-date').value || null; // null if empty
     const useCache = document.getElementById('use-cache').checked;
 
@@ -41,6 +42,7 @@ async function runAnalysis() {
                 alpha: alpha,
                 beta: beta,
                 forecast_days: forecast,
+                fourier_days: fourierDays,
                 start_date: startDate,
                 end_date: endDate,
                 use_cache: useCache
@@ -161,10 +163,14 @@ function renderCharts(data) {
     // --- TRACCE GRAFICO PRINCIPALE (Prezzo) ---
     // [MODIFIED] Multi-Scenario Fourier
     // [MODIFIED] Multi-Scenario Fourier
+
     const traceForecasts = [];
     const scenarioColors = ['#ab63fa', '#19d3f3', '#00cc96', '#ffa15a', '#ff6692']; // Purple, Cyan, Teal, Orange, Pink
 
-    if (data.forecast.scenarios && Array.isArray(data.forecast.scenarios)) {
+    // [MODIFIED] Check Global Fourier Toggle
+    const showFourier = (typeof window.SHOW_FOURIER === 'undefined') ? true : window.SHOW_FOURIER;
+
+    if (showFourier && data.forecast.scenarios && Array.isArray(data.forecast.scenarios)) {
         data.forecast.scenarios.forEach((scenario, i) => {
             const color = scenarioColors[i % scenarioColors.length];
             traceForecasts.push({
@@ -617,7 +623,11 @@ function renderCharts(data) {
     }
 
     // [NEW] Portfolio Markers Trace (Dots)
+    // [NEW] Portfolio Markers Trace (Dots)
     const tracePortfolio = getPortfolioTrace();
+    // [NEW] User Dots Trace
+    const userDotAnnotations = getUserDotAnnotations();
+
     if (tracePortfolio) {
         traces.push(tracePortfolio);
     }
@@ -625,7 +635,10 @@ function renderCharts(data) {
     // Add saved annotation shapes to layout
     loadAnnotations();
     layout.shapes = getAnnotationShapes();
-    layout.annotations = getPortfolioAnnotations();
+
+    // Merge portfolio text annotations with user dots
+    const portfolioAnnos = getPortfolioAnnotations();
+    layout.annotations = [...portfolioAnnos, ...userDotAnnotations];
 
     Plotly.newPlot('chart-combined', traces, layout, config);
 
@@ -860,7 +873,7 @@ function renderTradesList() {
                 warningMessages.push(`Entry$: ${originalTrade.entry_price}→${t.entry_price}`);
             }
         }
-
+ 
         // 3. Build warning display
         let snapshotWarning = '';
         if (warningMessages.length > 0) {
@@ -2599,6 +2612,23 @@ function toggleLegend() {
     }
 }
 
+// --- FOURIER TOGGLE ---
+window.SHOW_FOURIER = true;
+function toggleFourier() {
+    window.SHOW_FOURIER = !window.SHOW_FOURIER;
+
+    // Update button visual state
+    const btn = document.getElementById('btn-toggle-fourier');
+    if (btn) {
+        btn.style.opacity = window.SHOW_FOURIER ? '1' : '0.3';
+    }
+
+    // Re-render if data exists
+    if (window.LAST_ANALYSIS_DATA) {
+        renderCharts(window.LAST_ANALYSIS_DATA);
+    }
+}
+
 // ============================================
 // VERTICAL ANNOTATION SYSTEM (Clickable Lines)
 // ============================================
@@ -2664,12 +2694,35 @@ function setAnnotationMode(mode) {
         if (mode === 'green') activeBtn = btnGreen;
         if (mode === 'red') activeBtn = btnRed;
         if (mode === 'blue') activeBtn = btnBlue;
+        if (mode === 'blue') activeBtn = btnBlue;
         if (mode === 'purple') activeBtn = btnPurple;
+        if (mode === 'white-dot') activeBtn = btnDot;
 
         if (activeBtn) activeBtn.style.background = 'rgba(255,255,255,0.15)';
     }
 
     console.log('Annotation mode:', window.ANNOTATION_MODE);
+}
+
+// [NEW] Helper for white dots
+function getUserDotAnnotations() {
+    return window.CHART_ANNOTATIONS
+        .filter(anno => anno.type === 'dot')
+        .map(anno => ({
+            x: anno.x,
+            y: anno.y,
+            xref: 'x', // Link to data coordinates
+            yref: 'y',
+            text: '●', // White dot symbol
+            showarrow: false,
+            font: {
+                family: 'Arial',
+                size: 16,
+                color: '#ffffff'
+            },
+            bgcolor: 'transparent',
+            captureevents: true // Allow detailed tooltips if needed?
+        }));
 }
 
 // Convert annotations to Plotly shapes
@@ -2682,21 +2735,29 @@ function getAnnotationShapes() {
         if (anno.color === 'blue') color = '#3366ff';
         if (anno.color === 'purple') color = '#aa33ff';
 
+        // [NEW] Point Annotation
+        // [NEW] Point Annotation
+        if (anno.type === 'dot') {
+            return null; // Handled by layout.annotations (getUserDotAnnotations)
+        }
+
+        // [MODIFIED] Use Layout Annotations for Dots logic instead of Shapes?
+        // Actually, converting to shapes is what this function does.
+        // Let's return null here for dots and handle dots in a separate trace or layout.annotations.
+        // Re-reading `getAnnotationShapes`.
+
+        // Let's assume for now we use vertical lines for lines.
         return {
             type: 'line',
             x0: anno.x,
             x1: anno.x,
             y0: 0,
             y1: 1,
-            yref: 'paper', // Full height
-            line: {
-                color: color,
-                width: 2,
-                dash: 'solid'
-            },
+            yref: 'paper',
+            line: { color: color, width: 2, dash: 'solid' },
             layer: 'below'
         };
-    });
+    }).filter(s => s); // Filter nulls
 
     // Trade marker shapes
     const tradeShapes = getTradeMarkerShapes();
@@ -2885,27 +2946,49 @@ function setupChartClickHandler() {
 
         // Get X coordinate (date)
         const clickX = data.points[0]?.x;
+        const clickY = data.points[0]?.y; // [NEW] Capture Y for dots
+
         if (!clickX) return;
 
-        // Check if annotation already exists at this X (remove if so)
-        const existingIndex = window.CHART_ANNOTATIONS.findIndex(a => a.x === clickX);
-        if (existingIndex >= 0) {
-            // Remove existing annotation
-            window.CHART_ANNOTATIONS.splice(existingIndex, 1);
-        } else {
-            // Add new annotation
+        // [MODIFIED] Logic for Dots vs Lines
+        if (window.ANNOTATION_MODE === 'white-dot') {
+            // Allow multiple dots, just add new one
             window.CHART_ANNOTATIONS.push({
                 x: clickX,
-                color: window.ANNOTATION_MODE
+                y: clickY,
+                type: 'dot',
+                color: 'white'
             });
+        } else {
+            // Vertical Lines Logic (Toggle behavior)
+            const existingIndex = window.CHART_ANNOTATIONS.findIndex(a => a.x === clickX && a.type !== 'dot');
+            if (existingIndex >= 0) {
+                window.CHART_ANNOTATIONS.splice(existingIndex, 1);
+            } else {
+                window.CHART_ANNOTATIONS.push({
+                    x: clickX,
+                    type: 'line',
+                    color: window.ANNOTATION_MODE
+                });
+            }
         }
 
         saveAnnotations();
 
-        // Update chart shapes without full re-render
+        // Update chart shapes AND annotations without full re-render
         const currentLayout = chartDiv.layout || {};
-        currentLayout.shapes = getAnnotationShapes();
-        Plotly.relayout(chartDiv, { shapes: currentLayout.shapes });
+        const newShapes = getAnnotationShapes();
+
+        // Re-merge annotations (Portfolio + User Dots)
+        const portfolioAnnos = getPortfolioAnnotations();
+        const userDotAnnos = getUserDotAnnotations();
+        const newAnnotations = [...portfolioAnnos, ...userDotAnnos];
+
+        // Relayout both shapes (lines) and annotations (dots)
+        Plotly.relayout(chartDiv, {
+            shapes: newShapes,
+            annotations: newAnnotations
+        });
     });
 }
 
@@ -3274,11 +3357,20 @@ async function pfLoadData() {
 
         // Render OPEN
         let avgPnl = 0;
+        let validPosCount = 0;
+
         if (openPos.length === 0) {
             openList.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#555;">Nessuna posizione aperta</td></tr>';
         } else {
-            const totalPnl = openPos.reduce((sum, p) => sum + (parseFloat(p.pnl_pct) || 0), 0);
-            avgPnl = totalPnl / openPos.length;
+            // [MODIFIED] Equal-weighted average of percentages (Price Independent)
+            // Filter out positions with invalid data to avoid skewing the average
+            const validPositions = openPos.filter(p => p.pnl_pct !== undefined && p.pnl_pct !== null && !isNaN(parseFloat(p.pnl_pct)));
+
+            if (validPositions.length > 0) {
+                const totalPnl = validPositions.reduce((sum, p) => sum + parseFloat(p.pnl_pct), 0);
+                avgPnl = totalPnl / validPositions.length;
+                validPosCount = validPositions.length;
+            }
         }
 
         // Update Header with Open Positions Average
@@ -3286,7 +3378,7 @@ async function pfLoadData() {
         if (openHeader) {
             const avgColor = avgPnl >= 0 ? '#00ff88' : '#ff4444';
             const avgSign = avgPnl >= 0 ? '+' : '';
-            openHeader.innerHTML = `Posizioni Aperte <span style="font-size:0.9em; margin-left:10px; color:${avgColor}">(${avgSign}${avgPnl.toFixed(2)}%)</span>`;
+            openHeader.innerHTML = `Posizioni Aperte <span style="font-size:0.9em; margin-left:10px; color:${avgColor}">(Media Equipesata: ${avgSign}${avgPnl.toFixed(2)}%)</span>`;
         }
 
         openPos.forEach(p => {

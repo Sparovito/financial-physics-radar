@@ -1,0 +1,18 @@
+function getUserDotAnnotations() {
+    return window.CHART_ANNOTATIONS
+        .filter(anno => anno.type === 'dot')
+        .map(anno => ({
+            x: anno.x,
+            y: anno.y,
+            xref: 'x',
+            yref: 'y',
+            text: '●',
+            showarrow: false,
+            font: {
+                family: 'Arial',
+                size: 14,
+                color: '#ffffff'
+            },
+            bgcolor: 'transparent'
+        }));
+}

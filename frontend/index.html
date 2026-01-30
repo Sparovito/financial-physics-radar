@@ -126,6 +126,13 @@
                 <small>Giorni di proiezione futura</small>
             </div>
 
+            <!-- NEW: Finestra Fourier -->
+            <div class="control-group">
+                <label>Finestra Fourier (Giorni)</label>
+                <input type="number" id="fourier-days" value="504" step="20">
+                <small>Dati usati per il calcolo ciclico</small>
+            </div>
+
 
         </div>
 
@@ -150,60 +157,73 @@
 
                     <label title="📈 Prezzo" style="cursor: pointer;">
                         <input type="checkbox" id="show-price" checked style="display: none;">
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.5rem; opacity: 1;">📈</span>
+                        <span class="toggle-icon" data-active="true" style="font-size: 1.1rem; opacity: 1;">📈</span>
                     </label>
                     <label title="⚡ Energia" style="cursor: pointer;">
                         <input type="checkbox" id="show-energy" checked style="display: none;">
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.5rem; opacity: 1;">⚡</span>
+                        <span class="toggle-icon" data-active="true" style="font-size: 1.1rem; opacity: 1;">⚡</span>
                     </label>
                     <label title="❄️ Frozen" style="cursor: pointer;">
                         <input type="checkbox" id="show-frozen" checked style="display: none;">
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.5rem; opacity: 1;">❄️</span>
+                        <span class="toggle-icon" data-active="true" style="font-size: 1.1rem; opacity: 1;">❄️</span>
                     </label>
                     <label title="📊 Indicatori" style="cursor: pointer;">
                         <input type="checkbox" id="show-indicators" checked style="display: none;">
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.5rem; opacity: 1;">📊</span>
+                        <span class="toggle-icon" data-active="true" style="font-size: 1.1rem; opacity: 1;">📊</span>
                     </label>
                     <label title="🔀 ZigZag" style="cursor: pointer;">
                         <input type="checkbox" id="show-zigzag" style="display: none;">
-                        <span class="toggle-icon" data-active="false" style="font-size: 1.5rem; opacity: 0.3;">🔀</span>
+                        <span class="toggle-icon" data-active="false" style="font-size: 1.1rem; opacity: 0.3;">🔀</span>
                     </label>
                     <label title="📊 Volume" style="cursor: pointer;">
                         <input type="checkbox" id="show-volume" checked style="display: none;">
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.5rem; opacity: 1;">📶</span>
+                        <span class="toggle-icon" data-active="true" style="font-size: 1.1rem; opacity: 1;">📶</span>
                     </label>
                     <label title="⚛️ Kinetic Z" style="cursor: pointer;">
                         <input type="checkbox" id="show-kinetic-z" checked style="display: none;">
-                        <span class="toggle-icon" data-active="false" style="font-size: 1.5rem; opacity: 1;">⚛️</span>
+                        <span class="toggle-icon" data-active="false" style="font-size: 1.1rem; opacity: 1;">⚛️</span>
                     </label>
                     <label title="💰 Strategie" style="cursor: pointer;">
                         <input type="checkbox" id="show-backtest" checked style="display: none;">
                         <!-- UNIQUE ID NOW -->
-                        <span class="toggle-icon" data-active="true" style="font-size: 1.5rem; opacity: 1;">💰</span>
+                        <span class="toggle-icon" data-active="true" style="font-size: 1.1rem; opacity: 1;">💰</span>
                     </label>
+
+                    <!-- SEPARATOR -->
+                    <div style="width: 30px; height: 1px; background: #444; margin: 4px 0;"></div>
+
+                    <!-- FOURIER TOGGLE -->
+                    <div title="Nascondi/Mostra Fourier" onclick="toggleFourier()" id="btn-toggle-fourier"
+                        style="cursor: pointer; font-size: 1.1rem; padding: 4px; border-radius: 6px; transition: all 0.2s; opacity: 1;">
+                        〰️
+                    </div>
 
                     <!-- SEPARATOR -->
                     <div style="width: 30px; height: 1px; background: #444; margin: 4px 0;"></div>
 
                     <!-- ANNOTATION MODE BUTTONS -->
                     <div title="Aggiungi linea VERDE (compra)" onclick="setAnnotationMode('green')" id="btn-anno-green"
-                        style="cursor: pointer; font-size: 1.3rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
+                        style="cursor: pointer; font-size: 1.1rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
                         🟢
                     </div>
                     <div title="Aggiungi linea ROSSA (vendi)" onclick="setAnnotationMode('red')" id="btn-anno-red"
-                        style="cursor: pointer; font-size: 1.3rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
+                        style="cursor: pointer; font-size: 1.1rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
                         🔴
                     </div>
                     <div title="Aggiungi linea BLU" onclick="setAnnotationMode('blue')" id="btn-anno-blue"
-                        style="cursor: pointer; font-size: 1.3rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
+                        style="cursor: pointer; font-size: 1.1rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
                         🔵
                     </div>
                     <div title="Aggiungi linea VIOLA" onclick="setAnnotationMode('purple')" id="btn-anno-purple"
-                        style="cursor: pointer; font-size: 1.3rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
+                        style="cursor: pointer; font-size: 1.1rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
                         🟣
                     </div>
+                    <div title="Aggiungi punto bianco" onclick="setAnnotationMode('white-dot')" id="btn-anno-dot"
+                        style="cursor: pointer; font-size: 1.1rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
+                        ⚪
+                    </div>
                     <div title="Cancella annotazioni" onclick="setAnnotationMode('clear')" id="btn-anno-clear"
-                        style="cursor: pointer; font-size: 1.3rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
+                        style="cursor: pointer; font-size: 1.1rem; padding: 4px; border-radius: 6px; transition: all 0.2s;">
                         🗑️
                     </div>
 
@@ -214,7 +234,7 @@
                     <label title="📍 Mostra Trade" style="cursor: pointer;">
                         <input type="checkbox" id="show-trade-markers" style="display: none;"
                             onchange="toggleTradeMarkers()">
-                        <span class="toggle-icon" data-active="false" style="font-size: 1.5rem; opacity: 0.5;">📍</span>
+                        <span class="toggle-icon" data-active="false" style="font-size: 1.1rem; opacity: 0.5;">📍</span>
                     </label>
 
                     <!-- STRATEGY SELECTOR -->
@@ -232,7 +252,7 @@
 
                     <!-- LEGEND TOGGLE -->
                     <div title="Nascondi/Mostra Legenda" onclick="toggleLegend()" id="btn-toggle-legend"
-                        style="cursor: pointer; font-size: 1.3rem; padding: 4px; border-radius: 6px; transition: all 0.2s; opacity: 1;">
+                        style="cursor: pointer; font-size: 1.1rem; padding: 4px; border-radius: 6px; transition: all 0.2s; opacity: 1;">
                         📝
                     </div>
                 </div>
