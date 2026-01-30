@@ -1238,8 +1238,11 @@ class PortfolioManager:
     def load(self):
         if self.use_firebase:
             try:
+                print("DEBUG: Firebase Load - Connecting to DB...")
                 doc_ref = self.db.collection("portfolio").document("main")
+                print(f"DEBUG: Firebase Load - Fetching doc {doc_ref.path}...")
                 doc = doc_ref.get()
+                print("DEBUG: Firebase Load - Doc fetched!")
                 if doc.exists:
                     data = doc.to_dict()
                     # Ensure positions exists
@@ -1277,6 +1280,52 @@ class PortfolioManager:
             return 0.0
         except:
             return 0.0
+
+    def get_batch_prices(self, tickers):
+        """Fetch current prices for multiple tickers in parallel."""
+        if not tickers:
+            return {}
+        
+        print(f"DEBUG: Batch fetching prices for {len(tickers)} tickers: {tickers}")
+        try:
+            # Scarica dati batch
+            # period='5d' per sicurezza su weekend/festivi/pre-market
+            # group_by='ticker' struttura il DF per ticker
+            # auto_adjust=True per avere prezzi rettificati
+            data = yf.download(tickers, period="5d", group_by='ticker', auto_adjust=True, progress=False, threads=True)
+            print(f"DEBUG: Downloaded data columns: {data.columns}")
+            
+            prices = {}
+            
+            # Unified logic for 1 or N tickers (since group_by='ticker' always produces MultiIndex)
+            for t in tickers:
+                try:
+                    # Check if ticker is in top level columns
+                    # For MultiIndex: data[t] returns the DataFrame for that ticker
+                    if t in data.columns: 
+                         print(f"DEBUG: {t} found in columns.")
+                         series = data[t]["Close"]
+                         
+                         # CLEANUP: Remove NaNs (crucial for pre-market or mixed timezones)
+                         series = series.dropna()
+                         
+                         if not series.empty:
+                             # scalar if single row, Series if multiple rows (should be 1 row for 1d)
+                             val = series.iloc[-1]
+                             print(f"DEBUG: Price for {t} is {val}")
+                             prices[t] = float(val)
+                    else:
+                        print(f"DEBUG: {t} NOT found in columns. Columns levels: {data.columns.nlevels}")
+                except Exception as e:
+                    print(f"DEBUG: Error extracting price for {t}: {e}")
+                    pass
+            
+            print(f"DEBUG: Fetched {len(prices)} prices.")
+            return prices
+        except Exception as e:
+            print(f"⚠️ Batch fetch error: {e}")
+            return {}
+
 
 
 
@@ -1325,12 +1374,30 @@ portfolio_mgr = PortfolioManager()
 def get_portfolio():
     try:
         data = portfolio_mgr.load()
+        print("DEBUG: Loading portfolio from DB...")
         positions = data.get("positions", [])
+        
+        # 1. Identify Open Tickers
+        open_tickers = list(set([p["ticker"] for p in positions if p["status"] == "OPEN"]))
+        
+        # 2. Batch Fetch Prices
+        live_prices = {}
+        if open_tickers:
+            print("DEBUG: Fetching live prices...")
+            live_prices = portfolio_mgr.get_batch_prices(open_tickers)
         
         updated_positions = []
         for p in positions:
             if p["status"] == "OPEN":
-                curr = portfolio_mgr.get_price(p["ticker"])
+                # Use batch result or fallback to 0
+                curr = live_prices.get(p["ticker"], 0.0)
+                
+                # Fallback: if missing in batch (e.g. failed), try single fetch
+                if curr <= 0:
+                     print(f"DEBUG: Fallback single fetch for {p['ticker']}...")
+                     curr = portfolio_mgr.get_price(p["ticker"])
+                
+                # Update if we have a valid price
                 if curr > 0:
                     p["current_price"] = round(curr, 2)
                     entry = p["entry_price"]
@@ -1343,6 +1410,7 @@ def get_portfolio():
                     p["pnl_pct"] = round(pnl, 2)
             updated_positions.append(p)
             
+        print("DEBUG: Portfolio processed successfully.")
         return {"positions": updated_positions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

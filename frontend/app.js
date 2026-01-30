@@ -3341,10 +3341,12 @@ async function pfLoadData() {
 
     // Clear (9 cols)
     openList.innerHTML = '<tr><td colspan="9">Caricamento...</td></tr>';
+    console.log("DEBUG: pfLoadData started");
 
     try {
+        console.log("DEBUG: Calling fetchPortfolioData...");
         const data = await fetchPortfolioData(); // Use shared fetcher
-
+        console.log("DEBUG: fetchPortfolioData returned", data);
 
         openList.innerHTML = '';
         closedList.innerHTML = '';
