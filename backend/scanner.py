@@ -18,6 +18,9 @@ def run_market_scan(send_email=True):
     buy_recent = []
     sell_today = []
     
+    # NEW: Track active strategies to validate portfolio positions
+    active_strategies = set()
+    
     errors = []
     
     notifier = NotificationManager()
@@ -62,7 +65,13 @@ def run_market_scan(send_email=True):
                 last_trade = trades[-1]
                 exit_dt = last_trade.get("exit_date")
                 entry_date = last_trade.get("entry_date", "")
+                entry_date = last_trade.get("entry_date", "")
                 direction = last_trade.get("direction", "LONG")
+                
+                # --- ACTIVE STRATEGY CHECK ---
+                # If trade is OPEN, record it as active
+                if exit_dt is None or exit_dt == "OPEN":
+                    active_strategies.add((ticker, strat_name))
                 
                 # --- BUY CHECK ---
                 if exit_dt is None or exit_dt == "OPEN":
@@ -118,8 +127,16 @@ def run_market_scan(send_email=True):
             ticker = pos.get("ticker", "")
             strategy = pos.get("strategy", "")
             
-            has_sell = (ticker, strategy) in sell_set
-            action = "SELL" if has_sell else "HOLD"
+            # LOGIC:
+            # 1. HOLD if strategy is active (Trade is currently open in the logic)
+            # 2. SELL if strategy is NOT active (Logic says trade should be closed or never existed)
+            
+            is_active = (ticker, strategy) in active_strategies
+            
+            if is_active:
+                action = "HOLD"
+            else:
+                action = "SELL"
             
             portfolio_status.append({
                 "ticker": ticker,
@@ -220,7 +237,18 @@ def run_market_scan(send_email=True):
         if send_email:
              notifier.send_email(f"Report {today_real}", "<p>Nessun segnale rilevante oggi.</p>")
 
-    return {"buy_today": n_buy, "buy_recent": n_recent, "sell_today": n_sell, "portfolio": n_portfolio}
+    return {
+        "buy_today": buy_today, 
+        "buy_recent": buy_recent, 
+        "sell_today": sell_today, 
+        "portfolio": portfolio_status,
+        "counts": {
+            "buy_today": n_buy,
+            "buy_recent": n_recent,
+            "sell_today": n_sell,
+            "portfolio": n_portfolio
+        }
+    }
 
 
 if __name__ == "__main__":
