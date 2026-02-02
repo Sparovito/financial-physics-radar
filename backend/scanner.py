@@ -107,8 +107,8 @@ def run_market_scan(send_email=True):
                         })
 
             # Esegui check (NO MA - user requested it only in frontend scanner)
-            check_signals(frozen_trades, "Frozen")
-            check_signals(sum_trades, "Sum")
+            check_signals(frozen_trades, "Frozen Strategy")
+            check_signals(sum_trades, "Sum Strategy")
 
         except Exception as e:
             continue
