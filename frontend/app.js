@@ -1,5 +1,9 @@
 const API_URL = ""; // Relative path for production (same origin)
 
+// --- GLOBAL CONFIGURATION ---
+window.SHOW_LEGEND = false; // Default OFF
+window.SHOW_FOURIER = false; // Default OFF
+
 async function runAnalysis() {
     const btn = document.querySelector('.btn-analyze');
     const status = document.getElementById('status-bar');
@@ -2597,7 +2601,6 @@ function toggleSidebar() {
 
 // --- LEGEND TOGGLE ---
 // --- LEGEND TOGGLE ---
-window.SHOW_LEGEND = false; // [MODIFIED] Default OFF
 function toggleLegend() {
     window.SHOW_LEGEND = !window.SHOW_LEGEND;
 
@@ -2619,7 +2622,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // --- FOURIER TOGGLE ---
-window.SHOW_FOURIER = false; // [MODIFIED] Default OFF
 function toggleFourier() {
     window.SHOW_FOURIER = !window.SHOW_FOURIER;
 
