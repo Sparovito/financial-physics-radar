@@ -54,6 +54,9 @@ def run_market_scan(send_email=True):
     notifier = NotificationManager()
     today_real = datetime.date.today() # Data reale di oggi
     
+    # NEW: Track current prices for portfolio valuation
+    ticker_prices = {}
+    
     for i, ticker in enumerate(tickers):
         try:
             if i % 20 == 0:
@@ -74,6 +77,10 @@ def run_market_scan(send_email=True):
             )
             result = analyze_stock(req)
             if "error" in result: continue
+            
+            # Capture Current Price
+            if result.get("prices"):
+                ticker_prices[ticker] = result["prices"][-1]
             
             frozen_trades = result.get("frozen_strategy", {}).get("trades", [])
             sum_trades = result.get("frozen_sum_strategy", {}).get("trades", [])
@@ -166,11 +173,26 @@ def run_market_scan(send_email=True):
             else:
                 action = "SELL"
             
+            # Get Current Price
+            curr = ticker_prices.get(ticker, 0)
+            entry = pos.get("entry_price", 0) or 0
+            
+            # Calc PnL
+            pnl = 0.0
+            if entry > 0 and curr > 0:
+                direction = pos.get("direction", "LONG")
+                if direction == "LONG":
+                     pnl = (curr - entry) / entry * 100
+                else:
+                     pnl = (entry - curr) / entry * 100
+            
             portfolio_status.append({
                 "ticker": ticker,
                 "strategy": strategy,
                 "entry_date": pos.get("entry_date", ""),
-                "entry_price": pos.get("entry_price", 0),
+                "entry_price": entry,
+                "current_price": curr,
+                "pnl": pnl,
                 "action": action
             })
     except Exception as e:
@@ -248,11 +270,16 @@ def run_market_scan(send_email=True):
         
         # 4. PORTFOLIO STATUS (NEW!)
         if portfolio_status:
+            # Calc Average PnL (Simple Average)
+            avg_val = sum(p['pnl'] for p in portfolio_status) / len(portfolio_status) if portfolio_status else 0
+            
             body += "<h3 style='color:#1565c0;'>🔵 IL TUO PORTAFOGLIO</h3>"
-            body += "<table><thead><tr><th>Ticker</th><th>Strategia</th><th>Ingresso</th><th>Azione</th></tr></thead><tbody>"
+            body += f"<p><b>Media PnL:</b> <span class='{'text-green' if avg_val>=0 else 'text-red'}'>{avg_val:.2f}%</span></p>"
+            body += "<table><thead><tr><th>Ticker</th><th>Strategia</th><th>Ingresso</th><th>Prezzo Attuale</th><th>Guadagno %</th><th>Azione</th></tr></thead><tbody>"
             for p in portfolio_status:
                 action_cls = "action-sell" if p['action'] == "SELL" else "action-hold"
-                body += f"<tr class='bg-blue'><td><b>{p['ticker']}</b></td><td>{p['strategy']}</td><td>{p['entry_date']} @ ${p['entry_price']:.2f}</td><td><span class='{action_cls}'>{p['action']}</span></td></tr>"
+                pnl_cls = "text-green" if p['pnl'] >= 0 else "text-red"
+                body += f"<tr class='bg-blue'><td><b>{p['ticker']}</b></td><td>{p['strategy']}</td><td>{p['entry_date']} @ ${p['entry_price']:.2f}</td><td>${p['current_price']:.2f}</td><td class='{pnl_cls}'>{p['pnl']:.2f}%</td><td><span class='{action_cls}'>{p['action']}</span></td></tr>"
             body += "</tbody></table>"
             
         body += "<p style='font-size:12px; color:#888; margin-top:30px;'>Generato da Financial Physics AI Scanner</p>"

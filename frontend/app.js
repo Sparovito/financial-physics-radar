@@ -2596,7 +2596,8 @@ function toggleSidebar() {
 }
 
 // --- LEGEND TOGGLE ---
-window.SHOW_LEGEND = true;
+// --- LEGEND TOGGLE ---
+window.SHOW_LEGEND = false; // [MODIFIED] Default OFF
 function toggleLegend() {
     window.SHOW_LEGEND = !window.SHOW_LEGEND;
 
@@ -2611,9 +2612,14 @@ function toggleLegend() {
         renderCharts(window.LAST_ANALYSIS_DATA);
     }
 }
+// Init Legend Button State
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btn-toggle-legend');
+    if (btn) btn.style.opacity = window.SHOW_LEGEND ? '1' : '0.3';
+});
 
 // --- FOURIER TOGGLE ---
-window.SHOW_FOURIER = true;
+window.SHOW_FOURIER = false; // [MODIFIED] Default OFF
 function toggleFourier() {
     window.SHOW_FOURIER = !window.SHOW_FOURIER;
 
@@ -2628,6 +2634,13 @@ function toggleFourier() {
         renderCharts(window.LAST_ANALYSIS_DATA);
     }
 }
+// Init Fourier Button State
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btn-toggle-fourier');
+    if (btn) btn.style.opacity = window.SHOW_FOURIER ? '1' : '0.3';
+});
+
+
 
 // ============================================
 // VERTICAL ANNOTATION SYSTEM (Clickable Lines)
