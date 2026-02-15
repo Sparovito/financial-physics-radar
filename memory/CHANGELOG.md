@@ -2,6 +2,8 @@
 
 | Deploy ID | Date       | Change                                                                                            |
 | --------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| PENDING   | 2026-02-15 | Fix: Invalidate TICKER_CACHE for portfolio tickers before email scan (stale data caused wrong HOLD/SELL) |
+| PENDING   | 2026-02-15 | Fix: Merge portfolio tickers into scan list (tickers not in tickers.js always showed SELL)         |
 | e1f3eb9   | 2026-01-28 | Update: Sync latest changes including portfolio visualization                                     |
 | 73281bb   | 2026-01-28 | Fix: Add missing imports for backtest strategies in main.py                                       |
 | cde1a8d   | 2026-01-28 | Feat: Enable 5 Fourier scenarios in backend and frontend                                          |

@@ -6,12 +6,40 @@ from tickers_loader import load_tickers
 import datetime
 
 def run_market_scan(send_email=True):
-    from main import analyze_stock, AnalysisRequest, PortfolioManager
+    from main import analyze_stock, AnalysisRequest, PortfolioManager, TICKER_CACHE
     
     tickers_map = load_tickers()
     tickers = list(tickers_map.keys())
     
     print(f"🔄 Avvio scansione email per {len(tickers)} ticker...")
+    
+    # --- CRITICAL: Invalidate cache for portfolio tickers ---
+    # This ensures HOLD/SELL recommendations use FRESH data, not stale cache.
+    # Also merges portfolio tickers into scan list to prevent false SELL signals.
+    portfolio_tickers = set()
+    try:
+        pf_mgr = PortfolioManager()
+        pf_data = pf_mgr.load()
+        portfolio_tickers = set(
+            p["ticker"] for p in pf_data.get("positions", [])
+            if p.get("status") == "OPEN"
+        )
+        invalidated = 0
+        added = 0
+        for t in portfolio_tickers:
+            if t in TICKER_CACHE:
+                del TICKER_CACHE[t]
+                invalidated += 1
+            # Ensure portfolio ticker is in scan list (may not be in tickers.js)
+            if t not in tickers_map:
+                tickers_map[t] = "Portfolio"
+                tickers.append(t)
+                added += 1
+        print(f"🗑️ Cache invalidata per {invalidated}/{len(portfolio_tickers)} ticker del portafoglio")
+        if added > 0:
+            print(f"➕ Aggiunti {added} ticker del portafoglio non presenti in tickers.js")
+    except Exception as e:
+        print(f"⚠️ Errore invalidazione cache portafoglio: {e}")
     
     # LISTE SEPARATE
     buy_today = []
