@@ -1,7 +1,7 @@
 # Financial Physics Market Radar — System Overview
 
 Questo documento serve da **base di conoscenza completa** del progetto. Analizza l'architettura, la logica e il codice sorgente per fornire una visione unificata del sistema.  
-*Ultimo aggiornamento: 28 Gennaio 2026*
+*Ultimo aggiornamento: 16 Febbraio 2026*
 
 ---
 
@@ -82,6 +82,8 @@ Il file JavaScript più critico (oltre 3000 righe).
     -   Energy Chart (Subplot).
     -   Fourier Projection (Linee tratteggiate).
     -   Portfolio Markers (Linee/Punti verdi e rossi per i trade).
+    -   S.KinZ Panel: regime colorato (verde bull / rosso bear), soglie ±0.5, overlay Kinetic Z viola.
+    -   P/L Panel: tracce LIVE (verde), FROZEN (arancione), SUM (rosso), STABLE (viola `#aa44ff`).
 -   **Time Travel Logic:** Gestisce lo slider temporale che "taglia" i dati inviati a Plotly per simulare il passato.
 
 #### `index.html` & `style.css`
@@ -102,6 +104,25 @@ Il sistema implementa diverse logiche di trading simulate nel backend (`backtest
 1.  **LIVE Strategy:** Usa i segnali attuali.
 2.  **FROZEN Strategy:** Usa i segnali "congelati" storici (più realistica).
 3.  **SUM Strategy (Minima Azione ibrida):** Combina Z-Score e trend direzionale.
+4.  **STABLE Strategy (🟣 viola):** Usa gli indicatori stabili causali (Stable Kinetic Z + Stable Slope). Sostituisce la precedente "MA Strategy" (Min Action, blu). Implementata come STRATEGIA 5 nel backend.
+
+### Indicatori Stabili (Causal Indicators)
+Introdotti per risolvere il problema del look-ahead bias. Una volta calcolati, i valori passati **non cambiano mai** aggiungendo nuovi dati.
+
+-   **Stable Kinetic Z:**
+    -   Base: EMA(20) forward-only su dF (derivata prezzi), poi `0.5 * alpha * dF_smooth²`.
+    -   Z-Score rolling 252 giorni.
+    -   **Hysteresis ±0.5:** regime bullish quando Z > +0.5, bearish quando Z < -0.5, altrimenti mantiene stato precedente. Elimina ~83% dei falsi zero-crossing.
+    -   Ottimizzato via grid search su 8 tipi di mercato sintetici: 82.9% precisione, 17.1% FPR, ~11 switch.
+    -   **NON usa `filtfilt`** (non-causale). Usa solo EMA forward-only.
+    -   Parametro: `req.alpha` (non `alpha` bare).
+
+-   **Stable Slope:**
+    -   Slope stabilizzata, calcolata con metodo causale.
+
+-   **Regime Array:**
+    -   Array di +1 / -1 / 0 generato dall'hysteresis.
+    -   Passato come `z_kinetic` a `backtest_strategy()` con `threshold=0.5` per riutilizzare la funzione esistente senza modifiche.
 
 ---
 

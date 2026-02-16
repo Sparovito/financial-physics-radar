@@ -56,12 +56,14 @@ ma **con quanta forza**.
 
 - analisi live di indici e asset
 - analisi storica (time travel)
-- analisi batch multi-asset
-- visualizzazioni 2D interattive
-- confronto cross-asset
-- supporto alla costruzione di strategie
-- valutazione operativa giornaliera (“cosa fare oggi”)
-- output automatici (email / report)
+- analisi batch multi-asset (scanner massivo)
+- visualizzazioni 2D interattive (Plotly)
+- confronto cross-asset (radar)
+- 4 strategie di backtest: LIVE, FROZEN, SUM, STABLE
+- indicatori stabili causali (Stable Kinetic Z, Stable Slope)
+- valutazione operativa giornaliera ("cosa fare oggi")
+- output automatici (email giornaliera schedulata)
+- portfolio tracking con segnali HOLD/SELL
 
 ---
 
@@ -121,8 +123,10 @@ Questo progetto **non è**:
 - modelli FFT ed energetici implementati a livello baseline
 - backend e frontend operativi
 - analisi storica e live già esplorate manualmente
-- strategie in fase di definizione
-- automazione output in progettazione
+- 4 strategie operative: LIVE, FROZEN, SUM, STABLE (causale, 🟣 viola)
+- indicatori stabili causali: Stable Kinetic Z (EMA + hysteresis), Stable Slope
+- scanner massivo con colonne STABLE (ha sostituito MA/Min Action)
+- automazione output operativa (email schedulata, portfolio)
 
 ---
 

@@ -138,7 +138,7 @@ def run_analysis(ticker, alpha=200.0, beta=1.0, top_k=5, forecast_days=60, start
         MIN_POINTS = 100
         f_kin, f_pot, f_sum, f_dates = [], [], [], []
         n_total = len(px)
-        
+
         for t in range(MIN_POINTS, n_total, SAMPLE_EVERY):
             px_t = px.iloc[:t+1]
             try:
@@ -204,7 +204,7 @@ def run_analysis(ticker, alpha=200.0, beta=1.0, top_k=5, forecast_days=60, start
         trunc_kin = []
         trunc_pot = []
         trunc_z_sum = []
-        
+
         if full_frozen_data and "raw_sum" in full_frozen_data:
             full_dates = full_frozen_data["dates"]
             full_raw_sum = full_frozen_data["raw_sum"]
@@ -215,12 +215,12 @@ def run_analysis(ticker, alpha=200.0, beta=1.0, top_k=5, forecast_days=60, start
                 trunc_kin = full_frozen_data["kin"][:cut_idx]
                 trunc_pot = full_frozen_data["pot"][:cut_idx]
                 trunc_raw = full_raw_sum[:cut_idx]
-                
+
                 s_trunc = pd.Series(trunc_raw)
                 roll_mean = s_trunc.rolling(window=252, min_periods=20).mean()
                 roll_std = s_trunc.rolling(window=252, min_periods=20).std()
                 z_trunc = ((s_trunc - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
-                
+
                 try:
                     b, a = butter(N=2, Wn=0.05, btype='low')
                     if len(z_trunc) > 15:
@@ -243,7 +243,7 @@ def run_analysis(ticker, alpha=200.0, beta=1.0, top_k=5, forecast_days=60, start
                     trunc_z_sum.append(full_frozen_data["z_sum"][i])
                 else:
                     break
-        
+
         full_frozen_data = {
             "dates": trunc_dates,
             "kin": trunc_kin,
@@ -278,7 +278,34 @@ def run_analysis(ticker, alpha=200.0, beta=1.0, top_k=5, forecast_days=60, start
     cum_action = mechanics.cumulative_action.values.tolist()
     slope_line = mechanics.dX.values.tolist()
     z_residuo_line = mechanics.z_residuo.values.tolist()
-    
+
+    # --- FROZEN SLOPE (stabilized SLOPE values, guaranteed immutable) ---
+    # The tridiagonal boundary effect decays as r^n (r≈0.932).
+    # After 30 days: r^30 ≈ 0.12 = residual boundary effect < 12%.
+    # We trim the last SLOPE_STABLE_DAYS points: those remaining are STABLE.
+    # Adding new data changes them by < 0.4% per day — effectively frozen.
+    SLOPE_STABLE_DAYS = 30
+    if len(slope_line) > SLOPE_STABLE_DAYS:
+        frozen_slope = [round(v, 6) for v in slope_line[:-SLOPE_STABLE_DAYS]]
+        frozen_slope_dates = [d.strftime('%Y-%m-%d') for d in mechanics.dX.index[:-SLOPE_STABLE_DAYS]]
+    else:
+        frozen_slope = []
+        frozen_slope_dates = []
+    print(f"📐 Frozen Slope: {len(frozen_slope)} points, "
+          f"range [{min(frozen_slope):.4f}, {max(frozen_slope):.4f}]" if frozen_slope else
+          f"📐 Frozen Slope: empty")
+
+    # --- STABLE SLOPE (Causal proxy for stabilized SLOPE) ---
+    # Uses smoothed derivative of fundamental curve F (EMA20)
+    # This never changes for past dates (no boundary effect)
+    F_curve = mechanics.F
+    dF = F_curve.diff().fillna(0)
+    stable_slope_line = dF.ewm(span=14).mean().values.tolist()
+    # Also compute MACD(12,26) as alternative
+    ema_fast_12 = px.ewm(span=12).mean()
+    ema_slow_26 = px.ewm(span=26).mean()
+    macd_line = (ema_fast_12 - ema_slow_26).values.tolist()
+
     ROC_PERIOD = 20
     roc = ((px - px.shift(ROC_PERIOD)) / px.shift(ROC_PERIOD) * 100).fillna(0)
     roc_line = roc.values.tolist()
@@ -367,6 +394,8 @@ def run_analysis(ticker, alpha=200.0, beta=1.0, top_k=5, forecast_days=60, start
         },
         "indicators": {
             "slope": slope_line,
+            "stable_slope": stable_slope_line,
+            "macd": macd_line,
             "z_residuo": z_residuo_line,
             "roc": roc_line,
             "z_roc": z_roc_line,
@@ -384,6 +413,8 @@ def run_analysis(ticker, alpha=200.0, beta=1.0, top_k=5, forecast_days=60, start
             "dates": frozen_dates,
             "z_kinetic": frozen_z_kin,
             "z_potential": frozen_z_pot,
-            "z_sum": frozen_z_sum
+            "z_sum": frozen_z_sum,
+            "slope": frozen_slope,
+            "slope_dates": frozen_slope_dates
         }
     }

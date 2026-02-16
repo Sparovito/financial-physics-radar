@@ -274,13 +274,111 @@ function renderCharts(data) {
     const traceKineticZ = {
         x: data.dates,
         y: data.energy.z_kinetic || [],
-        name: 'Kinetic Z (Normalized)',
+        name: 'Kinetic Z (live)',
         type: 'scatter',
         mode: 'lines',
-        fill: 'tozeroy', // Optional: fill to zero like others, or just line
+        fill: 'tozeroy',
         line: { color: '#bf00ff', width: 2 }, // Neon Purple
         xaxis: 'x',
         yaxis: 'y9'
+    };
+
+    // --- STABLE KINETIC Z (causal, never changes) - separate panel ---
+    const skinz_data = data.indicators?.stable_kinetic_z || [];
+    const skinz_regime = data.indicators?.stable_kinetic_z_regime || [];
+    console.warn('stable_kinetic_z:', skinz_data.length, 'pts | regime:', skinz_regime.length, 'pts');
+
+    // Build regime-colored traces: green when bullish (+1), red when bearish (-1)
+    const skinz_bullish_y = skinz_data.map((v, i) => skinz_regime[i] > 0 ? v : null);
+    const skinz_bearish_y = skinz_data.map((v, i) => skinz_regime[i] < 0 ? v : null);
+    const skinz_neutral_y = skinz_data.map((v, i) => skinz_regime[i] === 0 ? v : null);
+
+    const traceStableKinZ_bull = {
+        x: data.dates,
+        y: skinz_bullish_y,
+        name: 'S.KinZ (Bull)',
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: '#00ff88', width: 2.5 },
+        fill: 'tozeroy',
+        fillcolor: 'rgba(0, 255, 136, 0.18)',
+        connectgaps: false,
+        xaxis: 'x',
+        yaxis: 'y12'
+    };
+    const traceStableKinZ_bear = {
+        x: data.dates,
+        y: skinz_bearish_y,
+        name: 'S.KinZ (Bear)',
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: '#ff4444', width: 2.5 },
+        fill: 'tozeroy',
+        fillcolor: 'rgba(255, 68, 68, 0.18)',
+        connectgaps: false,
+        xaxis: 'x',
+        yaxis: 'y12'
+    };
+    const traceStableKinZ_neutral = {
+        x: data.dates,
+        y: skinz_neutral_y,
+        name: 'S.KinZ (Wait)',
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: '#888888', width: 1.5 },
+        connectgaps: false,
+        showlegend: false,
+        xaxis: 'x',
+        yaxis: 'y12'
+    };
+    // Threshold lines at ±0.5 (hysteresis band)
+    const skinz_first = data.dates?.[0] || '';
+    const skinz_last = data.dates?.[data.dates.length - 1] || '';
+    const traceStableKinZ_threshUp = {
+        x: [skinz_first, skinz_last],
+        y: [0.5, 0.5],
+        name: '+0.5',
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: '#555555', width: 1, dash: 'dash' },
+        showlegend: false,
+        xaxis: 'x',
+        yaxis: 'y12'
+    };
+    const traceStableKinZ_threshDn = {
+        x: [skinz_first, skinz_last],
+        y: [-0.5, -0.5],
+        name: '-0.5',
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: '#555555', width: 1, dash: 'dash' },
+        showlegend: false,
+        xaxis: 'x',
+        yaxis: 'y12'
+    };
+    // Zero reference line
+    const traceStableKinZ_zero = {
+        x: [skinz_first, skinz_last],
+        y: [0, 0],
+        name: 'Zero',
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: '#666666', width: 1, dash: 'dot' },
+        showlegend: false,
+        xaxis: 'x',
+        yaxis: 'y12'
+    };
+    // Kinetic Z live overlay (reference) — prominent purple
+    const traceKineticZ_overlay = {
+        x: data.dates,
+        y: data.energy.z_kinetic || [],
+        name: 'Kinetic Z (live)',
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: '#cc55ff', width: 2, dash: 'dash' },
+        opacity: 0.75,
+        xaxis: 'x',
+        yaxis: 'y12'
     };
 
     // --- FROZEN SUM TRACE (Cyan) ---
@@ -327,14 +425,46 @@ function renderCharts(data) {
         yaxis: 'y4' // Same axis as Z-residuo for comparison
     };
 
+    // --- STABLE SLOPE: causal indicator that estimates what SLOPE will become ---
+    // dF_smooth = EMA(14) of diff(EMA(prices,20)). Purely causal, covers ALL dates.
+    // Correlation ~0.87 with stabilized SLOPE. Value at T=0 predicts SLOPE[T+25].
+    // This NEVER changes for past dates — no boundary effects at all.
+    const ssData = data.indicators?.stable_slope || [];
+    const slData = data.indicators?.slope || [];
+    console.warn('📐 v12 STABLE SLOPE:', ssData.length, 'pts, last=', ssData.slice(-3),
+                 '| SLOPE live:', slData.length, 'pts, last=', slData.slice(-3));
+    const traceStableSlope = {
+        x: data.dates,
+        y: data.indicators?.stable_slope || [],
+        name: 'Stable Slope (dF)',
+        type: 'scatter',
+        line: { color: '#00ff88', width: 2.5 },
+        xaxis: 'x',
+        yaxis: 'y10'
+    };
+
+    // Overlay: live SLOPE on SAME axis for visual comparison
+    const traceSlope_overlay = {
+        x: data.dates,
+        y: data.indicators?.slope || [],
+        name: 'SLOPE (live)',
+        type: 'scatter',
+        line: { color: '#eba834', width: 1.5, dash: 'dot' },
+        opacity: 0.5,
+        xaxis: 'x',
+        yaxis: 'y10'
+    };
+
     // --- BACKTEST TRACE (Equity Curve) ---
     const showBacktest = document.getElementById('show-backtest')?.checked ?? false;
     let traceBacktest = null;
     let traceFrozenStrat = null;
     let traceFrozenSumStrat = null;
+    let traceStableStrat = null;
     let backtestStats = null;
     let frozenStats = null;
     let frozenSumStats = null;
+    let stableStats = null;
 
     if (showBacktest) {
         // 1. Live Strategy (Green)
@@ -380,6 +510,21 @@ function renderCharts(data) {
             };
             frozenSumStats = data.frozen_sum_strategy.stats;
         }
+
+        // 5. Stable Strategy (Purple)
+        if (data.stable_strategy && data.stable_strategy.trade_pnl_curve) {
+            traceStableStrat = {
+                x: data.dates,
+                y: data.stable_strategy.trade_pnl_curve,
+                name: `🟣 STABLE Strat (Avg: ${data.stable_strategy.stats.avg_trade_pct}%)`,
+                type: 'scatter',
+                mode: 'lines',
+                line: { color: '#aa44ff', width: 2.5 }, // Purple
+                xaxis: 'x',
+                yaxis: 'y5'
+            };
+            stableStats = data.stable_strategy.stats;
+        }
     }
 
     // --- DETECT MOBILE ---
@@ -404,6 +549,8 @@ function renderCharts(data) {
     const showZigZag = document.getElementById('show-zigzag')?.checked ?? true;
     const showVolume = document.getElementById('show-volume')?.checked ?? false;
     const showKineticZ = document.getElementById('show-kinetic-z')?.checked ?? false;
+    const showStableSlope = document.getElementById('show-stable-slope')?.checked ?? false;
+    const showStableKinZ = document.getElementById('show-stable-kinz')?.checked ?? false;
     // showBacktest is already defined above
 
     // --- DYNAMIC DOMAIN CALCULATION ---
@@ -415,6 +562,8 @@ function renderCharts(data) {
     if (showZigZag && data.indicators?.zigzag) visiblePanels.push('zigzag');
     if (showIndicators) visiblePanels.push('indicators');
     if (showKineticZ) visiblePanels.push('kineticz');
+    if (showStableSlope) visiblePanels.push('stableslope');
+    if (showStableKinZ) visiblePanels.push('stablekinz');
     if (showBacktest) visiblePanels.push('backtest');
 
     const panelCount = visiblePanels.length;
@@ -510,6 +659,23 @@ function renderCharts(data) {
             tickfont: { color: '#bf00ff' },
             visible: showKineticZ
         },
+        yaxis10: { // FROZEN SLOPE PANEL
+            domain: domains.stableslope || defaultDomain,
+            gridcolor: '#333333',
+            title: showStableSlope ? 'F.Slope' : '',
+            tickfont: { color: '#00ff88' },
+            visible: showStableSlope
+        },
+        yaxis11: { // unused, kept for axis numbering compatibility
+            visible: false
+        },
+        yaxis12: { // STABLE KINETIC Z PANEL
+            domain: domains.stablekinz || defaultDomain,
+            gridcolor: '#333333',
+            title: showStableKinZ ? 'S.KinZ' : '',
+            tickfont: { color: '#00ff88' },
+            visible: showStableKinZ
+        },
         yaxis8: {
             // Volume Axis (Overlay on Price)
             overlaying: 'y',
@@ -591,25 +757,32 @@ function renderCharts(data) {
     if (traceBacktest) traces.push(traceBacktest);
     if (traceFrozenStrat) traces.push(traceFrozenStrat);
     if (traceFrozenSumStrat) traces.push(traceFrozenSumStrat);
-
-    // [NEW] Min Action Strategy Trace (Blue)
-    if (showBacktest && data.frozen_min_action_strategy && data.frozen_min_action_strategy.trade_pnl_curve) {
-        const traceMaStrat = {
-            x: data.dates,
-            y: data.frozen_min_action_strategy.trade_pnl_curve,
-            name: `🔵 MA Strat (Avg: ${data.frozen_min_action_strategy.stats?.avg_trade_pct || 0}%)`,
-            type: 'scatter',
-            mode: 'lines',
-            line: { color: '#00aaff', width: 2 }, // Bright Blue
-            xaxis: 'x',
-            yaxis: 'y5' // P/L Panel (same as other strategies)
-        };
-        traces.push(traceMaStrat);
-    }
+    if (traceStableStrat) traces.push(traceStableStrat);
 
     // Kinetic Z Trace
     if (showKineticZ) {
         traces.push(traceKineticZ, traceFrozenSum);
+    }
+
+    // Stable Kinetic Z (separate panel)
+    if (showStableKinZ) {
+        console.warn('⚡ S.KinZ:', skinz_data.length, 'pts | regime:', skinz_regime.length, 'pts');
+        traces.push(
+            traceStableKinZ_zero,
+            traceStableKinZ_threshUp,
+            traceStableKinZ_threshDn,
+            traceStableKinZ_bull,
+            traceStableKinZ_bear,
+            traceStableKinZ_neutral,
+            traceKineticZ_overlay
+        );
+    }
+
+    // Stable Slope + SLOPE live overlay
+    if (showStableSlope) {
+        console.warn('📐 PUSHING traces:', traceStableSlope.name, traceStableSlope.y.length, 'pts |',
+                     traceSlope_overlay.name, traceSlope_overlay.y.length, 'pts');
+        traces.push(traceStableSlope, traceSlope_overlay);
     }
 
     // ZigZag Indicator Trace
@@ -684,27 +857,14 @@ function renderCharts(data) {
                 </div>`;
         }
 
-        // [NEW] MIN ACTION STRAT
-        const maStats = data.frozen_min_action_strategy?.stats;
-        // Wait, backend logic didn't return 'frozen_min_action_strategy' key at root, 
-        // it returned 'ma_pnl' in history and likely didn't expose full stats object in root?
-        // Let me check logic.py return structure.
-        // Logic.py: 
-        // return { ..., "history": {..., "ma_pnl": ...} }
-        // Ah, logic.py DOES NOT return 'frozen_min_action_strategy' stats object in the root dict!
-        // I missed that in logic.py.
-        // I need to update logic.py to return the stats object too if I want to show them here.
-        // For now, I will skip stats display or infer from P/L curve? No, curve is just array.
-        // I will assume I will fix logic.py next step to return stats. For now I add placeholder code that checks if present.
-
-        if (data.frozen_min_action_strategy?.stats) {
-            const maStats = data.frozen_min_action_strategy.stats;
+        if (data.stable_strategy?.stats) {
+            const stStats = data.stable_strategy.stats;
             html += `
-                <div style="color: #00aaff; margin-top: 4px; border-top: 1px dashed #333; padding-top: 4px;">
-                    <strong>🔵 MIN ACTION:</strong> 
-                    Trades: ${maStats.total_trades} | 
-                    Win: ${maStats.win_rate}% | 
-                    Return: ${maStats.total_return}%
+                <div style="color: #aa44ff; margin-top: 4px; border-top: 1px dashed #333; padding-top: 4px;">
+                    <strong>🟣 STABLE Strat:</strong>
+                    Trades: ${stStats.total_trades} |
+                    Win: ${stStats.win_rate}% |
+                    Return: ${stStats.total_return}%
                 </div>`;
         }
 
@@ -715,9 +875,9 @@ function renderCharts(data) {
     window.TRADES_LIVE = (data.backtest && data.backtest.trades) ? data.backtest.trades : [];
     window.TRADES_FROZEN = (data.frozen_strategy && data.frozen_strategy.trades) ? data.frozen_strategy.trades : [];
     window.TRADES_SUM = (data.frozen_sum_strategy && data.frozen_sum_strategy.trades) ? data.frozen_sum_strategy.trades : [];
-    window.TRADES_MA = (data.frozen_min_action_strategy && data.frozen_min_action_strategy.trades) ? data.frozen_min_action_strategy.trades : [];
+    window.TRADES_STABLE = (data.stable_strategy && data.stable_strategy.trades) ? data.stable_strategy.trades : [];
 
-    if (window.TRADES_LIVE.length > 0 || window.TRADES_FROZEN.length > 0 || window.TRADES_SUM.length > 0 || window.TRADES_MA.length > 0) {
+    if (window.TRADES_LIVE.length > 0 || window.TRADES_FROZEN.length > 0 || window.TRADES_SUM.length > 0 || window.TRADES_STABLE.length > 0) {
         const btnTrades = document.getElementById('btn-view-trades');
         if (btnTrades) btnTrades.style.display = 'block';
     } else {
@@ -743,13 +903,13 @@ function switchTradesView(mode) {
     const btnLive = document.getElementById('btn-trades-live');
     const btnFrozen = document.getElementById('btn-trades-frozen');
     const btnSum = document.getElementById('btn-trades-sum');
-    const btnMa = document.getElementById('btn-trades-ma');
+    const btnStable = document.getElementById('btn-trades-stable');
 
     const buttons = [
         { btn: btnLive, mode: 'LIVE', color: '#00ff88', textColor: '#000' },
         { btn: btnFrozen, mode: 'FROZEN', color: '#ff9900', textColor: '#000' },
         { btn: btnSum, mode: 'SUM', color: '#ff4444', textColor: '#fff' },
-        { btn: btnMa, mode: 'MA', color: '#00aaff', textColor: '#fff' }
+        { btn: btnStable, mode: 'STABLE', color: '#aa44ff', textColor: '#fff' }
     ];
 
     buttons.forEach(item => {
@@ -781,7 +941,7 @@ function openTradesModal() {
 }
 
 // Global storage for ORIGINAL trades (baseline - saved once, never overwritten)
-window.ORIGINAL_TRADES = window.ORIGINAL_TRADES || { LIVE: null, FROZEN: null, SUM: null, MA: null };
+window.ORIGINAL_TRADES = window.ORIGINAL_TRADES || { LIVE: null, FROZEN: null, SUM: null, STABLE: null };
 
 function renderTradesList() {
     const listDiv = document.getElementById('trades-list');
@@ -793,8 +953,8 @@ function renderTradesList() {
         trades = window.TRADES_FROZEN;
     } else if (viewMode === 'SUM') {
         trades = window.TRADES_SUM;
-    } else if (viewMode === 'MA') {
-        trades = window.TRADES_MA;
+    } else if (viewMode === 'STABLE') {
+        trades = window.TRADES_STABLE;
     } else {
         trades = [];
     }
@@ -1986,11 +2146,11 @@ async function startBulkScan() {
     let totalLiveRet = 0;
     let totalFrozenRet = 0;
     let totalSumRet = 0;
-    let totalMaRet = 0;
+    let totalStableRet = 0;
     let totalWinLive = 0;
     let totalWinFrozen = 0;
     let totalWinSum = 0;
-    let totalWinMa = 0;
+    let totalWinStable = 0;
     let countStats = 0;
 
     // Global Trade Accumulator for Portfolio Simulator
@@ -2076,7 +2236,7 @@ async function startBulkScan() {
             const liveStats = data.backtest?.stats;
             const frozenStats = data.frozen_strategy?.stats;
             const sumStats = data.frozen_sum_strategy?.stats;
-            const maStats = data.frozen_min_action_strategy?.stats;
+            const stableStats2 = data.stable_strategy?.stats;
 
             if (liveStats && frozenStats) {
                 totalLiveRet += liveStats.total_return;
@@ -2087,9 +2247,9 @@ async function startBulkScan() {
                     totalSumRet += sumStats.total_return;
                     totalWinSum += sumStats.win_rate;
                 }
-                if (maStats) {
-                    totalMaRet += maStats.total_return;
-                    totalWinMa += maStats.win_rate;
+                if (stableStats2) {
+                    totalStableRet += stableStats2.total_return;
+                    totalWinStable += stableStats2.win_rate;
                 }
                 countStats++;
 
@@ -2097,8 +2257,8 @@ async function startBulkScan() {
                 const frozenRet = frozenStats.total_return;
                 const sumRet = sumStats ? sumStats.total_return : 0;
                 const sumWin = sumStats ? sumStats.win_rate : 0;
-                const maRet = maStats ? maStats.total_return : 0;
-                const maWin = maStats ? maStats.win_rate : 0;
+                const stableRet = stableStats2 ? stableStats2.total_return : 0;
+                const stableWin = stableStats2 ? stableStats2.win_rate : 0;
                 const delta = (liveRet - frozenRet).toFixed(2);
                 const deltaColor = parseFloat(delta) > 20 ? '#ff4444' : (parseFloat(delta) < -5 ? '#00ff88' : '#888');
 
@@ -2126,7 +2286,7 @@ async function startBulkScan() {
                         data-live-win="${liveStats.win_rate}" data-live-ret="${liveRet}"
                         data-frozen-win="${frozenStats.win_rate}" data-frozen-ret="${frozenRet}"
                         data-sum-win="${sumWin}" data-sum-ret="${sumRet}"
-                        data-ma-win="${maWin}" data-ma-ret="${maRet}"
+                        data-stable-win="${stableWin}" data-stable-ret="${stableRet}"
                         style="border-bottom:1px solid #333;">
                         <td style="padding:10px; text-align:center;">
                             <input type="checkbox" class="scan-ticker-checkbox" data-ticker="${ticker}" checked>
@@ -2140,8 +2300,8 @@ async function startBulkScan() {
                         <td style="color:${frozenRet > 0 ? '#ff9900' : '#ff4444'}">${frozenRet}%</td>
                         <td style="color:${sumWin >= 50 ? '#ff4444' : '#888'}">${sumWin}%</td>
                         <td style="color:${sumRet > 0 ? '#ff4444' : '#888'}">${sumRet}%</td>
-                        <td style="color:${maWin >= 50 ? '#00aaff' : '#888'}">${maWin}%</td>
-                        <td style="color:${maRet > 0 ? '#00aaff' : '#888'}">${maRet}%</td>
+                        <td style="color:${stableWin >= 50 ? '#aa44ff' : '#888'}">${stableWin}%</td>
+                        <td style="color:${stableRet > 0 ? '#aa44ff' : '#888'}">${stableRet}%</td>
                         <td style="color:${deltaColor}; font-weight:bold;">${delta}%</td>
                         <td>
                             <button onclick="loadTickerFromScan('${ticker}')" style="background:#333; color:#fff; border:none; padding:4px 8px; cursor:pointer; font-size:0.8em; border-radius:4px;">🔍 Vedi</button>
@@ -2161,11 +2321,11 @@ async function startBulkScan() {
         const avgLiveRet = (totalLiveRet / countStats).toFixed(2);
         const avgFrozenRet = (totalFrozenRet / countStats).toFixed(2);
         const avgSumRet = (totalSumRet / countStats).toFixed(2);
-        const avgMaRet = (totalMaRet / countStats).toFixed(2);
+        const avgStableRet = (totalStableRet / countStats).toFixed(2);
         const avgWinLive = (totalWinLive / countStats).toFixed(1);
         const avgWinFrozen = (totalWinFrozen / countStats).toFixed(1);
         const avgWinSum = (totalWinSum / countStats).toFixed(1);
-        const avgWinMa = (totalWinMa / countStats).toFixed(1);
+        const avgWinStable = (totalWinStable / countStats).toFixed(1);
         const avgDelta = (avgLiveRet - avgFrozenRet).toFixed(2);
 
         const statsRow = `
@@ -2178,8 +2338,8 @@ async function startBulkScan() {
                 <td style="color:${avgFrozenRet > 0 ? '#ff9900' : '#ff4444'}">${avgFrozenRet}%</td>
                 <td style="color:${avgWinSum >= 50 ? '#ff4444' : '#bbb'}">${avgWinSum}%</td>
                 <td style="color:${avgSumRet > 0 ? '#ff4444' : '#888'}">${avgSumRet}%</td>
-                <td style="color:${avgWinMa >= 50 ? '#00aaff' : '#bbb'}">${avgWinMa}%</td>
-                <td style="color:${avgMaRet > 0 ? '#00aaff' : '#888'}">${avgMaRet}%</td>
+                <td style="color:${avgWinStable >= 50 ? '#aa44ff' : '#bbb'}">${avgWinStable}%</td>
+                <td style="color:${avgStableRet > 0 ? '#aa44ff' : '#888'}">${avgStableRet}%</td>
                 <td style="color:#eba834;">${avgDelta}%</td>
                 <td>
                     <button onclick="openSimulatorModal()" style="background:#00ff88; color:#000; font-weight:bold; border:none; padding:6px 10px; cursor:pointer; border-radius:4px; box-shadow:0 2px 5px rgba(0,0,0,0.5);">
@@ -2488,7 +2648,7 @@ function applyScanFilters() {
     let totalLiveWin = 0, totalLiveRet = 0;
     let totalFrozenWin = 0, totalFrozenRet = 0;
     let totalSumWin = 0, totalSumRet = 0;
-    let totalMaWin = 0, totalMaRet = 0;
+    let totalStableWin = 0, totalStableRet2 = 0;
 
     rows.forEach(row => {
         const trend = row.dataset.trend;
@@ -2507,8 +2667,8 @@ function applyScanFilters() {
             totalFrozenRet += parseFloat(row.dataset.frozenRet) || 0;
             totalSumWin += parseFloat(row.dataset.sumWin) || 0;
             totalSumRet += parseFloat(row.dataset.sumRet) || 0;
-            totalMaWin += parseFloat(row.dataset.maWin) || 0;
-            totalMaRet += parseFloat(row.dataset.maRet) || 0;
+            totalStableWin += parseFloat(row.dataset.stableWin) || 0;
+            totalStableRet2 += parseFloat(row.dataset.stableRet) || 0;
         }
     });
 
@@ -2521,8 +2681,8 @@ function applyScanFilters() {
         const avgFrozenRet = (totalFrozenRet / visibleCount).toFixed(2);
         const avgSumWin = (totalSumWin / visibleCount).toFixed(1);
         const avgSumRet = (totalSumRet / visibleCount).toFixed(2);
-        const avgMaWin = (totalMaWin / visibleCount).toFixed(1);
-        const avgMaRet = (totalMaRet / visibleCount).toFixed(2);
+        const avgStableWin = (totalStableWin / visibleCount).toFixed(1);
+        const avgStableRet2 = (totalStableRet2 / visibleCount).toFixed(2);
         const avgDelta = (avgLiveRet - avgFrozenRet).toFixed(2);
 
         statsRow.innerHTML = `
@@ -2534,8 +2694,8 @@ function applyScanFilters() {
             <td style="color:${avgFrozenRet > 0 ? '#ff9900' : '#ff4444'}">${avgFrozenRet}%</td>
             <td style="color:${avgSumWin >= 50 ? '#ff4444' : '#bbb'}">${avgSumWin}%</td>
             <td style="color:${avgSumRet > 0 ? '#ff4444' : '#888'}">${avgSumRet}%</td>
-            <td style="color:${avgMaWin >= 50 ? '#00aaff' : '#bbb'}">${avgMaWin}%</td>
-            <td style="color:${avgMaRet > 0 ? '#00aaff' : '#888'}">${avgMaRet}%</td>
+            <td style="color:${avgStableWin >= 50 ? '#aa44ff' : '#bbb'}">${avgStableWin}%</td>
+            <td style="color:${avgStableRet2 > 0 ? '#aa44ff' : '#888'}">${avgStableRet2}%</td>
             <td style="color:#eba834;">${avgDelta}%</td>
             <td>
                 <button onclick="openSimulatorModal()" style="background:#00ff88; color:#000; font-weight:bold; border:none; padding:6px 10px; cursor:pointer; border-radius:4px; box-shadow:0 2px 5px rgba(0,0,0,0.5);">
@@ -2553,7 +2713,7 @@ function applyScanFilters() {
 
 // --- CHART VISIBILITY TOGGLE LISTENERS ---
 // Re-render chart when toggles change (uses cached data)
-['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag', 'show-backtest', 'show-volume', 'show-kinetic-z'].forEach(id => {
+['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag', 'show-backtest', 'show-volume', 'show-kinetic-z', 'show-stable-slope', 'show-stable-kinz'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
         el.addEventListener('change', (e) => {
@@ -2883,8 +3043,8 @@ function getTradeMarkerShapes() {
         trades = cachedData.frozen_strategy?.trades || [];
     } else if (strategy === 'SUM') {
         trades = cachedData.frozen_sum_strategy?.trades || [];
-    } else if (strategy === 'MA') {
-        trades = cachedData.frozen_min_action_strategy?.trades || [];
+    } else if (strategy === 'STABLE') {
+        trades = cachedData.stable_strategy?.trades || [];
     }
 
     const shapes = [];

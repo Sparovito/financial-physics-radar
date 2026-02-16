@@ -102,8 +102,10 @@ Il progetto **non è**:
 - modelli FFT ed energetici implementati a livello prototipale
 - backend e frontend funzionanti
 - analisi storica e live già esplorate manualmente
-- strategie in fase di definizione
-- automazione output in fase progettuale
+- 4 strategie implementate: LIVE, FROZEN, SUM, STABLE (causale, viola)
+- indicatori stabili (causali) operativi: Stable Kinetic Z con hysteresis, Stable Slope
+- scanner massivo con colonne STABLE (sostituisce vecchio MA/Min Action)
+- automazione output operativa (email giornaliera schedulata)
 
 ## Direzione Futura
 

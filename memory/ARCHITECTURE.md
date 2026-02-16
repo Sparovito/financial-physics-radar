@@ -50,6 +50,12 @@ Root:
     - analisi spettrale, ricostruzione serie, eventuali forecast.
   - `models.py` / `schemas.py`:
     - definizione di Pydantic models per request/response delle API (es. `AssetRequest`, `RadarPoint`, `ForecastResponse`).
+- **Indicatori Stabili (Causali)** — calcolati in `main.py` endpoint `/analyze`:
+  - Stable Kinetic Z: EMA(20) forward-only → Z-Score → hysteresis ±0.5.
+  - Stable Slope: slope causale stabilizzata.
+  - Regime array (+1/-1/0): input per `backtest_strategy()` con threshold=0.5.
+  - Proprietà: valori passati **immutabili** (max_diff = 0.0 aggiungendo dati).
+
 - Concetti chiave:
 
   - **Contracts API**: gli schemi Pydantic esposti dalle route sono considerati **contratti stabili**.

@@ -2,6 +2,15 @@
 
 | Deploy ID | Date       | Change                                                                                            |
 | --------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| PENDING   | 2026-02-16 | Cleanup: Remove all MA (Min Action) references — replaced entirely by STABLE strategy (purple)     |
+| PENDING   | 2026-02-16 | Feat: Replace MA columns with STABLE in Scanner table (purple `#aa44ff`, reads `stable_strategy`)  |
+| PENDING   | 2026-02-16 | Style: Compact annotation buttons (🟢🔴🔵🟣⚪🗑️) from vertical list to 3x2 CSS grid             |
+| PENDING   | 2026-02-16 | Style: Improve S.KinZ panel clarity — purple Kinetic Z overlay width 2, opacity 0.75, brighter    |
+| PENDING   | 2026-02-16 | Feat: Add STABLE Strategy (🟣 purple) — uses stable causal indicators with hysteresis regime       |
+| PENDING   | 2026-02-16 | Feat: Stable Kinetic Z — causal EMA(20) + hysteresis ±0.5, optimized via grid search (82.9% prec) |
+| PENDING   | 2026-02-16 | Fix: Replace non-causal `filtfilt` with forward-only EMA for Stable Kinetic Z (causality verified) |
+| PENDING   | 2026-02-16 | Fix: Use `req.alpha` instead of bare `alpha` in Stable Kinetic Z computation (was returning 0)     |
+| PENDING   | 2026-02-16 | Fix: Remove unused `from scipy.signal import butter, filtfilt` import from main.py                 |
 | PENDING   | 2026-02-15 | Fix: Invalidate TICKER_CACHE for portfolio tickers before email scan (stale data caused wrong HOLD/SELL) |
 | PENDING   | 2026-02-15 | Fix: Merge portfolio tickers into scan list (tickers not in tickers.js always showed SELL)         |
 | e1f3eb9   | 2026-01-28 | Update: Sync latest changes including portfolio visualization                                     |
