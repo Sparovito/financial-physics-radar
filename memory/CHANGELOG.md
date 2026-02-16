@@ -2,7 +2,8 @@
 
 | Deploy ID | Date       | Change                                                                                            |
 | --------- | ---------- | ------------------------------------------------------------------------------------------------- |
-| PENDING   | 2026-02-16 | Fix: final adjustment to STABLE (purple) strategy logic                                           |
+| PENDING   | 2026-02-16 | Feat: STABLE strategy simplified to LONG-only (Entry/Exit at 0.0)                 |
+| dcde0da   | 2026-02-16 | Fix: final adjustment to STABLE (purple) strategy logic                                           |
 | 79ae5c7   | 2026-02-16 | Feat: STABLE Strategy v4 — Dual LONG+SHORT su Stable Slope (LONG: 0/-0.3, SHORT: 0/+0.2)          |
 | 79ae5c7   | 2026-02-16 | Feat: Updated STABLE (purple) strategy and backend import fixes (butter/filtfilt)       |
 | 0bebe34   | 2026-02-16 | Cleanup: Remove all MA (Min Action) references — replaced entirely by STABLE strategy (purple)     |

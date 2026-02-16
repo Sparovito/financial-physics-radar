@@ -650,21 +650,14 @@ def analyze_stock(req: AnalysisRequest):
         )
         
         # --- STRATEGIA 5: STABLE (Stable Slope, linea verde F.Slope) ---
-        # Dual: LONG + SHORT in parallelo sulla stable_slope_line
-        #   LONG:  entry slope > 0.0,  exit slope < -0.3
-        #   SHORT: entry slope < 0.0,  exit slope > 0.2
-        LONG_ENTRY = 0.0
-        LONG_EXIT = -0.3
-        SHORT_ENTRY = 0.0
-        SHORT_EXIT = 0.2
+        # Solo LONG: entry slope > 0, exit slope < 0
+        STABLE_ENTRY = 0.0
+        STABLE_EXIT = 0.0
 
         capital_stable = 1000.0
         long_in = False
-        short_in = False
         long_entry_price = None
-        short_entry_price = None
         long_entry_date = None
-        short_entry_date = None
         trades_stable = []
         trade_pnl_stable = []
         equity_stable = []
@@ -684,12 +677,12 @@ def analyze_stock(req: AnalysisRequest):
                 equity_stable.append(equity_stable[-1] if equity_stable else 0)
                 continue
 
-            # --- LONG leg ---
-            if not long_in and s_val > LONG_ENTRY:
+            # --- LONG only ---
+            if not long_in and s_val > STABLE_ENTRY:
                 long_in = True
                 long_entry_price = price
                 long_entry_date = date
-            elif long_in and s_val < LONG_EXIT:
+            elif long_in and s_val < STABLE_EXIT:
                 pnl = ((price - long_entry_price) / long_entry_price) * 100
                 capital_stable *= (1 + pnl / 100)
                 trades_stable.append({
@@ -702,57 +695,26 @@ def analyze_stock(req: AnalysisRequest):
                 long_in = False
                 long_entry_price = None
 
-            # --- SHORT leg ---
-            if not short_in and s_val < SHORT_ENTRY:
-                short_in = True
-                short_entry_price = price
-                short_entry_date = date
-            elif short_in and s_val > SHORT_EXIT:
-                pnl = ((short_entry_price - price) / short_entry_price) * 100
-                capital_stable *= (1 + pnl / 100)
-                trades_stable.append({
-                    "entry_date": short_entry_date, "exit_date": date,
-                    "direction": "SHORT", "entry_price": round(short_entry_price, 2),
-                    "exit_price": round(price, 2), "pnl_pct": round(pnl, 2),
-                    "capital_after": round(capital_stable, 2),
-                    "entry_z_value": 0, "entry_z_roc": 0
-                })
-                short_in = False
-                short_entry_price = None
-
-            # --- P/L corrente combinato ---
+            # --- P/L corrente ---
             current_pnl = 0
             if long_in:
-                current_pnl += ((price - long_entry_price) / long_entry_price) * 100
-            if short_in:
-                current_pnl += ((short_entry_price - price) / short_entry_price) * 100
+                current_pnl = ((price - long_entry_price) / long_entry_price) * 100
             trade_pnl_stable.append(round(current_pnl, 2))
 
             # Equity
             temp_cap = capital_stable
             if long_in:
                 temp_cap *= (1 + ((price - long_entry_price) / long_entry_price))
-            if short_in:
-                temp_cap *= (1 + ((short_entry_price - price) / short_entry_price))
             eq_pct = ((temp_cap - 1000) / 1000) * 100
             equity_stable.append(round(eq_pct, 2))
 
-        # Chiudi posizioni aperte a fine periodo (formato OPEN standard)
+        # Chiudi posizione aperta a fine periodo (formato OPEN standard)
         final_price = price_real[-1] if price_real[-1] else price_real[-2]
         if long_in and final_price:
             pnl = ((final_price - long_entry_price) / long_entry_price) * 100
             trades_stable.append({
                 "entry_date": long_entry_date, "exit_date": "OPEN",
                 "direction": "LONG", "entry_price": round(long_entry_price, 2),
-                "exit_price": round(final_price, 2), "pnl_pct": round(pnl, 2),
-                "capital_after": round(capital_stable * (1 + pnl/100), 2),
-                "entry_z_value": 0, "entry_z_roc": 0
-            })
-        if short_in and final_price:
-            pnl = ((short_entry_price - final_price) / short_entry_price) * 100
-            trades_stable.append({
-                "entry_date": short_entry_date, "exit_date": "OPEN",
-                "direction": "SHORT", "entry_price": round(short_entry_price, 2),
                 "exit_price": round(final_price, 2), "pnl_pct": round(pnl, 2),
                 "capital_after": round(capital_stable * (1 + pnl/100), 2),
                 "entry_z_value": 0, "entry_z_roc": 0
