@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STABLE Strategy Lab</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0f111a;
+            --panel: #1a1d29;
+            --border: #2d3342;
+            --text: #e0e0e0;
+            --text2: #a0a0a0;
+            --green: #00ff88;
+            --red: #ff4444;
+            --purple: #aa44ff;
+            --cyan: #00e5ff;
+            --orange: #ff9900;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+        }
+
+        /* HEADER */
+        .header {
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            padding: 15px 25px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .header h1 { font-size: 1.3rem; color: var(--purple); }
+        .header a { color: var(--text2); text-decoration: none; font-size: 0.9rem; }
+        .header a:hover { color: var(--text); }
+
+        /* CONTROLS */
+        .controls {
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            padding: 15px 25px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: flex-end;
+        }
+        .ctrl-group { display: flex; flex-direction: column; gap: 4px; }
+        .ctrl-group label { font-size: 0.75rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+        .ctrl-group input, .ctrl-group select {
+            background: #252836;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+        .ctrl-group input:focus, .ctrl-group select:focus { outline: none; border-color: var(--purple); }
+        .ctrl-group select { min-width: 180px; }
+        .ctrl-group input[type="number"] { width: 90px; }
+
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-run { background: var(--purple); color: #fff; }
+        .btn-run:hover { background: #9933ee; }
+        .btn-run:disabled { background: #555; cursor: wait; }
+        .btn-opt { background: var(--cyan); color: #000; }
+        .btn-opt:hover { background: #00c8f0; }
+        .btn-opt:disabled { background: #555; color: #888; cursor: wait; }
+
+        /* TABS */
+        .tabs {
+            display: flex;
+            gap: 0;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            padding: 0 25px;
+        }
+        .tab {
+            padding: 12px 24px;
+            font-size: 0.9rem;
+            color: var(--text2);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .tab:hover { color: var(--text); }
+        .tab.active { color: var(--purple); border-bottom-color: var(--purple); font-weight: 600; }
+
+        /* CONTENT */
+        .content { padding: 20px 25px; }
+        .panel-section {
+            display: none;
+        }
+        .panel-section.active { display: block; }
+
+        /* CHART */
+        .chart-box {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+
+        /* TABLE */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        .data-table thead { background: #252836; }
+        .data-table th {
+            padding: 10px 12px;
+            text-align: left;
+            color: var(--text2);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+        }
+        .data-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #1e2130;
+        }
+        .data-table tr:hover { background: rgba(170,68,255,0.05); }
+
+        .pos { color: var(--green); }
+        .neg { color: var(--red); }
+        .neutral { color: var(--text2); }
+
+        /* STATUS */
+        .status-bar {
+            background: var(--panel);
+            border-top: 1px solid var(--border);
+            padding: 8px 25px;
+            font-size: 0.8rem;
+            color: var(--text2);
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+        }
+
+        /* SUMMARY CARDS */
+        .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 15px; }
+        .card {
+            flex: 1;
+            min-width: 160px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px;
+        }
+        .card .label { font-size: 0.72rem; color: var(--text2); text-transform: uppercase; margin-bottom: 6px; }
+        .card .value { font-size: 1.4rem; font-weight: 700; }
+
+        /* TICKER CHIPS */
+        .ticker-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        .chip {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            background: #252836;
+            color: var(--text2);
+            transition: all 0.15s;
+        }
+        .chip.selected { background: var(--purple); color: #fff; border-color: var(--purple); }
+        .chip:hover { border-color: var(--purple); }
+
+        /* PROGRESS */
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #252836;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            background: var(--purple);
+            border-radius: 2px;
+            transition: width 0.3s;
+        }
+
+        /* HEATMAP LEGEND */
+        .heatmap-info {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 0.85rem;
+            color: var(--text2);
+        }
+        .heatmap-info .best {
+            color: var(--green);
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- HEADER -->
+    <div class="header">
+        <h1>🔬 STABLE Strategy Lab</h1>
+        <a href="index.html">← Torna al Radar</a>
+    </div>
+
+    <!-- CONTROLS -->
+    <div class="controls">
+        <div class="ctrl-group">
+            <label>Preset Tickers</label>
+            <select id="preset-select" onchange="applyPreset()">
+                <option value="">Seleziona preset...</option>
+                <option value="all">🌍 TUTTI (~720 tickers)</option>
+                <option value="us_all">🇺🇸 US Tutti (~200)</option>
+                <option value="mega">🏛️ US Mega Cap (8)</option>
+                <option value="tech">💻 US Tech (8)</option>
+                <option value="eu">🇪🇺 Europa Mix (8)</option>
+                <option value="crypto">🪙 Crypto (6)</option>
+                <option value="etf">📊 Major ETFs (8)</option>
+                <option value="custom">✏️ Custom...</option>
+            </select>
+        </div>
+        <div class="ctrl-group">
+            <label>Tickers (virgola)</label>
+            <input type="text" id="tickers-input" placeholder="AAPL,MSFT,GOOGL..." style="width:280px;">
+        </div>
+        <div class="ctrl-group">
+            <label>Entry ></label>
+            <input type="number" id="param-entry" value="0" step="0.1">
+        </div>
+        <div class="ctrl-group">
+            <label>Exit <</label>
+            <input type="number" id="param-exit" value="0" step="0.1">
+        </div>
+        <div class="ctrl-group">
+            <label>Alpha</label>
+            <input type="number" id="param-alpha" value="200" step="10">
+        </div>
+        <div class="ctrl-group">
+            <label>Start Date</label>
+            <input type="text" id="param-start" value="2023-01-01" style="width:120px;">
+        </div>
+        <div class="ctrl-group" style="flex-direction:row; gap:8px; align-items:flex-end;">
+            <button class="btn btn-run" id="btn-run" onclick="runAnalysis()">▶ Analizza</button>
+            <button class="btn btn-opt" id="btn-opt" onclick="runOptimizer()">🔍 Ottimizza</button>
+        </div>
+    </div>
+
+    <!-- TICKER CHIPS -->
+    <div style="padding: 8px 25px; background: var(--panel); border-bottom: 1px solid var(--border);">
+        <div class="ticker-chips" id="ticker-chips"></div>
+        <div class="progress-bar" id="progress-bar" style="display:none;"><div class="fill" id="progress-fill"></div></div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+        <div class="tab active" data-tab="equity" onclick="switchTab('equity')">📈 Equity Curves</div>
+        <div class="tab" data-tab="trades" onclick="switchTab('trades')">📋 Trades</div>
+        <div class="tab" data-tab="comparison" onclick="switchTab('comparison')">📊 Confronto</div>
+        <div class="tab" data-tab="optimizer" onclick="switchTab('optimizer')">🔍 Optimizer</div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content" style="padding-bottom: 50px;">
+
+        <!-- TAB: EQUITY -->
+        <div class="panel-section active" id="panel-equity">
+            <div class="cards" id="summary-cards"></div>
+            <div class="chart-box">
+                <div id="chart-equity" style="width:100%; height:450px;"></div>
+            </div>
+            <div class="chart-box">
+                <div id="chart-slopes" style="width:100%; height:300px;"></div>
+            </div>
+        </div>
+
+        <!-- TAB: TRADES -->
+        <div class="panel-section" id="panel-trades">
+            <div class="ctrl-group" style="margin-bottom:12px;">
+                <label>Filtra Ticker</label>
+                <select id="trades-filter" onchange="renderTradesTable()">
+                    <option value="ALL">Tutti</option>
+                </select>
+            </div>
+            <div class="chart-box" style="overflow-x:auto;">
+                <table class="data-table" id="trades-table">
+                    <thead>
+                        <tr>
+                            <th>Ticker</th>
+                            <th>Entry Date</th>
+                            <th>Exit Date</th>
+                            <th>Direction</th>
+                            <th style="text-align:right;">Entry $</th>
+                            <th style="text-align:right;">Exit $</th>
+                            <th style="text-align:right;">P/L %</th>
+                            <th style="text-align:right;">Capital</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trades-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB: COMPARISON -->
+        <div class="panel-section" id="panel-comparison">
+            <div class="chart-box">
+                <div id="chart-comparison" style="width:100%; height:400px;"></div>
+            </div>
+            <div class="chart-box" style="overflow-x:auto;">
+                <table class="data-table" id="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Ticker</th>
+                            <th style="text-align:right;">Return %</th>
+                            <th style="text-align:right;">Win Rate %</th>
+                            <th style="text-align:right;">Trades</th>
+                            <th style="text-align:right;">Avg Trade %</th>
+                            <th style="text-align:right;">Max DD %</th>
+                            <th style="text-align:right;">Profit Factor</th>
+                            <th style="text-align:right;">Capital Finale</th>
+                        </tr>
+                    </thead>
+                    <tbody id="comparison-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB: OPTIMIZER -->
+        <div class="panel-section" id="panel-optimizer">
+            <div class="heatmap-info" id="opt-info"></div>
+            <div class="chart-box">
+                <div id="chart-heatmap" style="width:100%; height:500px;"></div>
+            </div>
+            <div class="chart-box" style="overflow-x:auto;">
+                <h4 style="color:var(--purple); margin-bottom:10px;">Top 10 Combinazioni</h4>
+                <table class="data-table" id="opt-table">
+                    <thead>
+                        <tr>
+                            <th>Entry ></th>
+                            <th>Exit <</th>
+                            <th style="text-align:right;">Avg Return %</th>
+                            <th style="text-align:right;">Avg Win Rate %</th>
+                            <th style="text-align:right;">Avg Trades</th>
+                            <th style="text-align:right;">Tickers Positivi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="opt-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- STATUS BAR -->
+    <div class="status-bar" id="status-bar">Pronto. Seleziona i tickers e premi Analizza.</div>
+
+    <script src="tickers.js?v=6"></script>
+    <script src="test_stable.js?v=1"></script>
+</body>
+</html>
