@@ -104,25 +104,38 @@ Il sistema implementa diverse logiche di trading simulate nel backend (`backtest
 1.  **LIVE Strategy:** Usa i segnali attuali.
 2.  **FROZEN Strategy:** Usa i segnali "congelati" storici (più realistica).
 3.  **SUM Strategy (Minima Azione ibrida):** Combina Z-Score e trend direzionale.
-4.  **STABLE Strategy (🟣 viola):** Usa gli indicatori stabili causali (Stable Kinetic Z + Stable Slope). Sostituisce la precedente "MA Strategy" (Min Action, blu). Implementata come STRATEGIA 5 nel backend.
+4.  **STABLE Strategy (🟣 viola):** Dual LONG+SHORT in parallelo sulla **Stable Slope** (linea verde F.Slope). LONG: entry slope>0, exit slope<-0.3. SHORT: entry slope<0, exit slope>0.2. Backtest custom (non usa `backtest_strategy`). Implementata come STRATEGIA 5 nel backend.
 
-### Indicatori Stabili (Causal Indicators)
-Introdotti per risolvere il problema del look-ahead bias. Una volta calcolati, i valori passati **non cambiano mai** aggiungendo nuovi dati.
+### STABLE Strategy — Dettaglio Implementazione (STRATEGIA 5)
+La strategia viola usa la **Stable Slope** (`stable_slope_line` = EMA(14) di dF, linea verde nel pannello F.Slope).
+Gestisce **due posizioni in parallelo** con backtest custom (non usa `backtest_strategy()`):
+
+**LONG leg:**
+-   Entry: stable_slope > 0.0 (slope positiva → trend rialzista)
+-   Exit: stable_slope < -0.3 (trend cala forte)
+-   Hysteresis: tra -0.3 e 0, LONG resta aperto
+
+**SHORT leg (in parallelo):**
+-   Entry: stable_slope < 0.0 (slope negativa → trend ribassista)
+-   Exit: stable_slope > 0.2 (trend risale)
+-   Hysteresis: tra 0 e 0.2, SHORT resta aperto
+
+**P/L curve**: combinato LONG+SHORT (entrambe le posizioni contribuiscono).
+**Output**: formato identico a `backtest_strategy()` (equity_curve, trades, trade_pnl_curve, stats).
+-   **Scanner**: lo scanner chiama `/analyze` per ogni ticker, quindi riceve `stable_strategy` con la stessa logica.
+
+### Indicatori Stabili (Causal Indicators) — Pannello S.KinZ
+Usati per la visualizzazione nel pannello S.KinZ (NON più per la strategia STABLE). I valori passati **non cambiano mai** aggiungendo nuovi dati.
 
 -   **Stable Kinetic Z:**
     -   Base: EMA(20) forward-only su dF (derivata prezzi), poi `0.5 * alpha * dF_smooth²`.
     -   Z-Score rolling 252 giorni.
-    -   **Hysteresis ±0.5:** regime bullish quando Z > +0.5, bearish quando Z < -0.5, altrimenti mantiene stato precedente. Elimina ~83% dei falsi zero-crossing.
-    -   Ottimizzato via grid search su 8 tipi di mercato sintetici: 82.9% precisione, 17.1% FPR, ~11 switch.
+    -   **Hysteresis ±0.5:** regime bullish quando Z > +0.5, bearish quando Z < -0.5.
     -   **NON usa `filtfilt`** (non-causale). Usa solo EMA forward-only.
     -   Parametro: `req.alpha` (non `alpha` bare).
 
 -   **Stable Slope:**
-    -   Slope stabilizzata, calcolata con metodo causale.
-
--   **Regime Array:**
-    -   Array di +1 / -1 / 0 generato dall'hysteresis.
-    -   Passato come `z_kinetic` a `backtest_strategy()` con `threshold=0.5` per riutilizzare la funzione esistente senza modifiche.
+    -   Slope stabilizzata, calcolata con metodo causale (EMA(14) su dF).
 
 ---
 

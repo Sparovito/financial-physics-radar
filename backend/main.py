@@ -13,6 +13,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 import yfinance as yf
+from scipy.signal import butter, filtfilt
 
 # Ensure the directory containing this file is in the Python path
 # This fixes "ModuleNotFoundError: No module named 'logic'" on Railway
@@ -347,11 +348,8 @@ def analyze_stock(req: AnalysisRequest):
             # [NEW] Apply Zero-Phase Low-Pass Filter (Butterworth)
             # This smooths the signal without introducing lag
             try:
-                # Filter parameters: order=2, cutoff=0.05 (normalized frequency)
-                # Lower cutoff = more smoothing. Range [0.01, 0.1] typical.
                 b, a = butter(N=2, Wn=0.05, btype='low')
-                z_frozen_sum_filtered = filtfilt(b, a, z_frozen_sum).tolist()
-                z_frozen_sum = z_frozen_sum_filtered
+                z_frozen_sum = filtfilt(b, a, z_frozen_sum).tolist()
             except Exception as e:
                 print(f"⚠️ Filter failed (keeping raw): {e}")
             
@@ -422,9 +420,7 @@ def analyze_stock(req: AnalysisRequest):
                     roll_std = s_trunc.rolling(window=252, min_periods=20).std()
                     z_trunc = ((s_trunc - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
                     
-                    # 2. Filter (Butterworth)
                     try:
-                        from scipy.signal import butter, filtfilt
                         b, a = butter(N=2, Wn=0.05, btype='low')
                         if len(z_trunc) > 15:
                             trunc_z_sum = filtfilt(b, a, z_trunc).tolist()
@@ -653,22 +649,132 @@ def analyze_stock(req: AnalysisRequest):
             trend_curve=price_min_action 
         )
         
-        # --- STRATEGIA 5: STABLE (Indicatori Causali + Isteresi) ---
-        # Usa stable_kinetic_z con isteresi (±0.5) per timing
-        # Usa stable_slope per direzione (LONG/SHORT)
-        # Il regime (1/-1) viene passato come z_kinetic con threshold=0.5
-        # → Entry: regime=+1 (z>0.5), Exit: regime=-1 (z<-0.5)
-        # Ottimizzato via grid search su 8 mercati: 82.9% precision, 17.1% FPR
-        backtest_result_stable = backtest_strategy(
-            prices=price_real,
-            z_kinetic=stable_kinetic_z_regime,  # Regime: +1, -1, 0
-            z_slope=stable_slope_line,           # Stable Slope per direzione
-            dates=dates_historical,
-            start_date=req.start_date,
-            end_date=req.end_date,
-            threshold=0.5,   # regime > 0.5 → entry, regime < 0.5 → exit
-            use_z_roc=False  # Usa z_slope (stable_slope) per direzione
-        )
+        # --- STRATEGIA 5: STABLE (Stable Slope, linea verde F.Slope) ---
+        # Dual: LONG + SHORT in parallelo sulla stable_slope_line
+        #   LONG:  entry slope > 0.0,  exit slope < -0.3
+        #   SHORT: entry slope < 0.0,  exit slope > 0.2
+        LONG_ENTRY = 0.0
+        LONG_EXIT = -0.3
+        SHORT_ENTRY = 0.0
+        SHORT_EXIT = 0.2
+
+        capital_stable = 1000.0
+        long_in = False
+        short_in = False
+        long_entry_price = None
+        short_entry_price = None
+        long_entry_date = None
+        short_entry_date = None
+        trades_stable = []
+        trade_pnl_stable = []
+        equity_stable = []
+
+        for i, date in enumerate(dates_historical):
+            if date is None or (req.start_date and date < req.start_date) or (req.end_date and date > req.end_date):
+                trade_pnl_stable.append(0)
+                eq_pct = ((capital_stable - 1000) / 1000) * 100
+                equity_stable.append(round(eq_pct, 2))
+                continue
+
+            price = price_real[i]
+            s_val = stable_slope_line[i] if i < len(stable_slope_line) else 0
+
+            if price is None:
+                trade_pnl_stable.append(0)
+                equity_stable.append(equity_stable[-1] if equity_stable else 0)
+                continue
+
+            # --- LONG leg ---
+            if not long_in and s_val > LONG_ENTRY:
+                long_in = True
+                long_entry_price = price
+                long_entry_date = date
+            elif long_in and s_val < LONG_EXIT:
+                pnl = ((price - long_entry_price) / long_entry_price) * 100
+                capital_stable *= (1 + pnl / 100)
+                trades_stable.append({
+                    "entry_date": long_entry_date, "exit_date": date,
+                    "direction": "LONG", "entry_price": round(long_entry_price, 2),
+                    "exit_price": round(price, 2), "pnl_pct": round(pnl, 2),
+                    "capital_after": round(capital_stable, 2),
+                    "entry_z_value": 0, "entry_z_roc": 0
+                })
+                long_in = False
+                long_entry_price = None
+
+            # --- SHORT leg ---
+            if not short_in and s_val < SHORT_ENTRY:
+                short_in = True
+                short_entry_price = price
+                short_entry_date = date
+            elif short_in and s_val > SHORT_EXIT:
+                pnl = ((short_entry_price - price) / short_entry_price) * 100
+                capital_stable *= (1 + pnl / 100)
+                trades_stable.append({
+                    "entry_date": short_entry_date, "exit_date": date,
+                    "direction": "SHORT", "entry_price": round(short_entry_price, 2),
+                    "exit_price": round(price, 2), "pnl_pct": round(pnl, 2),
+                    "capital_after": round(capital_stable, 2),
+                    "entry_z_value": 0, "entry_z_roc": 0
+                })
+                short_in = False
+                short_entry_price = None
+
+            # --- P/L corrente combinato ---
+            current_pnl = 0
+            if long_in:
+                current_pnl += ((price - long_entry_price) / long_entry_price) * 100
+            if short_in:
+                current_pnl += ((short_entry_price - price) / short_entry_price) * 100
+            trade_pnl_stable.append(round(current_pnl, 2))
+
+            # Equity
+            temp_cap = capital_stable
+            if long_in:
+                temp_cap *= (1 + ((price - long_entry_price) / long_entry_price))
+            if short_in:
+                temp_cap *= (1 + ((short_entry_price - price) / short_entry_price))
+            eq_pct = ((temp_cap - 1000) / 1000) * 100
+            equity_stable.append(round(eq_pct, 2))
+
+        # Chiudi posizioni aperte a fine periodo (formato OPEN standard)
+        final_price = price_real[-1] if price_real[-1] else price_real[-2]
+        if long_in and final_price:
+            pnl = ((final_price - long_entry_price) / long_entry_price) * 100
+            trades_stable.append({
+                "entry_date": long_entry_date, "exit_date": "OPEN",
+                "direction": "LONG", "entry_price": round(long_entry_price, 2),
+                "exit_price": round(final_price, 2), "pnl_pct": round(pnl, 2),
+                "capital_after": round(capital_stable * (1 + pnl/100), 2),
+                "entry_z_value": 0, "entry_z_roc": 0
+            })
+        if short_in and final_price:
+            pnl = ((short_entry_price - final_price) / short_entry_price) * 100
+            trades_stable.append({
+                "entry_date": short_entry_date, "exit_date": "OPEN",
+                "direction": "SHORT", "entry_price": round(short_entry_price, 2),
+                "exit_price": round(final_price, 2), "pnl_pct": round(pnl, 2),
+                "capital_after": round(capital_stable * (1 + pnl/100), 2),
+                "entry_z_value": 0, "entry_z_roc": 0
+            })
+
+        # Stats
+        n_trades = len(trades_stable)
+        wins = sum(1 for t in trades_stable if t['pnl_pct'] > 0)
+        final_cap = trades_stable[-1]['capital_after'] if trades_stable else capital_stable
+        backtest_result_stable = {
+            "equity_curve": equity_stable,
+            "trades": trades_stable,
+            "skipped_trades": [],
+            "trade_pnl_curve": trade_pnl_stable,
+            "stats": {
+                "final_capital": round(final_cap, 2),
+                "total_return": round(((final_cap - 1000) / 1000) * 100, 2),
+                "win_rate": round((wins / n_trades * 100), 1) if n_trades > 0 else 0,
+                "total_trades": n_trades,
+                "avg_trade_pct": round(sum(t['pnl_pct'] for t in trades_stable) / n_trades, 2) if n_trades > 0 else 0
+            }
+        }
 
         # Dati Futuri (Proiezione)
         # Nota: future_idx potrebbe contenere timestamp o interi, convertiamo
@@ -921,15 +1027,8 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                         z_frozen_raw = ((s_sum - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
                         
                         try:
-                            from scipy.signal import butter, filtfilt
-                            # Match parameter from analyze_stock? Checking Wn. 
-                            # If analyze uses 0.1, we should use 0.1. Typically I used 0.1 in previous steps.
-                            # Let's standardize to 0.1 matching verify output findings if recent view_file confirmed. 
-                            # However recent view_file showed 0.05 in verify but didn't show analyze definition.
-                            # I will assume 0.05 as it was in verify, but to be safer I stick to what was there unless confirmed.
-                            # BUT, wait, I saw analyze_stock line 498 threshold=-0.3.
-                            # I'll stick to 0.05 to avoid changing signal logic blindly, but ensure robustness.
-                            b, a = butter(N=2, Wn=0.05, btype='low') 
+                        try:
+                            b, a = butter(N=2, Wn=0.05, btype='low')
                             
                             if len(z_frozen_raw) > 15:
                                 z_frozen_sum_filtered = filtfilt(b, a, z_frozen_raw).tolist()

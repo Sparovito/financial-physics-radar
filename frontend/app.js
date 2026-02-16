@@ -981,7 +981,60 @@ function renderTradesList() {
         }
     });
 
-    let html = '<table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">';
+    let html = '';
+
+    // --- STABLE: Summary header con stats LONG/SHORT separati ---
+    if (viewMode === 'STABLE') {
+        const longTrades = trades.filter(t => t.direction === 'LONG');
+        const shortTrades = trades.filter(t => t.direction === 'SHORT');
+        const longClosed = longTrades.filter(t => t.exit_date !== 'OPEN');
+        const shortClosed = shortTrades.filter(t => t.exit_date !== 'OPEN');
+        const longOpen = longTrades.filter(t => t.exit_date === 'OPEN');
+        const shortOpen = shortTrades.filter(t => t.exit_date === 'OPEN');
+
+        const longWins = longClosed.filter(t => t.pnl_pct > 0).length;
+        const shortWins = shortClosed.filter(t => t.pnl_pct > 0).length;
+        const longPnl = longClosed.reduce((s, t) => s + t.pnl_pct, 0);
+        const shortPnl = shortClosed.reduce((s, t) => s + t.pnl_pct, 0);
+        const longWR = longClosed.length > 0 ? Math.round(longWins / longClosed.length * 100) : 0;
+        const shortWR = shortClosed.length > 0 ? Math.round(shortWins / shortClosed.length * 100) : 0;
+
+        html += `<div style="display:flex; gap:10px; margin-bottom:15px;">`;
+        // LONG box
+        html += `<div style="flex:1; background:rgba(0,255,136,0.08); border:1px solid rgba(0,255,136,0.3); border-radius:8px; padding:12px;">
+            <div style="color:#00ff88; font-weight:bold; font-size:0.95rem; margin-bottom:8px;">🟢 LONG</div>
+            <div style="color:#aaa; font-size:0.82rem;">
+                Trades: <span style="color:#fff;">${longClosed.length}</span>${longOpen.length > 0 ? ` <span style="color:#ff9900;">(+${longOpen.length} open)</span>` : ''}<br>
+                Win Rate: <span style="color:#fff;">${longWR}%</span><br>
+                P/L Tot: <span style="color:${longPnl >= 0 ? '#00ff88' : '#ff4444'}; font-weight:bold;">${longPnl >= 0 ? '+' : ''}${longPnl.toFixed(1)}%</span>
+            </div>
+        </div>`;
+        // SHORT box
+        html += `<div style="flex:1; background:rgba(255,68,68,0.08); border:1px solid rgba(255,68,68,0.3); border-radius:8px; padding:12px;">
+            <div style="color:#ff4444; font-weight:bold; font-size:0.95rem; margin-bottom:8px;">🔴 SHORT</div>
+            <div style="color:#aaa; font-size:0.82rem;">
+                Trades: <span style="color:#fff;">${shortClosed.length}</span>${shortOpen.length > 0 ? ` <span style="color:#ff9900;">(+${shortOpen.length} open)</span>` : ''}<br>
+                Win Rate: <span style="color:#fff;">${shortWR}%</span><br>
+                P/L Tot: <span style="color:${shortPnl >= 0 ? '#00ff88' : '#ff4444'}; font-weight:bold;">${shortPnl >= 0 ? '+' : ''}${shortPnl.toFixed(1)}%</span>
+            </div>
+        </div>`;
+        // COMBINED box
+        const totalPnl = longPnl + shortPnl;
+        const totalTrades = longClosed.length + shortClosed.length;
+        const totalWins = longWins + shortWins;
+        const totalWR = totalTrades > 0 ? Math.round(totalWins / totalTrades * 100) : 0;
+        html += `<div style="flex:1; background:rgba(170,68,255,0.08); border:1px solid rgba(170,68,255,0.3); border-radius:8px; padding:12px;">
+            <div style="color:#aa44ff; font-weight:bold; font-size:0.95rem; margin-bottom:8px;">🟣 COMBINED</div>
+            <div style="color:#aaa; font-size:0.82rem;">
+                Trades: <span style="color:#fff;">${totalTrades}</span><br>
+                Win Rate: <span style="color:#fff;">${totalWR}%</span><br>
+                P/L Tot: <span style="color:${totalPnl >= 0 ? '#00ff88' : '#ff4444'}; font-weight:bold;">${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(1)}%</span>
+            </div>
+        </div>`;
+        html += `</div>`;
+    }
+
+    html += '<table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">';
     html += `<tr style="color: #888; border-bottom: 1px solid #333;">
         <th style="text-align: left; padding: 8px;">Data</th>
         <th style="text-align: center; padding: 8px;">Tipo</th>
@@ -990,17 +1043,19 @@ function renderTradesList() {
         <th style="text-align: right; padding: 8px;">P/L %</th>
     </tr>`;
 
-    // Sort by recent first? usually sequential is better. We keep array order.
-    // Trades are typically oldest to newest. Reverse for newest first?
+    // Trades are oldest to newest. Reverse for newest first.
     const tradesReversed = [...trades].reverse();
 
     tradesReversed.forEach((t, idx) => {
         const isOpen = t.exit_date === 'OPEN';
 
-        // Custom styling for OPEN trades
+        // Custom styling for OPEN trades + STABLE LONG/SHORT border
+        const stableBorder = (viewMode === 'STABLE')
+            ? `border-left: 3px solid ${t.direction === 'LONG' ? '#00ff88' : '#ff4444'};`
+            : '';
         const rowStyle = isOpen
-            ? 'border-bottom: 1px solid #444; background: rgba(255, 153, 0, 0.15); box-shadow: 0 0 5px rgba(255,153,0,0.2) inset;'
-            : 'border-bottom: 1px solid #222;';
+            ? `border-bottom: 1px solid #444; background: rgba(255, 153, 0, 0.15); box-shadow: 0 0 5px rgba(255,153,0,0.2) inset; ${stableBorder}`
+            : `border-bottom: 1px solid #222; ${stableBorder}`;
 
         const exitDateDisplay = isOpen
             ? '<span style="color: #ff9900; font-weight: bold; border: 1px solid #ff9900; padding: 2px 6px; border-radius: 4px; font-size: 0.8em;">⚠️ IN CORSO</span>'
@@ -3068,8 +3123,8 @@ function getTradeMarkerShapes() {
             });
         }
 
-        // Exit line (SELL - darker)
-        if (trade.exit_date) {
+        // Exit line (SELL - darker) — skip if OPEN (no exit yet)
+        if (trade.exit_date && trade.exit_date !== 'OPEN') {
             shapes.push({
                 type: 'line',
                 x0: trade.exit_date,

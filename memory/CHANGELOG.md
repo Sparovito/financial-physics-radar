@@ -2,6 +2,7 @@
 
 | Deploy ID | Date       | Change                                                                                            |
 | --------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| PENDING   | 2026-02-16 | Feat: STABLE Strategy v4 — Dual LONG+SHORT su Stable Slope (LONG: 0/-0.3, SHORT: 0/+0.2)          |
 | 0bebe34   | 2026-02-16 | Cleanup: Remove all MA (Min Action) references — replaced entirely by STABLE strategy (purple)     |
 | 0bebe34   | 2026-02-16 | Feat: Replace MA columns with STABLE in Scanner table (purple `#aa44ff`, reads `stable_strategy`)  |
 | 0bebe34   | 2026-02-16 | Style: Compact annotation buttons (🟢🔴🔵🟣⚪🗑️) from vertical list to 3x2 CSS grid             |
