@@ -1027,9 +1027,8 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                         z_frozen_raw = ((s_sum - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
                         
                         try:
-                        try:
                             b, a = butter(N=2, Wn=0.05, btype='low')
-                            
+
                             if len(z_frozen_raw) > 15:
                                 z_frozen_sum_filtered = filtfilt(b, a, z_frozen_raw).tolist()
                                 z_signal_short = z_frozen_sum_filtered
