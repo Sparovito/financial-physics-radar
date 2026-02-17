@@ -536,6 +536,7 @@ function renderAll(entryTh, exitTh) {
 function renderEquityChart() {
     const traces = [];
     const colors = ['#aa44ff','#00ff88','#ff9900','#00e5ff','#ff4444','#3366ff','#ffff00','#ff66cc','#88ff00','#ff8800'];
+    const nTickers = Object.keys(RESULTS).length;
 
     let i = 0;
     for (const [ticker, r] of Object.entries(RESULTS)) {
@@ -545,9 +546,24 @@ function renderEquityChart() {
             name: `${ticker} (${r.backtest.stats.total_return > 0 ? '+' : ''}${r.backtest.stats.total_return}%)`,
             type: 'scatter',
             mode: 'lines',
-            line: { color: colors[i % colors.length], width: 2 }
+            line: { color: colors[i % colors.length], width: 1.5 },
+            opacity: nTickers > 5 ? 0.3 : 0.8  // Fade individual lines when many tickers
         });
         i++;
+    }
+
+    // PORTAFOGLIO EQUIPONDERATO (media di tutte le equity curves)
+    if (nTickers > 1) {
+        const portfolio = computeEqualWeightPortfolio();
+        traces.push({
+            x: portfolio.dates,
+            y: portfolio.equity,
+            name: `📊 PORTAFOGLIO EW (${portfolio.finalReturn >= 0 ? '+' : ''}${portfolio.finalReturn.toFixed(1)}%)`,
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: '#FFD700', width: 3.5 },
+            opacity: 1
+        });
     }
 
     // Zero line
@@ -564,7 +580,7 @@ function renderEquityChart() {
     }
 
     Plotly.newPlot('chart-equity', traces, {
-        title: { text: 'Equity Curves (STABLE Strategy)', font: { color: '#ccc', size: 14 } },
+        title: { text: 'Equity Curves + Portafoglio Equal-Weight', font: { color: '#ccc', size: 14 } },
         paper_bgcolor: '#1a1d29',
         plot_bgcolor: '#1a1d29',
         font: { color: '#aaa', family: 'Inter' },
@@ -620,26 +636,79 @@ function renderSlopesChart() {
     }, { responsive: true });
 }
 
+// --- EQUAL-WEIGHT PORTFOLIO (media di tutte le equity curves) ---
+// Ogni ticker pesa "1" come se costasse 100. Calcola la media giornaliera.
+function computeEqualWeightPortfolio() {
+    const tickers = Object.keys(RESULTS);
+    if (tickers.length === 0) return { dates: [], equity: [], finalReturn: 0, maxDD: 0 };
+
+    // Collect all dates across all tickers into a sorted union
+    const dateSet = new Set();
+    for (const t of tickers) {
+        for (const d of RESULTS[t].dates) dateSet.add(d);
+    }
+    const allDates = [...dateSet].sort();
+
+    // For each date, average the equity % of all tickers that have data for that date
+    const avgEquity = [];
+    let maxEq = 0, maxDD = 0;
+
+    for (const date of allDates) {
+        let sum = 0, count = 0;
+        for (const t of tickers) {
+            const r = RESULTS[t];
+            const idx = r.dates.indexOf(date);
+            if (idx >= 0 && idx < r.backtest.equity.length) {
+                sum += r.backtest.equity[idx];
+                count++;
+            }
+        }
+        const avg = count > 0 ? sum / count : (avgEquity.length > 0 ? avgEquity[avgEquity.length - 1] : 0);
+        avgEquity.push(+avg.toFixed(2));
+
+        // Track max drawdown of the portfolio
+        if (avg > maxEq) maxEq = avg;
+        const dd = maxEq > 0 ? ((maxEq - avg) / (100 + maxEq)) * 100 : 0;
+        if (dd > maxDD) maxDD = dd;
+    }
+
+    const finalReturn = avgEquity.length > 0 ? avgEquity[avgEquity.length - 1] : 0;
+    return { dates: allDates, equity: avgEquity, finalReturn, maxDD };
+}
+
 // --- SUMMARY CARDS ---
 function renderSummaryCards() {
     const div = document.getElementById('summary-cards');
     const tickers = Object.keys(RESULTS);
     if (tickers.length === 0) { div.innerHTML = ''; return; }
 
+    // Portfolio equiponderato (media delle equity curves) per chart e Max DD
+    const portfolio = computeEqualWeightPortfolio();
+
+    // Media semplice di TUTTI i trade pnl_pct (come Excel: ogni trade pesa uguale)
+    let allPnl = [];
+    for (const t of tickers) {
+        const trades = RESULTS[t].backtest.trades || [];
+        for (const tr of trades) {
+            if (tr.exit_date !== 'OPEN') {
+                allPnl.push(parseFloat(tr.pnl_pct));
+            }
+        }
+    }
+    const avgPnlSimple = allPnl.length > 0 ? allPnl.reduce((s, v) => s + v, 0) / allPnl.length : 0;
+
     const stats = tickers.map(t => RESULTS[t].backtest.stats);
-    const avgReturn = stats.reduce((s, st) => s + st.total_return, 0) / stats.length;
     const avgWR = stats.reduce((s, st) => s + st.win_rate, 0) / stats.length;
-    const totalTrades = stats.reduce((s, st) => s + st.total_trades, 0);
-    const avgDD = stats.reduce((s, st) => s + st.max_drawdown, 0) / stats.length;
+    const totalTrades = allPnl.length;
     const positivi = stats.filter(st => st.total_return > 0).length;
 
     const c = (v) => v >= 0 ? 'pos' : 'neg';
 
     div.innerHTML = `
-        <div class="card"><div class="label">Return Medio</div><div class="value ${c(avgReturn)}">${avgReturn >= 0 ? '+' : ''}${avgReturn.toFixed(1)}%</div></div>
+        <div class="card"><div class="label">Return Medio</div><div class="value ${c(avgPnlSimple)}">${avgPnlSimple >= 0 ? '+' : ''}${avgPnlSimple.toFixed(1)}%</div></div>
         <div class="card"><div class="label">Win Rate Medio</div><div class="value">${avgWR.toFixed(1)}%</div></div>
         <div class="card"><div class="label">Trades Totali</div><div class="value">${totalTrades}</div></div>
-        <div class="card"><div class="label">Max DD Medio</div><div class="value neg">-${avgDD.toFixed(1)}%</div></div>
+        <div class="card"><div class="label">Max DD Portaf.</div><div class="value neg">-${portfolio.maxDD.toFixed(1)}%</div></div>
         <div class="card"><div class="label">Tickers Positivi</div><div class="value ${positivi > tickers.length / 2 ? 'pos' : 'neg'}">${positivi}/${tickers.length}</div></div>
     `;
 }
