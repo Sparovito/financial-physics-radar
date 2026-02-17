@@ -119,9 +119,20 @@ function renderChips(tickers) {
 
 // ============================================================
 //  BACKTEST ENGINE (runs in browser)
+//  mode: 'LONG' | 'SHORT' | 'BOTH'
+//  LONG:  entry slope > entryTh, exit slope < exitTh
+//  SHORT: entry slope < entryTh, exit slope > exitTh (speculare)
+//  BOTH:  LONG + SHORT in parallelo
 // ============================================================
 
-function backtestStable(dates, prices, slopes, entryTh, exitTh) {
+function backtestStable(dates, prices, slopes, entryTh, exitTh, mode) {
+    if (!mode) mode = 'LONG';
+
+    if (mode === 'BOTH') {
+        return backtestBoth(dates, prices, slopes, entryTh, exitTh);
+    }
+
+    const isShort = (mode === 'SHORT');
     const capital0 = 1000;
     let capital = capital0;
     let inPosition = false;
@@ -139,34 +150,43 @@ function backtestStable(dates, prices, slopes, entryTh, exitTh) {
             continue;
         }
 
-        // ENTRY
-        if (!inPosition && slope > entryTh) {
-            inPosition = true;
-            entryPrice = price;
-            entryDate = dates[i];
-        }
-        // EXIT
-        else if (inPosition && slope < exitTh) {
-            const pnl = ((price - entryPrice) / entryPrice) * 100;
-            capital *= (1 + pnl / 100);
-            trades.push({
-                entry_date: entryDate, exit_date: dates[i],
-                direction: 'LONG', entry_price: +entryPrice.toFixed(2),
-                exit_price: +price.toFixed(2), pnl_pct: +pnl.toFixed(2),
-                capital_after: +capital.toFixed(2)
-            });
-            inPosition = false;
+        if (!inPosition) {
+            // ENTRY: LONG slope > th, SHORT slope < th
+            const shouldEnter = isShort ? (slope < entryTh) : (slope > entryTh);
+            if (shouldEnter) {
+                inPosition = true;
+                entryPrice = price;
+                entryDate = dates[i];
+            }
+        } else {
+            // EXIT: LONG slope < th, SHORT slope > th
+            const shouldExit = isShort ? (slope > exitTh) : (slope < exitTh);
+            if (shouldExit) {
+                const pnl = isShort
+                    ? ((entryPrice - price) / entryPrice) * 100
+                    : ((price - entryPrice) / entryPrice) * 100;
+                capital *= (1 + pnl / 100);
+                trades.push({
+                    entry_date: entryDate, exit_date: dates[i],
+                    direction: mode, entry_price: +entryPrice.toFixed(2),
+                    exit_price: +price.toFixed(2), pnl_pct: +pnl.toFixed(2),
+                    capital_after: +capital.toFixed(2)
+                });
+                inPosition = false;
+            }
         }
 
-        // Equity
+        // Equity (mark-to-market)
         let tempCap = capital;
         if (inPosition) {
-            tempCap *= (1 + ((price - entryPrice) / entryPrice));
+            const unrealized = isShort
+                ? ((entryPrice - price) / entryPrice)
+                : ((price - entryPrice) / entryPrice);
+            tempCap *= (1 + unrealized);
         }
         const eqPct = ((tempCap - capital0) / capital0) * 100;
         equity.push(+eqPct.toFixed(2));
 
-        // Drawdown
         if (tempCap > maxEquity) maxEquity = tempCap;
         const dd = ((maxEquity - tempCap) / maxEquity) * 100;
         if (dd > maxDD) maxDD = dd;
@@ -175,16 +195,99 @@ function backtestStable(dates, prices, slopes, entryTh, exitTh) {
     // Close open position
     if (inPosition) {
         const lastPrice = prices[prices.length - 1];
-        const pnl = ((lastPrice - entryPrice) / entryPrice) * 100;
+        const pnl = isShort
+            ? ((entryPrice - lastPrice) / entryPrice) * 100
+            : ((lastPrice - entryPrice) / entryPrice) * 100;
         trades.push({
             entry_date: entryDate, exit_date: 'OPEN',
-            direction: 'LONG', entry_price: +entryPrice.toFixed(2),
+            direction: mode, entry_price: +entryPrice.toFixed(2),
             exit_price: +lastPrice.toFixed(2), pnl_pct: +pnl.toFixed(2),
             capital_after: +(capital * (1 + pnl / 100)).toFixed(2)
         });
     }
 
-    // Stats
+    return buildStats(trades, equity, capital, capital0, maxDD);
+}
+
+// BOTH mode: LONG + SHORT in parallelo
+function backtestBoth(dates, prices, slopes, entryTh, exitTh) {
+    const capital0 = 1000;
+    let capital = capital0;
+    let longIn = false, shortIn = false;
+    let longEntry = 0, shortEntry = 0, longDate = '', shortDate = '';
+    const trades = [];
+    const equity = [];
+    let maxEquity = capital0;
+    let maxDD = 0;
+
+    for (let i = 0; i < dates.length; i++) {
+        const price = prices[i];
+        const slope = slopes[i];
+        if (price == null || slope == null) {
+            equity.push(equity.length ? equity[equity.length - 1] : 0);
+            continue;
+        }
+
+        // LONG leg
+        if (!longIn && slope > entryTh) {
+            longIn = true; longEntry = price; longDate = dates[i];
+        } else if (longIn && slope < exitTh) {
+            const pnl = ((price - longEntry) / longEntry) * 100;
+            capital *= (1 + pnl / 100);
+            trades.push({
+                entry_date: longDate, exit_date: dates[i], direction: 'LONG',
+                entry_price: +longEntry.toFixed(2), exit_price: +price.toFixed(2),
+                pnl_pct: +pnl.toFixed(2), capital_after: +capital.toFixed(2)
+            });
+            longIn = false;
+        }
+
+        // SHORT leg (speculare)
+        if (!shortIn && slope < entryTh) {
+            shortIn = true; shortEntry = price; shortDate = dates[i];
+        } else if (shortIn && slope > exitTh) {
+            const pnl = ((shortEntry - price) / shortEntry) * 100;
+            capital *= (1 + pnl / 100);
+            trades.push({
+                entry_date: shortDate, exit_date: dates[i], direction: 'SHORT',
+                entry_price: +shortEntry.toFixed(2), exit_price: +price.toFixed(2),
+                pnl_pct: +pnl.toFixed(2), capital_after: +capital.toFixed(2)
+            });
+            shortIn = false;
+        }
+
+        // Equity
+        let tempCap = capital;
+        if (longIn) tempCap *= (1 + ((price - longEntry) / longEntry));
+        if (shortIn) tempCap *= (1 + ((shortEntry - price) / shortEntry));
+        const eqPct = ((tempCap - capital0) / capital0) * 100;
+        equity.push(+eqPct.toFixed(2));
+
+        if (tempCap > maxEquity) maxEquity = tempCap;
+        const dd = ((maxEquity - tempCap) / maxEquity) * 100;
+        if (dd > maxDD) maxDD = dd;
+    }
+
+    // Close open positions
+    const lastPrice = prices[prices.length - 1];
+    if (longIn && lastPrice) {
+        const pnl = ((lastPrice - longEntry) / longEntry) * 100;
+        trades.push({ entry_date: longDate, exit_date: 'OPEN', direction: 'LONG',
+            entry_price: +longEntry.toFixed(2), exit_price: +lastPrice.toFixed(2),
+            pnl_pct: +pnl.toFixed(2), capital_after: +(capital * (1 + pnl / 100)).toFixed(2) });
+    }
+    if (shortIn && lastPrice) {
+        const pnl = ((shortEntry - lastPrice) / shortEntry) * 100;
+        trades.push({ entry_date: shortDate, exit_date: 'OPEN', direction: 'SHORT',
+            entry_price: +shortEntry.toFixed(2), exit_price: +lastPrice.toFixed(2),
+            pnl_pct: +pnl.toFixed(2), capital_after: +(capital * (1 + pnl / 100)).toFixed(2) });
+    }
+
+    return buildStats(trades, equity, capital, capital0, maxDD);
+}
+
+// Shared stats builder
+function buildStats(trades, equity, capital, capital0, maxDD) {
     const closed = trades.filter(t => t.exit_date !== 'OPEN');
     const wins = closed.filter(t => t.pnl_pct > 0).length;
     const losses = closed.filter(t => t.pnl_pct <= 0).length;
@@ -194,8 +297,7 @@ function backtestStable(dates, prices, slopes, entryTh, exitTh) {
     const totalReturn = ((finalCap - capital0) / capital0) * 100;
 
     return {
-        trades,
-        equity,
+        trades, equity,
         stats: {
             total_return: +totalReturn.toFixed(2),
             final_capital: +finalCap.toFixed(2),
@@ -209,37 +311,168 @@ function backtestStable(dates, prices, slopes, entryTh, exitTh) {
     };
 }
 
+// UI helper: update labels when mode changes
+function updateModeLabels() {
+    const mode = document.getElementById('param-mode').value;
+    const labelEntry = document.getElementById('label-entry');
+    const labelExit = document.getElementById('label-exit');
+    if (mode === 'SHORT') {
+        labelEntry.textContent = 'Entry <';
+        labelExit.textContent = 'Exit >';
+    } else {
+        labelEntry.textContent = 'Entry >';
+        labelExit.textContent = 'Exit <';
+    }
+}
+
 // ============================================================
-//  API FETCH (one ticker at a time)
+//  API FETCH
 // ============================================================
 
+function getConcurrency() {
+    return parseInt(document.getElementById('param-concurrency')?.value) || 8;
+}
+
+function getBatchSize() {
+    return parseInt(document.getElementById('param-batchsize')?.value) || 20;
+}
+
+// Single ticker fetch (fallback)
 async function fetchTicker(ticker, alpha, startDate) {
     const body = {
-        ticker: ticker,
-        alpha: alpha,
-        beta: 1.0,
-        start_date: startDate,
-        use_cache: false
+        ticker, alpha, beta: 1.0,
+        start_date: startDate, use_cache: false
     };
-    const url = API_BASE + '/analyze';
-    console.log(`[STABLE Lab] Fetching ${ticker} from ${url}`, body);
-    const resp = await fetch(url, {
+    const resp = await fetch(API_BASE + '/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
     });
     if (!resp.ok) {
         const errText = await resp.text().catch(() => '');
-        console.error(`[STABLE Lab] HTTP ${resp.status} for ${ticker}:`, errText.substring(0, 500));
-        throw new Error(`HTTP ${resp.status}: ${errText.substring(0, 200)}`);
+        throw new Error(`HTTP ${resp.status}: ${errText.substring(0, 100)}`);
     }
-    const data = await resp.json();
-    console.log(`[STABLE Lab] ${ticker} OK — dates:${data.dates?.length}, slopes:${data.indicators?.stable_slope?.length}`);
-    return data;
+    return await resp.json();
+}
+
+// Batch fetch: send N tickers per request, server processes them in parallel
+async function fetchBatch(tickers, alpha, startDate, maxWorkers) {
+    const body = {
+        tickers,
+        alpha,
+        start_date: startDate,
+        max_workers: maxWorkers
+    };
+    const resp = await fetch(API_BASE + '/analyze-batch-stable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        throw new Error(`HTTP ${resp.status}: ${errText.substring(0, 100)}`);
+    }
+    return await resp.json();
+}
+
+// Main parallel fetch: splits tickers into batches, sends MULTIPLE batches concurrently
+// Browser limit = 6 HTTP connections, but each batch = 20 tickers parallel server-side
+// → 6 batches × 20 tickers = 120 tickers processing simultaneously!
+async function fetchTickersParallel(tickers, alpha, startDate, onProgress) {
+    const results = {};
+    let okCount = 0, errCount = 0;
+    const startTime = Date.now();
+    const batchSize = getBatchSize();
+    const maxWorkers = getConcurrency();
+    const MAX_CONCURRENT_BATCHES = 6; // browser HTTP limit
+
+    // Split into batches
+    const batches = [];
+    for (let i = 0; i < tickers.length; i += batchSize) {
+        batches.push(tickers.slice(i, i + batchSize));
+    }
+
+    let doneTickers = 0;
+    const batchQueue = [...batches];
+
+    console.log(`[STABLE Lab] ${tickers.length} tickers → ${batches.length} batches (${batchSize}/batch, ${MAX_CONCURRENT_BATCHES} concurrent, ${maxWorkers} server threads)`);
+
+    function updateProgress(label) {
+        if (!onProgress) return;
+        const elapsed = (Date.now() - startTime) / 1000;
+        const avgPer = doneTickers > 0 ? elapsed / doneTickers : 2;
+        const remaining = avgPer * (tickers.length - doneTickers);
+        const mins = Math.floor(remaining / 60);
+        const secs = Math.floor(remaining % 60);
+        onProgress(label, doneTickers, tickers.length, okCount, errCount, `${mins}m ${secs}s`);
+    }
+
+    // Process a single batch and update results
+    async function processBatch(batch) {
+        const label = batch.length <= 3 ? batch.join(',') : `${batch[0]}..${batch[batch.length-1]}`;
+        try {
+            const data = await fetchBatch(batch, alpha, startDate, maxWorkers);
+
+            if (data.results) {
+                for (const [t, r] of Object.entries(data.results)) {
+                    results[t] = {
+                        dates: r.dates || [],
+                        prices: r.prices || [],
+                        slopes: r.stable_slope || []
+                    };
+                    okCount++;
+                    const chip = document.getElementById('chip-' + t);
+                    if (chip) { chip.style.background = '#2a4030'; chip.style.borderColor = '#00ff88'; chip.style.color = '#00ff88'; }
+                }
+            }
+            if (data.errors) {
+                for (const [t, err] of Object.entries(data.errors)) {
+                    errCount++;
+                    console.warn(`[STABLE Lab] Error ${t}: ${err}`);
+                    const chip = document.getElementById('chip-' + t);
+                    if (chip) {
+                        chip.style.background = '#402a2a'; chip.style.borderColor = '#ff4444';
+                        chip.style.color = '#ff4444'; chip.title = err;
+                    }
+                }
+            }
+        } catch (err) {
+            console.error(`[STABLE Lab] Batch failed: ${label}`, err);
+            for (const t of batch) {
+                errCount++;
+                const chip = document.getElementById('chip-' + t);
+                if (chip) {
+                    chip.style.background = '#402a2a'; chip.style.borderColor = '#ff4444';
+                    chip.style.color = '#ff4444'; chip.title = 'Batch error: ' + err.message;
+                }
+            }
+        }
+        doneTickers += batch.length;
+        updateProgress(label);
+    }
+
+    // Worker pool: run up to MAX_CONCURRENT_BATCHES in parallel
+    async function batchWorker() {
+        while (batchQueue.length > 0) {
+            const batch = batchQueue.shift();
+            await processBatch(batch);
+        }
+    }
+
+    const nWorkers = Math.min(MAX_CONCURRENT_BATCHES, batches.length);
+    const workers = [];
+    for (let w = 0; w < nWorkers; w++) {
+        workers.push(batchWorker());
+    }
+    await Promise.all(workers);
+
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(0);
+    console.log(`[STABLE Lab] Fetch complete: ${okCount} OK, ${errCount} errors in ${totalTime}s`);
+    return { results, okCount, errCount, totalTime };
 }
 
 // ============================================================
-//  MAIN ANALYSIS
+//  MAIN ANALYSIS (parallel)
 // ============================================================
 
 async function runAnalysis() {
@@ -256,68 +489,32 @@ async function runAnalysis() {
     const exitTh = parseFloat(document.getElementById('param-exit').value) || 0;
     const alpha = parseFloat(document.getElementById('param-alpha').value) || 200;
     const startDate = document.getElementById('param-start').value || '2023-01-01';
+    const mode = document.getElementById('param-mode').value || 'LONG';
 
     renderChips(tickers);
-
-    // Clear previous
     for (const k of Object.keys(RESULTS)) delete RESULTS[k];
 
-    let okCount = 0, errCount = 0;
-    const startTime = Date.now();
-
-    for (let i = 0; i < tickers.length; i++) {
-        const t = tickers[i];
-        const chip = document.getElementById('chip-' + t);
-        const pct = ((i) / tickers.length * 100).toFixed(0);
-
-        // ETA calculation
-        let eta = '';
-        if (i > 0) {
-            const elapsed = (Date.now() - startTime) / 1000;
-            const avgPerTicker = elapsed / i;
-            const remaining = avgPerTicker * (tickers.length - i);
-            const mins = Math.floor(remaining / 60);
-            const secs = Math.floor(remaining % 60);
-            eta = ` — ETA ${mins}m ${secs}s`;
+    const { results, okCount, errCount, totalTime } = await fetchTickersParallel(
+        tickers, alpha, startDate,
+        (t, done, total, ok, err, eta) => {
+            setStatus(`[${mode}] Batch ${t} (${done}/${total}) — ✅ ${ok} ❌ ${err} — ETA ${eta} [${getBatchSize()}x batch, ${getConcurrency()} threads]`);
+            setProgress((done / total * 100).toFixed(0));
         }
+    );
 
-        setStatus(`${t} (${i + 1}/${tickers.length}) — ✅ ${okCount} ❌ ${errCount}${eta}`);
-        setProgress(pct);
-
-        try {
-            const data = await fetchTicker(t, alpha, startDate);
-            if (data.status !== 'ok') throw new Error(data.error || 'unknown');
-
-            const dates = data.dates || [];
-            const prices = data.prices || [];
-            const slopes = (data.indicators && data.indicators.stable_slope) || [];
-
-            const bt = backtestStable(dates, prices, slopes, entryTh, exitTh);
-
-            RESULTS[t] = { dates, prices, slopes, backtest: bt };
-            okCount++;
-            if (chip) { chip.style.background = '#2a4030'; chip.style.borderColor = '#00ff88'; chip.style.color = '#00ff88'; }
-        } catch (err) {
-            errCount++;
-            console.error(`[STABLE Lab] Error ${t}:`, err);
-            if (chip) {
-                chip.style.background = '#402a2a';
-                chip.style.borderColor = '#ff4444';
-                chip.style.color = '#ff4444';
-                chip.title = err.message;
-            }
-        }
+    // Run backtest on all fetched data
+    for (const [t, r] of Object.entries(results)) {
+        const bt = backtestStable(r.dates, r.prices, r.slopes, entryTh, exitTh, mode);
+        RESULTS[t] = { ...r, backtest: bt };
     }
 
-    const totalTime = ((Date.now() - startTime) / 1000).toFixed(0);
     setProgress(100);
     setTimeout(() => setProgress(0), 800);
-
     btn.disabled = false;
     btn.textContent = '▶ Analizza';
     RUNNING = false;
 
-    setStatus(`Completato in ${totalTime}s — ✅ ${okCount} OK, ❌ ${errCount} errori su ${tickers.length} tickers. Entry>${entryTh} Exit<${exitTh}`);
+    setStatus(`[${mode}] Completato in ${totalTime}s — ✅ ${okCount} OK, ❌ ${errCount} errori su ${tickers.length} tickers`);
     renderAll(entryTh, exitTh);
 }
 
@@ -477,7 +674,7 @@ function renderTradesTable() {
             <td style="font-weight:600;">${t.ticker}</td>
             <td>${t.entry_date}</td>
             <td>${isOpen ? '<span style="color:#ff9900;">⚠ OPEN</span>' : t.exit_date}</td>
-            <td>🟢 ${t.direction}</td>
+            <td>${t.direction === 'SHORT' ? '🔴' : '🟢'} ${t.direction}</td>
             <td style="text-align:right;">${t.entry_price}</td>
             <td style="text-align:right;">${t.exit_price}</td>
             <td style="text-align:right;" class="${pnlCls}">${sign}${t.pnl_pct}%</td>
@@ -556,8 +753,79 @@ function renderComparisonTable() {
 }
 
 // ============================================================
-//  OPTIMIZER
+//  OPTIMIZER (with Alpha grid search)
 // ============================================================
+
+// Global: stores all optimizer results for browsing
+let OPT_STORE = {}; // { alpha: { entryRange, exitRange, zData, gridResults, best } }
+let OPT_GLOBAL_BEST = null;
+let OPT_ALL_RESULTS = []; // flat list of all grid results across all alphas
+
+// Grid search for a single alpha's tickerData (synchronous, with async yield)
+async function runGridSearch(tickerData, entryRange, exitRange, mode, alphaLabel, progressBase, progressSpan) {
+    const validTickers = Object.keys(tickerData).filter(t => {
+        const d = tickerData[t];
+        if (!d || !d.dates || !d.prices || !d.slopes) return false;
+        if (d.slopes.length === 0 || d.dates.length === 0) return false;
+        return true;
+    });
+
+    const nTickers = validTickers.length;
+    if (nTickers === 0) return { gridResults: [], zData: [], nTickers: 0 };
+
+    const gridResults = [];
+    const zData = [];
+
+    await new Promise((resolve, reject) => {
+        let ei = 0;
+        function processRow() {
+            try {
+                const row = [];
+                const entry = entryRange[ei];
+                for (let xi = 0; xi < exitRange.length; xi++) {
+                    const exit = exitRange[xi];
+                    let sumReturn = 0, sumWR = 0, sumTrades = 0, nPositive = 0, count = 0;
+                    for (const t of validTickers) {
+                        try {
+                            const d = tickerData[t];
+                            const bt = backtestStable(d.dates, d.prices, d.slopes, entry, exit, mode);
+                            sumReturn += bt.stats.total_return;
+                            sumWR += bt.stats.win_rate;
+                            sumTrades += bt.stats.total_trades;
+                            if (bt.stats.total_return > 0) nPositive++;
+                            count++;
+                        } catch (e) { /* skip */ }
+                    }
+                    const avgRet = count > 0 ? sumReturn / count : 0;
+                    row.push(+avgRet.toFixed(2));
+                    gridResults.push({
+                        alpha: alphaLabel, entry, exit,
+                        avgReturn: +avgRet.toFixed(2),
+                        avgWR: count > 0 ? +(sumWR / count).toFixed(1) : 0,
+                        avgTrades: count > 0 ? +(sumTrades / count).toFixed(0) : 0,
+                        nPositive, total: count
+                    });
+                }
+                zData.push(row);
+                ei++;
+                const pct = progressBase + (ei / entryRange.length) * progressSpan;
+                setProgress(pct.toFixed(0));
+                setStatus(`[α=${alphaLabel}] Grid: riga ${ei}/${entryRange.length} (Entry=${entry}) — ${nTickers} tickers`);
+                if (ei < entryRange.length) {
+                    setTimeout(processRow, 0);
+                } else {
+                    resolve();
+                }
+            } catch (err) {
+                console.error(`[Optimizer] Row error α=${alphaLabel}:`, err);
+                reject(err);
+            }
+        }
+        processRow();
+    });
+
+    return { gridResults, zData, nTickers };
+}
 
 async function runOptimizer() {
     if (RUNNING) return;
@@ -569,137 +837,160 @@ async function runOptimizer() {
     btn.disabled = true;
     btn.textContent = '⏳ Ottimizzazione...';
 
-    const alpha = parseFloat(document.getElementById('param-alpha').value) || 200;
     const startDate = document.getElementById('param-start').value || '2023-01-01';
+    const mode = document.getElementById('param-mode').value || 'LONG';
 
-    setStatus('Fase 1: Caricamento dati per optimizer...');
+    // Build Alpha range
+    const alphaMin = parseFloat(document.getElementById('param-alpha-min').value) || 100;
+    const alphaMax = parseFloat(document.getElementById('param-alpha-max').value) || 400;
+    const alphaStep = parseFloat(document.getElementById('param-alpha-step').value) || 50;
+    const alphaRange = [];
+    for (let a = alphaMin; a <= alphaMax; a += alphaStep) alphaRange.push(+a.toFixed(0));
+    if (alphaRange.length === 0) alphaRange.push(200); // fallback
+
+    const entryRange = [];
+    for (let e = -1.5; e <= 1.5; e += 0.1) entryRange.push(+e.toFixed(1));
+    const exitRange = [];
+    for (let x = -1.5; x <= 1.5; x += 0.1) exitRange.push(+x.toFixed(1));
+
+    const totalCombos = entryRange.length * exitRange.length * alphaRange.length;
+    console.log(`[Optimizer] ${alphaRange.length} alphas × ${entryRange.length * exitRange.length} combos × ${tickers.length} tickers`);
+
     renderChips(tickers);
+    OPT_STORE = {};
+    OPT_ALL_RESULTS = [];
+    OPT_GLOBAL_BEST = null;
 
-    // Fetch all data first (if not already cached)
-    const tickerData = {};
-    for (let i = 0; i < tickers.length; i++) {
-        const t = tickers[i];
-        setProgress(((i) / tickers.length) * 50);
-        setStatus(`Caricamento ${t} (${i + 1}/${tickers.length})...`);
-        const chip = document.getElementById('chip-' + t);
+    const progressPerAlpha = 100 / alphaRange.length;
 
-        if (RESULTS[t]) {
-            tickerData[t] = { dates: RESULTS[t].dates, prices: RESULTS[t].prices, slopes: RESULTS[t].slopes };
-            if (chip) { chip.style.background = '#2a4030'; chip.style.borderColor = '#00ff88'; chip.style.color = '#00ff88'; }
+    for (let ai = 0; ai < alphaRange.length; ai++) {
+        const alpha = alphaRange[ai];
+        const pBase = ai * progressPerAlpha;
+
+        // === FETCH PHASE for this Alpha ===
+        setStatus(`[α=${alpha}] Fase 1: Scaricamento dati (${ai + 1}/${alphaRange.length} alpha)...`);
+
+        const { results, okCount, errCount } = await fetchTickersParallel(
+            tickers, alpha, startDate,
+            (t, done, total, ok, err, eta) => {
+                setStatus(`[α=${alpha}] Fetch: ${t} (${done}/${total}) — ✅ ${ok} ❌ ${err} — ETA ${eta}`);
+                setProgress((pBase + (done / total) * progressPerAlpha * 0.5).toFixed(0));
+            }
+        );
+
+        if (okCount === 0) {
+            console.warn(`[Optimizer] α=${alpha}: no valid tickers, skipping`);
             continue;
         }
+
+        // === GRID SEARCH for this Alpha ===
+        const gridBase = pBase + progressPerAlpha * 0.5;
+        const gridSpan = progressPerAlpha * 0.5;
+
         try {
-            const data = await fetchTicker(t, alpha, startDate);
-            if (data.status !== 'ok') throw new Error(data.error || 'fail');
-            tickerData[t] = {
-                dates: data.dates || [],
-                prices: data.prices || [],
-                slopes: (data.indicators && data.indicators.stable_slope) || []
-            };
-            if (chip) { chip.style.background = '#2a4030'; chip.style.borderColor = '#00ff88'; chip.style.color = '#00ff88'; }
+            const { gridResults, zData, nTickers } = await runGridSearch(
+                results, entryRange, exitRange, mode, alpha, gridBase, gridSpan
+            );
+
+            if (gridResults.length === 0) continue;
+
+            const sorted = [...gridResults].sort((a, b) => b.avgReturn - a.avgReturn);
+            const best = sorted[0];
+
+            OPT_STORE[alpha] = { entryRange, exitRange, zData, gridResults: sorted, best, nTickers };
+            OPT_ALL_RESULTS.push(...gridResults);
+
+            if (!OPT_GLOBAL_BEST || best.avgReturn > OPT_GLOBAL_BEST.avgReturn) {
+                OPT_GLOBAL_BEST = best;
+            }
+
+            console.log(`[Optimizer] α=${alpha}: Best Entry>${best.entry} Exit<${best.exit} → ${best.avgReturn}% (${nTickers} tickers)`);
         } catch (err) {
-            console.error(`Opt error ${t}:`, err);
-            if (chip) { chip.style.background = '#402a2a'; chip.style.borderColor = '#ff4444'; chip.style.color = '#ff4444'; }
+            console.error(`[Optimizer] Grid search failed for α=${alpha}:`, err);
         }
-    }
-
-    // Parameter grid
-    const entryRange = [];
-    for (let e = -0.5; e <= 0.5; e += 0.1) entryRange.push(+e.toFixed(1));
-    const exitRange = [];
-    for (let x = -0.5; x <= 0.5; x += 0.1) exitRange.push(+x.toFixed(1));
-
-    setStatus('Fase 2: Grid search in corso...');
-
-    const gridResults = [];
-    const totalCombos = entryRange.length * exitRange.length;
-    let comboIdx = 0;
-
-    // Build heatmap data
-    const zData = [];
-    const validTickers = Object.keys(tickerData);
-
-    for (let ei = 0; ei < entryRange.length; ei++) {
-        const row = [];
-        for (let xi = 0; xi < exitRange.length; xi++) {
-            const entry = entryRange[ei];
-            const exit = exitRange[xi];
-            comboIdx++;
-
-            if (comboIdx % 20 === 0) {
-                setProgress(50 + (comboIdx / totalCombos) * 50);
-            }
-
-            // Run backtest for all tickers
-            let sumReturn = 0;
-            let sumWR = 0;
-            let sumTrades = 0;
-            let nPositive = 0;
-            let count = 0;
-
-            for (const t of validTickers) {
-                const d = tickerData[t];
-                const bt = backtestStable(d.dates, d.prices, d.slopes, entry, exit);
-                sumReturn += bt.stats.total_return;
-                sumWR += bt.stats.win_rate;
-                sumTrades += bt.stats.total_trades;
-                if (bt.stats.total_return > 0) nPositive++;
-                count++;
-            }
-
-            const avgRet = count > 0 ? sumReturn / count : 0;
-            const avgWR = count > 0 ? sumWR / count : 0;
-            const avgTrades = count > 0 ? sumTrades / count : 0;
-
-            row.push(+avgRet.toFixed(2));
-            gridResults.push({
-                entry, exit,
-                avgReturn: +avgRet.toFixed(2),
-                avgWR: +avgWR.toFixed(1),
-                avgTrades: +avgTrades.toFixed(0),
-                nPositive,
-                total: count
-            });
-        }
-        zData.push(row);
     }
 
     setProgress(100);
     setTimeout(() => setProgress(0), 800);
 
-    // Sort and find best
-    gridResults.sort((a, b) => b.avgReturn - a.avgReturn);
-    const best = gridResults[0];
+    if (!OPT_GLOBAL_BEST) {
+        setStatus('❌ Nessun risultato dall\'ottimizzazione.');
+        btn.disabled = false;
+        btn.textContent = '🔍 Ottimizza';
+        RUNNING = false;
+        return;
+    }
 
-    // Render heatmap
-    renderHeatmap(entryRange, exitRange, zData, best);
-    renderOptTable(gridResults.slice(0, 10));
+    // Render Alpha selector buttons
+    renderAlphaSelector(alphaRange);
+
+    // Show best alpha's heatmap
+    showAlphaHeatmap(OPT_GLOBAL_BEST.alpha);
+
+    // Render global top 10 (across all alphas)
+    OPT_ALL_RESULTS.sort((a, b) => b.avgReturn - a.avgReturn);
+    renderOptTable(OPT_ALL_RESULTS.slice(0, 15));
 
     btn.disabled = false;
     btn.textContent = '🔍 Ottimizza';
     RUNNING = false;
-    setStatus(`Ottimizzazione completa! Best: Entry>${best.entry} Exit<${best.exit} → Avg ${best.avgReturn}%`);
 
-    // Switch to optimizer tab
+    const gb = OPT_GLOBAL_BEST;
+    setStatus(`[${mode}] Ottimizzazione completa! BEST: α=${gb.alpha} Entry>${gb.entry} Exit<${gb.exit} → Avg ${gb.avgReturn}% | WR ${gb.avgWR}%`);
     switchTab('optimizer');
 }
 
-function renderHeatmap(entryRange, exitRange, zData, best) {
+// Render Alpha selector buttons
+function renderAlphaSelector(alphaRange) {
+    const container = document.getElementById('alpha-selector');
+    const btnDiv = document.getElementById('alpha-buttons');
+    container.style.display = 'flex';
+
+    btnDiv.innerHTML = alphaRange.map(a => {
+        const hasData = !!OPT_STORE[a];
+        const isBest = OPT_GLOBAL_BEST && OPT_GLOBAL_BEST.alpha === a;
+        const bestRet = hasData ? OPT_STORE[a].best.avgReturn : 0;
+        const color = isBest ? 'var(--green)' : (hasData ? 'var(--purple)' : '#555');
+        const border = isBest ? 'var(--green)' : 'var(--border)';
+        return `<button onclick="showAlphaHeatmap(${a})" style="
+            padding:6px 14px; border-radius:6px; border:1px solid ${border};
+            background:${isBest ? 'rgba(0,255,136,0.15)' : '#252836'};
+            color:${color}; cursor:pointer; font-family:inherit; font-weight:600; font-size:0.85rem;
+        " title="Avg Return: ${bestRet}%">
+            α=${a}${isBest ? ' ★' : ''}
+        </button>`;
+    }).join('');
+}
+
+// Show heatmap for a specific alpha
+function showAlphaHeatmap(alpha) {
+    const data = OPT_STORE[alpha];
+    if (!data) {
+        console.warn(`[Optimizer] No data for α=${alpha}`);
+        return;
+    }
+
+    // Update button styles
+    document.querySelectorAll('#alpha-buttons button').forEach(btn => {
+        const isActive = btn.textContent.includes(`α=${alpha}`);
+        btn.style.borderColor = isActive ? 'var(--cyan)' : 'var(--border)';
+        btn.style.background = isActive ? 'rgba(0,229,255,0.15)' : '#252836';
+    });
+
+    renderHeatmap(data.entryRange, data.exitRange, data.zData, data.best, alpha);
+}
+
+function renderHeatmap(entryRange, exitRange, zData, best, alpha) {
     const info = document.getElementById('opt-info');
+    const alphaLabel = alpha != null ? `α=${alpha} | ` : '';
     info.innerHTML = `
-        <span>Migliore combinazione:</span>
-        <span class="best">Entry > ${best.entry} | Exit < ${best.exit} → Avg Return ${best.avgReturn >= 0 ? '+' : ''}${best.avgReturn}% | WR ${best.avgWR}% | ${best.nPositive}/${best.total} positivi</span>
+        <span>Migliore per questo Alpha:</span>
+        <span class="best">${alphaLabel}Entry > ${best.entry} | Exit < ${best.exit} → Avg Return ${best.avgReturn >= 0 ? '+' : ''}${best.avgReturn}% | WR ${best.avgWR}% | ${best.nPositive}/${best.total} positivi</span>
     `;
 
-    // Build text annotations for each cell
     const textData = zData.map(row => row.map(v => {
         if (v === 0) return '0';
         return (v >= 0 ? '+' : '') + v.toFixed(0) + '%';
-    }));
-
-    // Text color: white on dark cells, black on bright cells
-    const textColorData = zData.map(row => row.map(v => {
-        return (v > -20 && v < 20) ? '#888' : '#fff';
     }));
 
     Plotly.newPlot('chart-heatmap', [{
@@ -731,7 +1022,7 @@ function renderHeatmap(entryRange, exitRange, zData, best) {
             bordercolor: '#333'
         }
     }], {
-        title: { text: 'Heatmap: Avg Return % per combinazione Entry/Exit', font: { color: '#ccc', size: 14 } },
+        title: { text: `Heatmap: Avg Return % (α=${alpha || '?'})`, font: { color: '#ccc', size: 14 } },
         paper_bgcolor: '#1a1d29',
         plot_bgcolor: '#1a1d29',
         font: { color: '#aaa', family: 'Inter' },
@@ -741,14 +1032,17 @@ function renderHeatmap(entryRange, exitRange, zData, best) {
     }, { responsive: true });
 }
 
-function renderOptTable(top10) {
+function renderOptTable(topN) {
     const tbody = document.getElementById('opt-body');
-    tbody.innerHTML = top10.map((r, i) => {
+    tbody.innerHTML = topN.map((r, i) => {
         const cls = r.avgReturn >= 0 ? 'pos' : 'neg';
         const sign = r.avgReturn >= 0 ? '+' : '';
         const medal = i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : '';
-        return `<tr>
-            <td>${medal}${r.entry}</td>
+        const isBest = OPT_GLOBAL_BEST && r.alpha === OPT_GLOBAL_BEST.alpha && r.entry === OPT_GLOBAL_BEST.entry && r.exit === OPT_GLOBAL_BEST.exit;
+        const rowStyle = isBest ? 'background:rgba(0,255,136,0.08);' : '';
+        return `<tr style="${rowStyle}">
+            <td style="font-weight:600; color:var(--cyan);">${medal}${r.alpha}</td>
+            <td>${r.entry}</td>
             <td>${r.exit}</td>
             <td style="text-align:right;" class="${cls}">${sign}${r.avgReturn}%</td>
             <td style="text-align:right;">${r.avgWR}%</td>
@@ -762,8 +1056,249 @@ function renderOptTable(top10) {
 //  INIT
 // ============================================================
 
+// ============================================================
+//  EMAIL ALERT CONFIG
+// ============================================================
+
+function updateAlertToggle() {
+    const cb = document.getElementById('alert-enabled');
+    const track = document.getElementById('alert-toggle-track');
+    const knob = document.getElementById('alert-toggle-knob');
+    const label = document.getElementById('alert-status-label');
+    if (cb.checked) {
+        track.style.background = 'var(--green)';
+        knob.style.left = '27px';
+        label.textContent = 'ON';
+        label.style.color = 'var(--green)';
+    } else {
+        track.style.background = '#555';
+        knob.style.left = '3px';
+        label.textContent = 'OFF';
+        label.style.color = '#888';
+    }
+}
+
+function applyAlertPreset() {
+    const sel = document.getElementById('alert-preset').value;
+    const tickersInput = document.getElementById('alert-tickers');
+    const countEl = document.getElementById('alert-ticker-count');
+
+    if (sel === 'custom') {
+        tickersInput.style.display = 'block';
+        countEl.textContent = 'Inserisci i ticker separati da virgola';
+        return;
+    }
+
+    buildDynamicPresets();
+    const tickers = PRESETS[sel];
+    if (tickers) {
+        tickersInput.value = ''; // clear custom — will use preset
+        countEl.textContent = `Preset "${sel}": ${tickers.length} tickers`;
+    } else {
+        countEl.textContent = `Preset "${sel}" — tutti i tickers da tickers.js`;
+    }
+}
+
+async function loadAlertConfig() {
+    try {
+        setStatus('Caricamento configurazione alert...');
+        const resp = await fetch(`${API_BASE}/stable-alert/config`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const cfg = data.config;
+
+        // Populate form
+        document.getElementById('alert-enabled').checked = cfg.enabled !== false;
+        updateAlertToggle();
+        document.getElementById('alert-hour').value = cfg.trigger_hour || 18;
+        document.getElementById('alert-minute').value = cfg.trigger_minute || 0;
+        document.getElementById('alert-mode').value = cfg.mode || 'LONG';
+        document.getElementById('alert-entry').value = cfg.entry_threshold || 0;
+        document.getElementById('alert-exit').value = cfg.exit_threshold || 0;
+        document.getElementById('alert-alpha').value = cfg.alpha || 200;
+        document.getElementById('alert-start').value = cfg.start_date || '2023-01-01';
+        document.getElementById('alert-recipient').value = cfg.recipient || '';
+
+        // Tickers
+        if (cfg.tickers && cfg.tickers.length > 0) {
+            document.getElementById('alert-preset').value = 'custom';
+            document.getElementById('alert-tickers').value = cfg.tickers.join(',');
+            document.getElementById('alert-ticker-count').textContent = `Custom: ${cfg.tickers.length} tickers`;
+        } else {
+            const preset = cfg.preset || 'all';
+            document.getElementById('alert-preset').value = preset;
+            applyAlertPreset();
+        }
+
+        // Scheduler info
+        const infoEl = document.getElementById('alert-scheduler-info');
+        if (data.scheduler) {
+            infoEl.innerHTML = `<b style="color:var(--green);">⏰ Prossimo invio:</b> ${data.scheduler.next_run_time}<br>` +
+                               `<b>Trigger:</b> ${data.scheduler.trigger}`;
+        } else {
+            infoEl.innerHTML = `<span style="color:var(--orange);">⚠️ Nessun job schedulato (alert disabilitato o errore)</span>`;
+        }
+
+        setStatus('✅ Configurazione alert caricata.');
+    } catch (e) {
+        console.error('Errore caricamento config alert:', e);
+        setStatus(`❌ Errore caricamento config: ${e.message}`);
+        document.getElementById('alert-scheduler-info').innerHTML =
+            `<span style="color:var(--red);">❌ Errore connessione al server: ${e.message}</span>`;
+    }
+}
+
+async function saveAlertConfig() {
+    try {
+        setStatus('Salvataggio configurazione alert...');
+        const btn = document.getElementById('btn-save-alert');
+        btn.disabled = true;
+
+        const preset = document.getElementById('alert-preset').value;
+        const customTickers = document.getElementById('alert-tickers').value.trim();
+
+        // Build tickers array
+        let tickers = [];
+        if (preset === 'custom' && customTickers) {
+            tickers = customTickers.split(',').map(t => t.trim()).filter(t => t);
+        }
+        // If preset != custom, leave tickers empty (server will load from tickers.js or use preset)
+
+        const config = {
+            enabled: document.getElementById('alert-enabled').checked,
+            trigger_hour: parseInt(document.getElementById('alert-hour').value) || 18,
+            trigger_minute: parseInt(document.getElementById('alert-minute').value) || 0,
+            mode: document.getElementById('alert-mode').value,
+            entry_threshold: parseFloat(document.getElementById('alert-entry').value) || 0,
+            exit_threshold: parseFloat(document.getElementById('alert-exit').value) || 0,
+            alpha: parseInt(document.getElementById('alert-alpha').value) || 200,
+            start_date: document.getElementById('alert-start').value || '2023-01-01',
+            tickers: tickers,
+            preset: preset,
+            recipient: document.getElementById('alert-recipient').value.trim(),
+        };
+
+        const resp = await fetch(`${API_BASE}/stable-alert/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config),
+        });
+
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        if (data.status === 'ok') {
+            setStatus('✅ Configurazione salvata! Scheduler aggiornato.');
+            // Reload to show updated scheduler info
+            setTimeout(() => loadAlertConfig(), 500);
+        } else {
+            setStatus('❌ Errore salvataggio configurazione.');
+        }
+
+        btn.disabled = false;
+    } catch (e) {
+        console.error('Errore salvataggio config:', e);
+        setStatus(`❌ Errore: ${e.message}`);
+        document.getElementById('btn-save-alert').disabled = false;
+    }
+}
+
+async function triggerAlertNow() {
+    try {
+        // Single call: scans + sends email + returns results
+        setStatus('🔬 Scansione STABLE + invio email in corso... (2-5 min per ~700 tickers)');
+
+        const testResp = await fetch(`${API_BASE}/stable-alert/trigger-with-result`, {
+            method: 'POST',
+        });
+        if (!testResp.ok) throw new Error(`HTTP ${testResp.status}`);
+        const testData = await testResp.json();
+
+        // Show result preview
+        const resultDiv = document.getElementById('alert-last-result');
+        const contentDiv = document.getElementById('alert-result-content');
+        resultDiv.style.display = 'block';
+
+        if (testData.result) {
+            const r = testData.result;
+            const entriesToday = r.entries_today || [];
+            const entriesRecent = r.entries_recent || [];
+            const active = r.active || [];
+            const errors = r.errors || [];
+
+            let html = '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">';
+            html += `<div class="alert-stat"><div class="num" style="color:var(--green);">${entriesToday.length}</div><div class="lbl">Entry Oggi</div></div>`;
+            html += `<div class="alert-stat"><div class="num" style="color:var(--orange);">${entriesRecent.length}</div><div class="lbl">Recenti</div></div>`;
+            html += `<div class="alert-stat"><div class="num">${active.length}</div><div class="lbl">Attivi</div></div>`;
+            html += `<div class="alert-stat"><div class="num" style="color:${errors.length > 0 ? 'var(--red)' : 'var(--text2)'};">${errors.length}</div><div class="lbl">Errori</div></div>`;
+            html += '</div>';
+
+            // Sezione 1: ENTRY OGGI
+            if (entriesToday.length > 0) {
+                html += '<h4 style="color:var(--green); margin:10px 0 6px;">🟢 ENTRY OGGI — Trigger scattato oggi</h4>';
+                html += '<table class="data-table"><thead><tr><th>Ticker</th><th>Dir</th><th>Prezzo Entry</th><th>Slope</th></tr></thead><tbody>';
+                for (const e of entriesToday) {
+                    const dir = e.direction === 'LONG' ? '<span style="color:var(--green);">LONG</span>' : '<span style="color:var(--red);">SHORT</span>';
+                    html += `<tr><td><b>${e.ticker}</b></td><td>${dir}</td><td>$${e.price.toFixed(2)}</td><td style="color:var(--purple);">${e.slope.toFixed(4)}</td></tr>`;
+                }
+                html += '</tbody></table>';
+            } else {
+                html += '<h4 style="color:var(--green); margin:10px 0 6px;">🟢 ENTRY OGGI</h4>';
+                html += '<p style="color:var(--text2); padding:6px;">Nessun segnale oggi.</p>';
+            }
+
+            // Sezione 2: ENTRY RECENTI (< 5gg)
+            if (entriesRecent.length > 0) {
+                html += '<h4 style="color:var(--orange); margin:14px 0 6px;">🟡 INGRESSI RECENTI — Ultimi 5 giorni</h4>';
+                html += '<table class="data-table"><thead><tr><th>Ticker</th><th>Dir</th><th>Prezzo Entry</th><th>Prezzo Att.</th><th>Var %</th><th>Quando</th></tr></thead><tbody>';
+                for (const e of entriesRecent) {
+                    const dir = e.direction === 'LONG' ? '<span style="color:var(--green);">LONG</span>' : '<span style="color:var(--red);">SHORT</span>';
+                    const varPct = e.price_change_since || 0;
+                    const varCls = varPct >= 0 ? 'pos' : 'neg';
+                    const days = e.days_ago;
+                    const daysLabel = days === 1 ? 'IERI' : `${days}gg fa`;
+                    html += `<tr><td><b>${e.ticker}</b></td><td>${dir}</td><td>$${e.price.toFixed(2)}</td><td>$${(e.current_price||0).toFixed(2)}</td><td class="${varCls}">${varPct >= 0 ? '+' : ''}${varPct.toFixed(2)}%</td><td><span style="background:var(--orange);color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">${daysLabel}</span> <small>(${e.date})</small></td></tr>`;
+                }
+                html += '</tbody></table>';
+            }
+
+            // Sezione 3: Posizioni attive
+            if (active.length > 0) {
+                html += '<h4 style="color:var(--purple); margin:14px 0 6px;">🟣 Posizioni Attive</h4>';
+                html += '<table class="data-table"><thead><tr><th>Ticker</th><th>Dir</th><th>Entry</th><th>Current</th><th>P/L %</th></tr></thead><tbody>';
+                for (const p of active) {
+                    const pnlCls = p.pnl_pct >= 0 ? 'pos' : 'neg';
+                    html += `<tr><td><b>${p.ticker}</b></td><td>${p.direction}</td><td>${p.entry_date} @ $${p.entry_price.toFixed(2)}</td><td>$${p.current_price.toFixed(2)}</td><td class="${pnlCls}">${p.pnl_pct.toFixed(2)}%</td></tr>`;
+                }
+                html += '</tbody></table>';
+            }
+
+            if (entriesToday.length === 0 && entriesRecent.length === 0 && active.length === 0) {
+                html += '<p style="color:var(--text2); text-align:center; padding:20px;">Nessun segnale rilevato.</p>';
+            }
+
+            contentDiv.innerHTML = html;
+        }
+
+        setStatus(`✅ Test completato. ${testData.entries_today || 0} entry oggi, ${testData.entries_recent || 0} recenti, ${testData.active || 0} attivi.`);
+    } catch (e) {
+        console.error('Errore trigger alert:', e);
+        setStatus(`❌ Errore: ${e.message}`);
+    }
+}
+
+// ============================================================
+//  INIT
+// ============================================================
+
 document.addEventListener('DOMContentLoaded', () => {
     // Default: Mega Cap preset
     document.getElementById('preset-select').value = 'mega';
     applyPreset();
+
+    // Load alert config when tab is available
+    // Delay slightly to allow API_BASE to be set
+    setTimeout(() => {
+        loadAlertConfig();
+    }, 1000);
 });

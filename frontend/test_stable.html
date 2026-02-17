@@ -213,6 +213,23 @@
             color: var(--green);
             font-weight: 700;
         }
+
+        /* ALERT CONFIG SECTION */
+        #panel-alerts h3 { letter-spacing: 0.5px; }
+        #panel-alerts h4 { letter-spacing: 0.3px; }
+        #panel-alerts .ctrl-group { min-width: 0; }
+        .alert-stat {
+            display: inline-block;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 16px;
+            margin: 4px;
+            text-align: center;
+            min-width: 80px;
+        }
+        .alert-stat .num { font-size: 1.3rem; font-weight: 700; color: var(--purple); }
+        .alert-stat .lbl { font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-top: 2px; }
     </style>
 </head>
 <body>
@@ -244,20 +261,48 @@
             <input type="text" id="tickers-input" placeholder="AAPL,MSFT,GOOGL..." style="width:280px;">
         </div>
         <div class="ctrl-group">
-            <label>Entry ></label>
+            <label>Modalità</label>
+            <select id="param-mode" onchange="updateModeLabels()" style="min-width:120px;">
+                <option value="LONG">🟢 LONG</option>
+                <option value="SHORT">🔴 SHORT</option>
+                <option value="BOTH">🟣 BOTH</option>
+            </select>
+        </div>
+        <div class="ctrl-group">
+            <label id="label-entry">Entry ></label>
             <input type="number" id="param-entry" value="0" step="0.1">
         </div>
         <div class="ctrl-group">
-            <label>Exit <</label>
+            <label id="label-exit">Exit <</label>
             <input type="number" id="param-exit" value="0" step="0.1">
         </div>
         <div class="ctrl-group">
             <label>Alpha</label>
-            <input type="number" id="param-alpha" value="200" step="10">
+            <input type="number" id="param-alpha" value="200" step="10" style="width:80px;">
+        </div>
+        <div class="ctrl-group">
+            <label>Alpha Min (Opt)</label>
+            <input type="number" id="param-alpha-min" value="100" step="50" style="width:75px;" title="Alpha minimo per ottimizzazione">
+        </div>
+        <div class="ctrl-group">
+            <label>Alpha Max (Opt)</label>
+            <input type="number" id="param-alpha-max" value="400" step="50" style="width:75px;" title="Alpha massimo per ottimizzazione">
+        </div>
+        <div class="ctrl-group">
+            <label>Alpha Step</label>
+            <input type="number" id="param-alpha-step" value="50" step="10" min="10" style="width:65px;" title="Step Alpha per ottimizzazione">
         </div>
         <div class="ctrl-group">
             <label>Start Date</label>
             <input type="text" id="param-start" value="2023-01-01" style="width:120px;">
+        </div>
+        <div class="ctrl-group">
+            <label>Batch Size</label>
+            <input type="number" id="param-batchsize" value="20" min="5" max="100" step="5" style="width:65px;" title="Ticker per richiesta HTTP (processati in parallelo lato server)">
+        </div>
+        <div class="ctrl-group">
+            <label>Threads</label>
+            <input type="number" id="param-concurrency" value="8" min="1" max="32" style="width:60px;" title="Thread paralleli lato server per ogni batch">
         </div>
         <div class="ctrl-group" style="flex-direction:row; gap:8px; align-items:flex-end;">
             <button class="btn btn-run" id="btn-run" onclick="runAnalysis()">▶ Analizza</button>
@@ -277,6 +322,7 @@
         <div class="tab" data-tab="trades" onclick="switchTab('trades')">📋 Trades</div>
         <div class="tab" data-tab="comparison" onclick="switchTab('comparison')">📊 Confronto</div>
         <div class="tab" data-tab="optimizer" onclick="switchTab('optimizer')">🔍 Optimizer</div>
+        <div class="tab" data-tab="alerts" onclick="switchTab('alerts')">📩 Email Alert</div>
     </div>
 
     <!-- CONTENT -->
@@ -347,14 +393,20 @@
         <!-- TAB: OPTIMIZER -->
         <div class="panel-section" id="panel-optimizer">
             <div class="heatmap-info" id="opt-info"></div>
+            <!-- Alpha selector for browsing heatmaps -->
+            <div id="alpha-selector" style="display:none; margin-bottom:12px; gap:8px; align-items:center; flex-wrap:wrap;">
+                <span style="color:var(--text2); font-size:0.85rem; font-weight:600;">Alpha:</span>
+                <div id="alpha-buttons" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+            </div>
             <div class="chart-box">
                 <div id="chart-heatmap" style="width:100%; height:500px;"></div>
             </div>
             <div class="chart-box" style="overflow-x:auto;">
-                <h4 style="color:var(--purple); margin-bottom:10px;">Top 10 Combinazioni</h4>
+                <h4 style="color:var(--purple); margin-bottom:10px;">Top 10 Combinazioni (Global Best across all Alpha)</h4>
                 <table class="data-table" id="opt-table">
                     <thead>
                         <tr>
+                            <th>Alpha</th>
                             <th>Entry ></th>
                             <th>Exit <</th>
                             <th style="text-align:right;">Avg Return %</th>
@@ -367,12 +419,133 @@
                 </table>
             </div>
         </div>
+
+        <!-- TAB: EMAIL ALERTS -->
+        <div class="panel-section" id="panel-alerts">
+            <div style="max-width: 700px;">
+                <h3 style="color: var(--purple); margin-bottom: 18px; font-size: 1.1rem;">📩 Configurazione Alert Email STABLE</h3>
+                <p style="color: var(--text2); font-size: 0.85rem; margin-bottom: 20px;">
+                    Ricevi ogni giorno un'email con i segnali di ingresso/uscita generati dalla strategia STABLE.
+                    Configura i parametri e l'orario di invio.
+                </p>
+
+                <!-- Enable/Disable -->
+                <div class="chart-box" style="padding: 18px;">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                        <label style="font-size: 0.85rem; color: var(--text2); font-weight: 600;">ALERT ATTIVO</label>
+                        <label style="position: relative; display: inline-block; width: 50px; height: 26px; cursor: pointer;">
+                            <input type="checkbox" id="alert-enabled" checked
+                                   style="opacity:0; width:0; height:0;"
+                                   onchange="updateAlertToggle()">
+                            <span id="alert-toggle-track" style="
+                                position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+                                background: var(--green); border-radius: 13px; transition: 0.3s;
+                            "></span>
+                            <span id="alert-toggle-knob" style="
+                                position: absolute; top: 3px; left: 27px; width: 20px; height: 20px;
+                                background: #fff; border-radius: 50%; transition: 0.3s;
+                            "></span>
+                        </label>
+                        <span id="alert-status-label" style="font-size: 0.85rem; color: var(--green); font-weight: 600;">ON</span>
+                    </div>
+
+                    <!-- Trigger Time -->
+                    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 16px;">
+                        <div class="ctrl-group">
+                            <label>Ora Invio</label>
+                            <input type="number" id="alert-hour" value="18" min="0" max="23" style="width: 70px;">
+                        </div>
+                        <div class="ctrl-group">
+                            <label>Minuti</label>
+                            <input type="number" id="alert-minute" value="0" min="0" max="59" step="5" style="width: 70px;">
+                        </div>
+                        <div style="display: flex; align-items: flex-end;">
+                            <span style="color: var(--text2); font-size: 0.8rem; padding-bottom: 8px;">(Fuso orario: Europe/Rome)</span>
+                        </div>
+                    </div>
+
+                    <!-- Strategy Parameters -->
+                    <h4 style="color: var(--text); margin: 18px 0 12px; font-size: 0.9rem;">Parametri Strategia</h4>
+                    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 16px;">
+                        <div class="ctrl-group">
+                            <label>Modalità</label>
+                            <select id="alert-mode" style="min-width: 120px;">
+                                <option value="LONG">🟢 LONG</option>
+                                <option value="SHORT">🔴 SHORT</option>
+                                <option value="BOTH">🟣 BOTH</option>
+                            </select>
+                        </div>
+                        <div class="ctrl-group">
+                            <label>Entry ></label>
+                            <input type="number" id="alert-entry" value="0" step="0.1" style="width: 90px;">
+                        </div>
+                        <div class="ctrl-group">
+                            <label>Exit <</label>
+                            <input type="number" id="alert-exit" value="0" step="0.1" style="width: 90px;">
+                        </div>
+                        <div class="ctrl-group">
+                            <label>Alpha</label>
+                            <input type="number" id="alert-alpha" value="200" step="10" style="width: 90px;">
+                        </div>
+                        <div class="ctrl-group">
+                            <label>Start Date</label>
+                            <input type="text" id="alert-start" value="2023-01-01" style="width: 120px;">
+                        </div>
+                    </div>
+
+                    <!-- Tickers Selection -->
+                    <h4 style="color: var(--text); margin: 18px 0 12px; font-size: 0.9rem;">Tickers</h4>
+                    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 12px;">
+                        <div class="ctrl-group">
+                            <label>Preset</label>
+                            <select id="alert-preset" onchange="applyAlertPreset()">
+                                <option value="all">🌍 TUTTI (~720)</option>
+                                <option value="us_all">🇺🇸 US Tutti (~200)</option>
+                                <option value="mega">🏛️ US Mega Cap</option>
+                                <option value="tech">💻 US Tech</option>
+                                <option value="eu">🇪🇺 Europa Mix</option>
+                                <option value="crypto">🪙 Crypto</option>
+                                <option value="etf">📊 Major ETFs</option>
+                                <option value="custom">✏️ Custom...</option>
+                            </select>
+                        </div>
+                        <div class="ctrl-group" style="flex: 1;">
+                            <label>Tickers Custom (virgola)</label>
+                            <input type="text" id="alert-tickers" placeholder="Vuoto = usa preset" style="width: 100%;">
+                        </div>
+                    </div>
+                    <div id="alert-ticker-count" style="font-size: 0.8rem; color: var(--text2); margin-bottom: 16px;"></div>
+
+                    <!-- Recipient Override -->
+                    <div class="ctrl-group" style="margin-bottom: 20px;">
+                        <label>Email Destinatario (vuoto = default)</label>
+                        <input type="email" id="alert-recipient" placeholder="Lascia vuoto per usare il default" style="width: 100%;">
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-run" id="btn-save-alert" onclick="saveAlertConfig()">💾 Salva Configurazione</button>
+                        <button class="btn btn-opt" onclick="triggerAlertNow()">📨 Invia Ora (Test)</button>
+                        <button class="btn" style="background: #444; color: var(--text);" onclick="loadAlertConfig()">🔄 Ricarica</button>
+                    </div>
+
+                    <!-- Scheduler Info -->
+                    <div id="alert-scheduler-info" style="margin-top: 16px; padding: 12px; background: #252836; border-radius: 8px; font-size: 0.82rem; color: var(--text2);"></div>
+
+                    <!-- Last Result Preview -->
+                    <div id="alert-last-result" style="margin-top: 16px; display: none;">
+                        <h4 style="color: var(--text); margin-bottom: 10px; font-size: 0.9rem;">Ultimo Risultato Test</h4>
+                        <div id="alert-result-content" class="chart-box" style="padding: 14px; max-height: 400px; overflow-y: auto;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- STATUS BAR -->
     <div class="status-bar" id="status-bar">Pronto. Seleziona i tickers e premi Analizza.</div>
 
     <script src="tickers.js?v=6"></script>
-    <script src="test_stable.js?v=1"></script>
+    <script src="test_stable.js?v=6"></script>
 </body>
 </html>

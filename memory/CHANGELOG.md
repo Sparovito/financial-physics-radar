@@ -2,6 +2,16 @@
 
 | Deploy ID | Date       | Change                                                                                            |
 | --------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| —         | 2026-02-17 | Fix: Remove mock data fallback in logic.py — MarketData.fetch() now raises ValueError on empty Yahoo data instead of misleading "Passo ai dati Mock" message |
+| —         | 2026-02-17 | Fix: Rewrite stable_scanner.py download system — now reuses main.py's MarketData + PRICE_CACHE + TICKER_CACHE instead of separate yf.download batch (eliminated 633 Yahoo errors) |
+| —         | 2026-02-17 | Fix: HTTP 500 on stable alert test — guard against ThreadPoolExecutor(max_workers=0) crash + single endpoint `/stable-alert/trigger-with-result` replacing double call |
+| —         | 2026-02-17 | Perf: Reduce stable scanner data window from 3 years to 6 months (auto-calculated) — sufficient for EMA convergence, much faster download |
+| —         | 2026-02-17 | Feat: STABLE Email Alert System — `stable_scanner.py` with configurable daily email alerts for STABLE strategy signals |
+| —         | 2026-02-17 | Feat: STABLE email structured in 2 sections: (1) ENTRY OGGI (segnali trigger oggi), (2) INGRESSI RECENTI (<5gg con badge "X giorni fa") + sezione POSIZIONI ATTIVE |
+| —         | 2026-02-17 | Feat: 5 new endpoints in main.py — GET/POST `/stable-alert/config`, POST `/stable-alert/trigger`, `/stable-alert/test`, `/stable-alert/trigger-with-result` |
+| —         | 2026-02-17 | Feat: APScheduler CronTrigger for STABLE alerts — configurable daily job with Europe/Rome timezone, re-inits on config save |
+| —         | 2026-02-17 | Feat: STABLE Strategy Lab UI (`test_stable.html` + `test_stable.js`) — dedicated page with optimizer, grid search, batch analysis, email alert config tab |
+| —         | 2026-02-17 | Feat: STABLE Optimizer with Alpha grid search — tests alpha range to find optimal parameters, parallel ThreadPoolExecutor |
 | 9014f0a   | 2026-02-16 | Feat: STABLE strategy simplified to LONG-only (Entry/Exit at 0.0)                 |
 | dcde0da   | 2026-02-16 | Fix: final adjustment to STABLE (purple) strategy logic                                           |
 | 79ae5c7   | 2026-02-16 | Feat: STABLE Strategy v4 — Dual LONG+SHORT su Stable Slope (LONG: 0/-0.3, SHORT: 0/+0.2)          |

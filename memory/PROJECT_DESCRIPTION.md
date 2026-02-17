@@ -105,15 +105,23 @@ Il progetto **non è**:
 - 4 strategie implementate: LIVE, FROZEN, SUM, STABLE (causale, viola)
 - indicatori stabili (causali) operativi: Stable Kinetic Z con hysteresis, Stable Slope
 - scanner massivo con colonne STABLE (sostituisce vecchio MA/Min Action)
-- automazione output operativa (email giornaliera schedulata)
+- **2 sistemi email giornalieri** schedulati:
+  - Email scanner originale (Frozen/Sum segnali BUY/SELL + portfolio HOLD/SELL)
+  - **Email STABLE** (segnali ENTRY oggi + recenti <5gg + posizioni attive) — `stable_scanner.py`
+- **STABLE Strategy Lab** (`test_stable.html/js`): pagina dedicata con 4 tab:
+  - Analisi singola, Batch massiva, Optimizer con grid search alpha, Configurazione Email Alert
+- Sistema download unificato: `PRICE_CACHE` + `TICKER_CACHE` + `MarketData.fetch()` condiviso tra main.py e stable_scanner.py
+- Nessun dato mock/sintetico: `MarketData.fetch()` lancia `ValueError` su dati Yahoo vuoti
+- Portfolio tracking con segnali HOLD/SELL basati su strategie attive
 
 ## Direzione Futura
 
 - consolidamento matematico dei modelli
 - miglioramento della componente spettrale
 - formalizzazione delle strategie
-- automazione degli output operativi
+- ulteriore automazione degli output operativi (alert real-time, dashboard)
 - miglioramento UX e interpretazione visiva
+- ottimizzazione parametri STABLE per asset class specifiche
 
 ---
 

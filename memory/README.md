@@ -62,7 +62,10 @@ ma **con quanta forza**.
 - 4 strategie di backtest: LIVE, FROZEN, SUM, STABLE
 - indicatori stabili causali (Stable Kinetic Z, Stable Slope)
 - valutazione operativa giornaliera ("cosa fare oggi")
-- output automatici (email giornaliera schedulata)
+- **2 sistemi email giornalieri schedulati**:
+  - Email scanner originale (segnali BUY/SELL da Frozen/Sum + portfolio HOLD/SELL)
+  - Email STABLE (segnali ENTRY oggi + recenti <5gg + posizioni attive)
+- **STABLE Strategy Lab** (test_stable.html): pagina dedicata con optimizer, batch analysis, email config
 - portfolio tracking con segnali HOLD/SELL
 
 ---
@@ -123,10 +126,13 @@ Questo progetto **non è**:
 - modelli FFT ed energetici implementati a livello baseline
 - backend e frontend operativi
 - analisi storica e live già esplorate manualmente
-- 4 strategie operative: LIVE, FROZEN, SUM, STABLE (causale, 🟣 viola)
+- 4 strategie operative: LIVE, FROZEN, SUM, STABLE (causale, viola)
 - indicatori stabili causali: Stable Kinetic Z (EMA + hysteresis), Stable Slope
 - scanner massivo con colonne STABLE (ha sostituito MA/Min Action)
-- automazione output operativa (email schedulata, portfolio)
+- 2 email giornaliere schedulate: scanner originale (16:30) + STABLE alert (configurabile)
+- STABLE Strategy Lab con optimizer, batch, email alert config
+- sistema download unificato (PRICE_CACHE + TICKER_CACHE + MarketData)
+- nessun dato mock: ValueError su dati Yahoo vuoti
 
 ---
 
@@ -134,9 +140,12 @@ Questo progetto **non è**:
 
 Per comprendere e lavorare correttamente sul progetto:
 
-- `PROJECT_DESCRIPTION.md` → descrizione concettuale del progetto
-- `ARCHITECTURE.md` → struttura del sistema
-- `PROJECT_RULES.md` → regole di sviluppo (incluse regole per coding agent)
+- `memory/PROJECT_DESCRIPTION.md` → descrizione concettuale del progetto
+- `memory/ARCHITECTURE.md` → struttura del sistema e moduli
+- `memory/SYSTEM_OVERVIEW.md` → deep dive tecnico completo
+- `memory/CHANGELOG.md` → storico completo di tutti i deploy e modifiche
+- `memory/INVARIANTS.md` → regole supreme (leggere PRIMA di ogni modifica)
+- `memory/PROJECT_RULES.md` → regole di sviluppo (incluse regole per coding agent)
 - `requirements.txt` → dipendenze Python
 - `Procfile` → configurazione di deployment
 

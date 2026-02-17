@@ -56,6 +56,33 @@ Root:
   - Regime array (+1/-1/0): input per `backtest_strategy()` con threshold=0.5.
   - Proprietà: valori passati **immutabili** (max_diff = 0.0 aggiungendo dati).
 
+- **Email Alert STABLE** — `stable_scanner.py`:
+  - Modulo dedicato per email giornaliere con segnali della strategia STABLE.
+  - `download_all_prices()`: riutilizza `PRICE_CACHE`, `TICKER_CACHE` e `MarketData` da `main.py` (stessa infrastruttura di download, no `yf.download` separato).
+  - `compute_stable_signals()`: auto-calcola finestra 6 mesi, download parallelo (ThreadPoolExecutor 8 workers), poi computazione segnali parallela.
+  - `build_stable_email()`: genera HTML con 3 sezioni: ENTRY OGGI (verde), INGRESSI RECENTI <5gg (giallo/arancione con badge giorni), POSIZIONI ATTIVE (viola).
+  - Config persistente in `stable_alert_config.json`.
+  - `run_stable_scan()`: entry point principale, invocato dallo scheduler o dagli endpoint API.
+
+- **Scheduler STABLE** — in `main.py`:
+  - `_init_stable_scheduler()`: configura job APScheduler con `CronTrigger(hour, minute, timezone="Europe/Rome")`.
+  - 5 endpoint dedicati:
+    - `GET /stable-alert/config` — ritorna config + next_run_time scheduler.
+    - `POST /stable-alert/config` — salva config, re-inizializza scheduler.
+    - `POST /stable-alert/trigger` — background task (fire-and-forget).
+    - `POST /stable-alert/test` — sincrono, ritorna risultati senza inviare email.
+    - `POST /stable-alert/trigger-with-result` — sincrono, invia email E ritorna risultati per preview UI.
+
+- **Sistema di Cache Prezzi** (condiviso tra moduli):
+  - `PRICE_CACHE`: dict `{ticker|start_date: pd.Series}`, thread-safe con `_price_cache_lock`.
+  - `TICKER_CACHE`: cache per-ticker con dati completi dall'analisi principale.
+  - `stable_scanner.py` verifica prima `PRICE_CACHE` → poi `TICKER_CACHE` → poi `MarketData.fetch()`.
+  - La cache viene invalidata per i ticker del portafoglio prima della scansione email (dati freschi per HOLD/SELL).
+
+- **NotificationManager** — `notifications.py`:
+  - Dual send: Resend API (prioritario, cloud) / SMTP fallback (locale).
+  - Credenziali via env vars: `RESEND_API_KEY`, `EMAIL_SENDER`, `EMAIL_RECIPIENT`.
+
 - Concetti chiave:
 
   - **Contracts API**: gli schemi Pydantic esposti dalle route sono considerati **contratti stabili**.
@@ -82,6 +109,14 @@ Root:
 - `styles.css`:
 
   - styling base della UI (layout, colori, tipografia).
+
+- `test_stable.html` + `test_stable.js` — **STABLE Strategy Lab**:
+
+  - pagina dedicata alla strategia STABLE, separata dalla dashboard principale.
+  - **Tab Analisi**: analisi singolo ticker con parametri STABLE (mode, entry, exit, alpha).
+  - **Tab Batch**: analisi massiva di tutti i ticker con classifica e statistiche.
+  - **Tab Optimizer**: grid search su parametri alpha per trovare configurazione ottimale.
+  - **Tab 📩 Email Alert**: configurazione email giornaliere STABLE con toggle ON/OFF, orario trigger, parametri strategia, preset ticker, preview risultati.
 
 ### 2.3 Notebook e ricerca
 
@@ -127,6 +162,26 @@ Le idee e le formule consolidate dai notebook dovrebbero essere estratte nei mod
    - eventuale proiezione a breve termine.
 4. Frontend visualizza la proiezione con distinzioni visive (storico vs forecast).
 
+### 3.4 STABLE Email Alert (flusso giornaliero)
+
+1. APScheduler attiva `scheduled_stable_job()` all'orario configurato (CronTrigger, Europe/Rome).
+2. `run_stable_scan()` in `stable_scanner.py`:
+   - Carica config da `stable_alert_config.json`.
+   - Carica tickers da `tickers_loader.py`.
+   - `download_all_prices()`: verifica PRICE_CACHE → TICKER_CACHE → MarketData.fetch() (stessa infrastruttura di main.py).
+   - `compute_stable_signals()`: calcola stable_slope per ogni ticker, identifica entry signals negli ultimi 5 giorni.
+   - Classifica segnali in: `entries_today` (trigger oggi), `entries_recent` (1-5 giorni fa), `active` (posizioni aperte).
+3. `build_stable_email()`: genera HTML con 3 sezioni colorate (verde/giallo/viola).
+4. `NotificationManager.send_email()`: invia via Resend API o SMTP fallback.
+5. Risultati ritornati anche alla UI se chiamato via `/stable-alert/trigger-with-result`.
+
+### 3.5 STABLE Strategy Lab (test_stable.html)
+
+1. **Analisi singola**: Frontend chiama `/analyze` con parametri STABLE custom, mostra risultato.
+2. **Batch analysis**: Frontend chiama `/analyze` per ogni ticker, costruisce tabella ordinabile con statistiche.
+3. **Optimizer**: grid search su range di alpha, ogni combinazione testata via `/analyze`, risultati ordinati per performance.
+4. **Email Alert config**: Frontend chiama gli endpoint `/stable-alert/*` per gestire configurazione e trigger.
+
 ## 4. Dipendenze e stack
 
 - **Backend**:
@@ -136,6 +191,8 @@ Le idee e le formule consolidate dai notebook dovrebbero essere estratte nei mod
   - Uvicorn
   - Pandas / NumPy / SciPy
   - yfinance (o lib simili per dati di mercato)
+  - APScheduler (scheduling email giornaliere)
+  - Resend (API cloud per invio email) / smtplib (fallback SMTP)
 - **Frontend**:
 
   - HTML5

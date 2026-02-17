@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime, timezone
 import yfinance as yf
 from scipy.signal import butter, filtfilt
+import concurrent.futures
 
 # Ensure the directory containing this file is in the Python path
 # This fixes "ModuleNotFoundError: No module named 'logic'" on Railway
@@ -51,6 +52,51 @@ scheduler.add_job(
     id="daily_scan",
     replace_existing=True
 )
+
+# --- STABLE STRATEGY DAILY ALERT ---
+def scheduled_stable_job():
+    """Runs daily at configured time for STABLE strategy alerts."""
+    import traceback
+    print("⏰ STABLE Strategy alert triggered!", flush=True)
+    try:
+        from stable_scanner import run_stable_scan
+        print("🔬 Starting STABLE scan...", flush=True)
+        run_stable_scan(send_email=True)
+        print("✅ STABLE scan completed.", flush=True)
+    except Exception as e:
+        print(f"❌ ERROR in scheduled_stable_job: {e}", flush=True)
+        traceback.print_exc()
+        sys.stdout.flush()
+
+def _init_stable_scheduler():
+    """Initialize or update the STABLE alert scheduler from config."""
+    try:
+        from stable_scanner import load_config
+        cfg = load_config()
+        hour = cfg.get("trigger_hour", 18)
+        minute = cfg.get("trigger_minute", 0)
+        enabled = cfg.get("enabled", True)
+
+        # Remove existing job if present
+        try:
+            scheduler.remove_job("stable_daily_alert")
+        except Exception:
+            pass
+
+        if enabled:
+            scheduler.add_job(
+                scheduled_stable_job,
+                CronTrigger(hour=hour, minute=minute, timezone="Europe/Rome"),
+                id="stable_daily_alert",
+                replace_existing=True
+            )
+            print(f"🔬 STABLE alert schedulato: ogni giorno alle {hour:02d}:{minute:02d} (Rome)", flush=True)
+        else:
+            print("🔬 STABLE alert disabilitato.", flush=True)
+    except Exception as e:
+        print(f"⚠️ Errore init STABLE scheduler: {e}", flush=True)
+
+_init_stable_scheduler()
 
 @app.get("/debug-time")
 def debug_time():
@@ -496,12 +542,15 @@ def analyze_stock(req: AnalysisRequest):
         slope_line = mechanics.dX.values.tolist()
         z_residuo_line = mechanics.z_residuo.values.tolist()
 
-        # Stable Slope: causal estimator of stabilized SLOPE
-        # dF_smooth = EMA(14) of diff(F), where F = EMA(prices, 20)
-        # This NEVER changes for past dates (purely causal, no boundary effects)
-        F_curve = mechanics.F
-        dF = F_curve.diff().fillna(0)
-        stable_slope_line = dF.ewm(span=14).mean().values.tolist()
+        # Stable Slope: CAUSAL estimator of stabilized SLOPE
+        # Alpha controls the EMA span for the fundamental curve:
+        #   alpha=100 → span=10 (reactive), alpha=200 → span=20 (default), alpha=400 → span=40 (smooth)
+        # GUARANTEED CAUSAL: EMA only looks backward, never forward
+        # GUARANTEED STABLE: past values NEVER change when new data arrives
+        ema_span = max(5, int(req.alpha / 10))
+        F_alpha = px.ewm(span=ema_span, adjust=False).mean()
+        dF_alpha = F_alpha.diff().fillna(0)
+        stable_slope_line = dF_alpha.ewm(span=14, adjust=False).mean().values.tolist()
 
         # Stable Kinetic Z: causal estimator of stabilized Kinetic Z
         # OPTIMIZED via grid search on 8 market types:
@@ -822,6 +871,146 @@ def analyze_stock(req: AnalysisRequest):
 @app.get("/health")
 def health_check():
     return {"status": "running"}
+
+# --- BATCH STABLE ANALYSIS (Server-side parallelism) ---
+# Separate price cache: stores raw price series to avoid re-downloading from Yahoo
+# Key: "ticker|start_date", Value: pd.Series
+PRICE_CACHE = {}
+import threading
+_price_cache_lock = threading.Lock()
+
+class BatchStableRequest(BaseModel):
+    tickers: List[str]
+    alpha: float = 200.0
+    start_date: Optional[str] = "2023-01-01"
+    max_workers: int = 8  # server-side thread pool size
+
+@app.post("/analyze-batch-stable")
+def analyze_batch_stable(req: BatchStableRequest):
+    """
+    Lightweight batch analysis for STABLE strategy.
+    Returns only dates, prices, stable_slope for each ticker.
+    Uses PRICE_CACHE to download from Yahoo ONCE, then recompute
+    mechanics for different alpha values without re-downloading.
+    """
+    results = {}
+    errors = {}
+    cache_key_prefix = req.start_date or "all"
+
+    # Count cache hits vs downloads needed
+    to_download = []
+    cached_count = 0
+    for t in req.tickers:
+        key = f"{t}|{cache_key_prefix}"
+        if key in PRICE_CACHE or t in TICKER_CACHE:
+            cached_count += 1
+        else:
+            to_download.append(t)
+
+    max_w = min(req.max_workers, len(req.tickers), (os.cpu_count() or 4) * 3)
+    # Reduce concurrency for Yahoo downloads to avoid rate limiting
+    download_workers = max_w
+    compute_workers = max_w
+
+    print(f"🚀 BATCH STABLE: {len(req.tickers)} tickers, α={req.alpha} | "
+          f"💾 {cached_count} cached, 🌐 {len(to_download)} to download ({download_workers}w) | "
+          f"🧮 compute: {compute_workers}w")
+
+    def get_prices(ticker):
+        """Get price series from cache or download (thread-safe)"""
+        key = f"{ticker}|{cache_key_prefix}"
+
+        # 1. Check PRICE_CACHE (batch-specific cache)
+        if key in PRICE_CACHE:
+            return PRICE_CACHE[key].copy()
+
+        # 2. Check TICKER_CACHE (main app cache)
+        if ticker in TICKER_CACHE:
+            px = TICKER_CACHE[ticker]["px"].copy()
+            if req.start_date:
+                start_ts = pd.Timestamp(req.start_date)
+                if px.index.tz is not None and start_ts.tz is None:
+                    start_ts = start_ts.tz_localize(px.index.tz)
+                px = px[px.index >= start_ts]
+            with _price_cache_lock:
+                PRICE_CACHE[key] = px.copy()
+            return px
+
+        # 3. Download from Yahoo (only happens once per ticker)
+        md = MarketData(ticker, start_date=req.start_date)
+        px = md.fetch()
+        with _price_cache_lock:
+            PRICE_CACHE[key] = px.copy()
+        return px
+
+    def analyze_one(ticker):
+        """Compute stable_slope for a ticker (uses cached prices, NO ActionPath needed)"""
+        try:
+            px = get_prices(ticker)
+
+            # CAUSAL stable_slope: Alpha controls EMA span
+            # alpha=100 → span=10, alpha=200 → span=20, alpha=400 → span=40
+            # Only uses EMA (backward-looking), NEVER looks at future data
+            ema_span = max(5, int(req.alpha / 10))
+            F_alpha = px.ewm(span=ema_span, adjust=False).mean()
+            dF_alpha = F_alpha.diff().fillna(0)
+            stable_slope = dF_alpha.ewm(span=14, adjust=False).mean().values.tolist()
+
+            dates = px.index.strftime('%Y-%m-%d').tolist()
+            prices = px.values.tolist()
+
+            return (ticker, {
+                "dates": dates,
+                "prices": prices,
+                "stable_slope": stable_slope
+            }, None)
+        except Exception as e:
+            return (ticker, None, str(e))
+
+    # PHASE 1: Pre-download prices for uncached tickers (lower concurrency)
+    if to_download:
+        print(f"  🌐 Downloading {len(to_download)} tickers from Yahoo ({download_workers} workers)...")
+        def download_one(ticker):
+            try:
+                get_prices(ticker)
+                return (ticker, True, None)
+            except Exception as e:
+                return (ticker, False, str(e))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=download_workers) as executor:
+            futures = {executor.submit(download_one, t): t for t in to_download}
+            for future in concurrent.futures.as_completed(futures):
+                t, ok, err = future.result()
+                if not ok:
+                    errors[t] = err
+                    print(f"  ❌ Download {t}: {err}")
+        print(f"  ✅ Downloads done. Errors: {len(errors)}")
+
+    # PHASE 2: Compute slopes for ALL tickers (higher concurrency, no Yahoo)
+    tickers_to_compute = [t for t in req.tickers if t not in errors]
+    print(f"  🧮 Computing slopes for {len(tickers_to_compute)} tickers ({compute_workers} workers, α={req.alpha})...")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=compute_workers) as executor:
+        futures = {executor.submit(analyze_one, t): t for t in tickers_to_compute}
+        for future in concurrent.futures.as_completed(futures):
+            ticker, result, error = future.result()
+            if result:
+                results[ticker] = result
+            else:
+                errors[ticker] = error
+                print(f"  ❌ Compute {ticker}: {error}")
+
+    ok = len(results)
+    err = len(errors)
+    print(f"✅ BATCH STABLE completato: {ok} OK, {err} errori (α={req.alpha})")
+
+    return {
+        "status": "ok",
+        "results": results,
+        "errors": errors,
+        "count_ok": ok,
+        "count_err": err
+    }
 
 # --- TRADE INTEGRITY VERIFICATION ---
 class VerifyIntegrityRequest(BaseModel):
@@ -1496,6 +1685,83 @@ def test_email_config():
         "password_set": password_set,
         "message": "Test email inviata! Controlla la console del server per errori."
     }
+
+# =============================================
+#  STABLE STRATEGY ALERT ENDPOINTS
+# =============================================
+
+class StableAlertConfig(BaseModel):
+    enabled: bool = True
+    trigger_hour: int = 18
+    trigger_minute: int = 0
+    mode: str = "LONG"
+    entry_threshold: float = 0.0
+    exit_threshold: float = 0.0
+    alpha: int = 200
+    start_date: str = "2023-01-01"
+    tickers: List[str] = []
+    preset: str = "all"
+    recipient: str = ""
+
+@app.get("/stable-alert/config")
+def get_stable_alert_config():
+    """Get current STABLE alert configuration."""
+    from stable_scanner import load_config
+    cfg = load_config()
+
+    # Also return scheduler info
+    job_info = None
+    try:
+        job = scheduler.get_job("stable_daily_alert")
+        if job:
+            job_info = {
+                "next_run_time": str(job.next_run_time) if job.next_run_time else "NOT SCHEDULED",
+                "trigger": str(job.trigger)
+            }
+    except Exception:
+        pass
+
+    return {
+        "config": cfg,
+        "scheduler": job_info,
+    }
+
+@app.post("/stable-alert/config")
+def save_stable_alert_config(cfg: StableAlertConfig):
+    """Save STABLE alert configuration and update scheduler."""
+    from stable_scanner import save_config
+
+    config_dict = cfg.dict()
+    ok = save_config(config_dict)
+
+    if ok:
+        # Re-init scheduler with new time
+        _init_stable_scheduler()
+
+    return {"status": "ok" if ok else "error", "config": config_dict}
+
+@app.post("/stable-alert/trigger")
+def trigger_stable_alert(background_tasks: BackgroundTasks):
+    """Manually trigger STABLE alert email (runs in background)."""
+    from stable_scanner import run_stable_scan
+    background_tasks.add_task(run_stable_scan, send_email=True)
+    return {"status": "started", "message": "🔬 STABLE scan avviata! Riceverai l'email al termine."}
+
+@app.post("/stable-alert/test")
+def test_stable_alert():
+    """Run STABLE scan synchronously and return results (no email)."""
+    from stable_scanner import run_stable_scan
+    result = run_stable_scan(send_email=False)
+    return result
+
+@app.post("/stable-alert/trigger-with-result")
+def trigger_stable_with_result():
+    """Run STABLE scan synchronously: sends email AND returns results for UI preview."""
+    from stable_scanner import run_stable_scan
+    result = run_stable_scan(send_email=True)
+    return result
+
+# =============================================
 
 portfolio_mgr = PortfolioManager()
 

@@ -48,14 +48,11 @@ class MarketData:
             if not self.data.empty:
                 return self._clean_data()
             else:
-                print("❌ Download YFinance vuoto. Passo ai dati Mock.")
-                
+                raise ValueError(f"Dati vuoti per {self.ticker} (Yahoo non ha restituito dati)")
+
         except Exception as e:
             print(f"⚠️ Errore download yfinance: {e}")
             raise ValueError(f"Impossibile scaricare dati reali per {self.ticker}. Errore: {e}")
-
-        # 2. FALLBACK RIMOSSO (Su richiesta utente)
-        return self._clean_data()
 
     def _clean_data(self):
         # Pulisce i dati reali
