@@ -685,27 +685,17 @@ function renderSummaryCards() {
     // Portfolio equiponderato (media delle equity curves) per chart e Max DD
     const portfolio = computeEqualWeightPortfolio();
 
-    // Media semplice di TUTTI i trade pnl_pct (come Excel: ogni trade pesa uguale)
-    let allPnl = [];
-    for (const t of tickers) {
-        const trades = RESULTS[t].backtest.trades || [];
-        for (const tr of trades) {
-            if (tr.exit_date !== 'OPEN') {
-                allPnl.push(parseFloat(tr.pnl_pct));
-            }
-        }
-    }
-    const avgPnlSimple = allPnl.length > 0 ? allPnl.reduce((s, v) => s + v, 0) / allPnl.length : 0;
-
+    // Media dei total_return per ticker (corrisponde alla media della colonna Return in Excel)
     const stats = tickers.map(t => RESULTS[t].backtest.stats);
+    const avgReturn = stats.reduce((s, st) => s + st.total_return, 0) / stats.length;
     const avgWR = stats.reduce((s, st) => s + st.win_rate, 0) / stats.length;
-    const totalTrades = allPnl.length;
+    const totalTrades = stats.reduce((s, st) => s + st.total_trades, 0);
     const positivi = stats.filter(st => st.total_return > 0).length;
 
     const c = (v) => v >= 0 ? 'pos' : 'neg';
 
     div.innerHTML = `
-        <div class="card"><div class="label">Return Medio</div><div class="value ${c(avgPnlSimple)}">${avgPnlSimple >= 0 ? '+' : ''}${avgPnlSimple.toFixed(1)}%</div></div>
+        <div class="card"><div class="label">Return Medio</div><div class="value ${c(avgReturn)}">${avgReturn >= 0 ? '+' : ''}${avgReturn.toFixed(1)}%</div></div>
         <div class="card"><div class="label">Win Rate Medio</div><div class="value">${avgWR.toFixed(1)}%</div></div>
         <div class="card"><div class="label">Trades Totali</div><div class="value">${totalTrades}</div></div>
         <div class="card"><div class="label">Max DD Portaf.</div><div class="value neg">-${portfolio.maxDD.toFixed(1)}%</div></div>
