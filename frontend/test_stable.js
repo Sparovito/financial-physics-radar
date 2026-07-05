@@ -118,197 +118,31 @@ function renderChips(tickers) {
 }
 
 // ============================================================
-//  BACKTEST ENGINE (runs in browser)
-//  mode: 'LONG' | 'SHORT' | 'BOTH'
-//  LONG:  entry slope > entryTh, exit slope < exitTh
-//  SHORT: entry slope < entryTh, exit slope > exitTh (speculare)
-//  BOTH:  LONG + SHORT in parallelo
+//  BACKTEST ENGINE
+//  Il motore vive in stable_engine.js (replica SPECULARE di
+//  backend/stable_strategy.py — parità garantita da
+//  backend/tests/test_js_py_parity.py).
+//  Semantica: esecuzione t+1, costi per lato, SHORT con soglie
+//  speculari (entry slope < -entryTh), BOTH = leg paralleli,
+//  win rate solo sui trade chiusi.
 // ============================================================
 
-function backtestStable(dates, prices, slopes, entryTh, exitTh, mode) {
-    if (!mode) mode = 'LONG';
-
-    if (mode === 'BOTH') {
-        return backtestBoth(dates, prices, slopes, entryTh, exitTh);
-    }
-
-    const isShort = (mode === 'SHORT');
-    const capital0 = 1000;
-    let capital = capital0;
-    let inPosition = false;
-    let entryPrice = 0, entryDate = '';
-    const trades = [];
-    const equity = [];
-    let maxEquity = capital0;
-    let maxDD = 0;
-
-    for (let i = 0; i < dates.length; i++) {
-        const price = prices[i];
-        const slope = slopes[i];
-        if (price == null || slope == null) {
-            equity.push(equity.length ? equity[equity.length - 1] : 0);
-            continue;
-        }
-
-        if (!inPosition) {
-            // ENTRY: LONG slope > th, SHORT slope < th
-            const shouldEnter = isShort ? (slope < entryTh) : (slope > entryTh);
-            if (shouldEnter) {
-                inPosition = true;
-                entryPrice = price;
-                entryDate = dates[i];
-            }
-        } else {
-            // EXIT: LONG slope < th, SHORT slope > th
-            const shouldExit = isShort ? (slope > exitTh) : (slope < exitTh);
-            if (shouldExit) {
-                const pnl = isShort
-                    ? ((entryPrice - price) / entryPrice) * 100
-                    : ((price - entryPrice) / entryPrice) * 100;
-                capital *= (1 + pnl / 100);
-                trades.push({
-                    entry_date: entryDate, exit_date: dates[i],
-                    direction: mode, entry_price: +entryPrice.toFixed(2),
-                    exit_price: +price.toFixed(2), pnl_pct: +pnl.toFixed(2),
-                    capital_after: +capital.toFixed(2)
-                });
-                inPosition = false;
-            }
-        }
-
-        // Equity (mark-to-market)
-        let tempCap = capital;
-        if (inPosition) {
-            const unrealized = isShort
-                ? ((entryPrice - price) / entryPrice)
-                : ((price - entryPrice) / entryPrice);
-            tempCap *= (1 + unrealized);
-        }
-        const eqPct = ((tempCap - capital0) / capital0) * 100;
-        equity.push(+eqPct.toFixed(2));
-
-        if (tempCap > maxEquity) maxEquity = tempCap;
-        const dd = ((maxEquity - tempCap) / maxEquity) * 100;
-        if (dd > maxDD) maxDD = dd;
-    }
-
-    // Close open position
-    if (inPosition) {
-        const lastPrice = prices[prices.length - 1];
-        const pnl = isShort
-            ? ((entryPrice - lastPrice) / entryPrice) * 100
-            : ((lastPrice - entryPrice) / entryPrice) * 100;
-        trades.push({
-            entry_date: entryDate, exit_date: 'OPEN',
-            direction: mode, entry_price: +entryPrice.toFixed(2),
-            exit_price: +lastPrice.toFixed(2), pnl_pct: +pnl.toFixed(2),
-            capital_after: +(capital * (1 + pnl / 100)).toFixed(2)
-        });
-    }
-
-    return buildStats(trades, equity, capital, capital0, maxDD);
+function getCostPct() {
+    const v = parseFloat(document.getElementById('param-cost')?.value);
+    return Number.isFinite(v) ? v : 0.05;
 }
 
-// BOTH mode: LONG + SHORT in parallelo
-function backtestBoth(dates, prices, slopes, entryTh, exitTh) {
-    const capital0 = 1000;
-    let capital = capital0;
-    let longIn = false, shortIn = false;
-    let longEntry = 0, shortEntry = 0, longDate = '', shortDate = '';
-    const trades = [];
-    const equity = [];
-    let maxEquity = capital0;
-    let maxDD = 0;
-
-    for (let i = 0; i < dates.length; i++) {
-        const price = prices[i];
-        const slope = slopes[i];
-        if (price == null || slope == null) {
-            equity.push(equity.length ? equity[equity.length - 1] : 0);
-            continue;
-        }
-
-        // LONG leg
-        if (!longIn && slope > entryTh) {
-            longIn = true; longEntry = price; longDate = dates[i];
-        } else if (longIn && slope < exitTh) {
-            const pnl = ((price - longEntry) / longEntry) * 100;
-            capital *= (1 + pnl / 100);
-            trades.push({
-                entry_date: longDate, exit_date: dates[i], direction: 'LONG',
-                entry_price: +longEntry.toFixed(2), exit_price: +price.toFixed(2),
-                pnl_pct: +pnl.toFixed(2), capital_after: +capital.toFixed(2)
-            });
-            longIn = false;
-        }
-
-        // SHORT leg (speculare)
-        if (!shortIn && slope < entryTh) {
-            shortIn = true; shortEntry = price; shortDate = dates[i];
-        } else if (shortIn && slope > exitTh) {
-            const pnl = ((shortEntry - price) / shortEntry) * 100;
-            capital *= (1 + pnl / 100);
-            trades.push({
-                entry_date: shortDate, exit_date: dates[i], direction: 'SHORT',
-                entry_price: +shortEntry.toFixed(2), exit_price: +price.toFixed(2),
-                pnl_pct: +pnl.toFixed(2), capital_after: +capital.toFixed(2)
-            });
-            shortIn = false;
-        }
-
-        // Equity
-        let tempCap = capital;
-        if (longIn) tempCap *= (1 + ((price - longEntry) / longEntry));
-        if (shortIn) tempCap *= (1 + ((shortEntry - price) / shortEntry));
-        const eqPct = ((tempCap - capital0) / capital0) * 100;
-        equity.push(+eqPct.toFixed(2));
-
-        if (tempCap > maxEquity) maxEquity = tempCap;
-        const dd = ((maxEquity - tempCap) / maxEquity) * 100;
-        if (dd > maxDD) maxDD = dd;
-    }
-
-    // Close open positions
-    const lastPrice = prices[prices.length - 1];
-    if (longIn && lastPrice) {
-        const pnl = ((lastPrice - longEntry) / longEntry) * 100;
-        trades.push({ entry_date: longDate, exit_date: 'OPEN', direction: 'LONG',
-            entry_price: +longEntry.toFixed(2), exit_price: +lastPrice.toFixed(2),
-            pnl_pct: +pnl.toFixed(2), capital_after: +(capital * (1 + pnl / 100)).toFixed(2) });
-    }
-    if (shortIn && lastPrice) {
-        const pnl = ((shortEntry - lastPrice) / shortEntry) * 100;
-        trades.push({ entry_date: shortDate, exit_date: 'OPEN', direction: 'SHORT',
-            entry_price: +shortEntry.toFixed(2), exit_price: +lastPrice.toFixed(2),
-            pnl_pct: +pnl.toFixed(2), capital_after: +(capital * (1 + pnl / 100)).toFixed(2) });
-    }
-
-    return buildStats(trades, equity, capital, capital0, maxDD);
-}
-
-// Shared stats builder
-function buildStats(trades, equity, capital, capital0, maxDD) {
-    const closed = trades.filter(t => t.exit_date !== 'OPEN');
-    const wins = closed.filter(t => t.pnl_pct > 0).length;
-    const losses = closed.filter(t => t.pnl_pct <= 0).length;
-    const winPnl = closed.filter(t => t.pnl_pct > 0).reduce((s, t) => s + t.pnl_pct, 0);
-    const lossPnl = Math.abs(closed.filter(t => t.pnl_pct <= 0).reduce((s, t) => s + t.pnl_pct, 0));
-    const finalCap = trades.length ? trades[trades.length - 1].capital_after : capital;
-    const totalReturn = ((finalCap - capital0) / capital0) * 100;
-
-    return {
-        trades, equity,
-        stats: {
-            total_return: +totalReturn.toFixed(2),
-            final_capital: +finalCap.toFixed(2),
-            total_trades: closed.length,
-            win_rate: closed.length > 0 ? +(wins / closed.length * 100).toFixed(1) : 0,
-            avg_trade: closed.length > 0 ? +(closed.reduce((s, t) => s + t.pnl_pct, 0) / closed.length).toFixed(2) : 0,
-            max_drawdown: +maxDD.toFixed(2),
-            profit_factor: lossPnl > 0 ? +(winPnl / lossPnl).toFixed(2) : (winPnl > 0 ? 999 : 0),
-            wins, losses
-        }
-    };
+function runStableBacktest(dates, prices, slopes, entryTh, exitTh, mode, opts) {
+    opts = opts || {};
+    return backtestStableCompat(dates, prices, slopes, {
+        mode: mode || 'LONG',
+        entryTh: entryTh,
+        exitTh: exitTh,
+        executionLag: 1,
+        costPct: opts.costPct != null ? opts.costPct : getCostPct(),
+        startDate: opts.startDate || null,
+        endDate: opts.endDate || null,
+    });
 }
 
 // UI helper: update labels when mode changes
@@ -502,9 +336,9 @@ async function runAnalysis() {
         }
     );
 
-    // Run backtest on all fetched data
+    // Run backtest on all fetched data (motore unificato, t+1 + costi)
     for (const [t, r] of Object.entries(results)) {
-        const bt = backtestStable(r.dates, r.prices, r.slopes, entryTh, exitTh, mode);
+        const bt = runStableBacktest(r.dates, r.prices, r.slopes, entryTh, exitTh, mode);
         RESULTS[t] = { ...r, backtest: bt };
     }
 
@@ -691,11 +525,16 @@ function renderSummaryCards() {
     const avgWR = stats.reduce((s, st) => s + st.win_rate, 0) / stats.length;
     const totalTrades = stats.reduce((s, st) => s + st.total_trades, 0);
     const positivi = stats.filter(st => st.total_return > 0).length;
+    // Benchmark: media buy & hold e differenza strategia - B&H
+    const avgBH = stats.reduce((s, st) => s + (st.buy_hold_return || 0), 0) / stats.length;
+    const vsBH = avgReturn - avgBH;
 
     const c = (v) => v >= 0 ? 'pos' : 'neg';
 
     div.innerHTML = `
         <div class="card"><div class="label">Return Medio</div><div class="value ${c(avgReturn)}">${avgReturn >= 0 ? '+' : ''}${avgReturn.toFixed(1)}%</div></div>
+        <div class="card"><div class="label">Buy&Hold Medio</div><div class="value ${c(avgBH)}">${avgBH >= 0 ? '+' : ''}${avgBH.toFixed(1)}%</div></div>
+        <div class="card" title="Return strategia meno Buy&Hold: se negativo, comprare e tenere avrebbe reso di più"><div class="label">vs Buy&Hold</div><div class="value ${c(vsBH)}">${vsBH >= 0 ? '+' : ''}${vsBH.toFixed(1)}%</div></div>
         <div class="card"><div class="label">Win Rate Medio</div><div class="value">${avgWR.toFixed(1)}%</div></div>
         <div class="card"><div class="label">Trades Totali</div><div class="value">${totalTrades}</div></div>
         <div class="card"><div class="label">Max DD Portaf.</div><div class="value neg">-${portfolio.maxDD.toFixed(1)}%</div></div>
@@ -774,21 +613,6 @@ function renderComparisonChart() {
 // --- COMPARISON TABLE ---
 function renderComparisonTable() {
     const tbody = document.getElementById('comparison-body');
-    const rows = Object.entries(RESULTS).map(([ticker, r]) => {
-        const s = r.backtest.stats;
-        const retCls = s.total_return >= 0 ? 'pos' : 'neg';
-        const retSign = s.total_return >= 0 ? '+' : '';
-        return `<tr>
-            <td style="font-weight:600;">${ticker}</td>
-            <td style="text-align:right;" class="${retCls}">${retSign}${s.total_return}%</td>
-            <td style="text-align:right;">${s.win_rate}%</td>
-            <td style="text-align:right;">${s.total_trades}</td>
-            <td style="text-align:right;">${s.avg_trade}%</td>
-            <td style="text-align:right; color:#ff4444;">-${s.max_drawdown}%</td>
-            <td style="text-align:right;">${s.profit_factor}</td>
-            <td style="text-align:right;">$${s.final_capital}</td>
-        </tr>`;
-    });
 
     // Sort by return descending
     const sorted = Object.entries(RESULTS)
@@ -798,14 +622,23 @@ function renderComparisonTable() {
         const s = r.backtest.stats;
         const retCls = s.total_return >= 0 ? 'pos' : 'neg';
         const retSign = s.total_return >= 0 ? '+' : '';
+        const bh = s.buy_hold_return != null ? s.buy_hold_return : 0;
+        const vsBh = s.total_return - bh;
+        const vsCls = vsBh >= 0 ? 'pos' : 'neg';
+        const bhSign = bh >= 0 ? '+' : '';
+        const vsSign = vsBh >= 0 ? '+' : '';
         return `<tr>
             <td style="font-weight:600;">${ticker}</td>
             <td style="text-align:right;" class="${retCls}">${retSign}${s.total_return}%</td>
+            <td style="text-align:right;">${bhSign}${bh}%</td>
+            <td style="text-align:right;" class="${vsCls}">${vsSign}${vsBh.toFixed(1)}%</td>
             <td style="text-align:right;">${s.win_rate}%</td>
             <td style="text-align:right;">${s.total_trades}</td>
             <td style="text-align:right;">${s.avg_trade}%</td>
             <td style="text-align:right; color:#ff4444;">-${s.max_drawdown}%</td>
             <td style="text-align:right;">${s.profit_factor}</td>
+            <td style="text-align:right;">${s.sharpe != null ? s.sharpe : '-'}</td>
+            <td style="text-align:right;">${s.exposure_pct != null ? s.exposure_pct : '-'}%</td>
             <td style="text-align:right;">$${s.final_capital}</td>
         </tr>`;
     }).join('');
@@ -820,8 +653,18 @@ let OPT_STORE = {}; // { alpha: { entryRange, exitRange, zData, gridResults, bes
 let OPT_GLOBAL_BEST = null;
 let OPT_ALL_RESULTS = []; // flat list of all grid results across all alphas
 
+// Train fraction for the optimizer OOS split (default 70%)
+function getTrainFrac() {
+    const v = parseFloat(document.getElementById('param-oos')?.value);
+    if (!Number.isFinite(v)) return 0.7;
+    return Math.min(0.95, Math.max(0.3, v / 100));
+}
+
 // Grid search for a single alpha's tickerData (synchronous, with async yield)
-async function runGridSearch(tickerData, entryRange, exitRange, mode, alphaLabel, progressBase, progressSpan) {
+// VALIDAZIONE OUT-OF-SAMPLE: i parametri si scelgono sul segmento TRAIN
+// (primi trainFrac% del periodo), ma il numero che conta è il ritorno OOS
+// sul segmento successivo, MAI visto durante la scelta dei parametri.
+async function runGridSearch(tickerData, entryRange, exitRange, mode, alphaLabel, progressBase, progressSpan, trainFrac) {
     const validTickers = Object.keys(tickerData).filter(t => {
         const d = tickerData[t];
         if (!d || !d.dates || !d.prices || !d.slopes) return false;
@@ -830,7 +673,15 @@ async function runGridSearch(tickerData, entryRange, exitRange, mode, alphaLabel
     });
 
     const nTickers = validTickers.length;
-    if (nTickers === 0) return { gridResults: [], zData: [], nTickers: 0 };
+    if (nTickers === 0) return { gridResults: [], zData: [], nTickers: 0, splitDate: null };
+
+    // Data di split globale: al trainFrac% del calendario unione
+    const dateSet = new Set();
+    for (const t of validTickers) for (const d of tickerData[t].dates) dateSet.add(d);
+    const allDates = [...dateSet].sort();
+    const splitIdx = Math.min(allDates.length - 1, Math.floor(allDates.length * (trainFrac != null ? trainFrac : 0.7)));
+    const splitDate = allDates[splitIdx];
+    const trainEnd = splitIdx > 0 ? allDates[splitIdx - 1] : allDates[0];
 
     const gridResults = [];
     const zData = [];
@@ -844,22 +695,32 @@ async function runGridSearch(tickerData, entryRange, exitRange, mode, alphaLabel
                 for (let xi = 0; xi < exitRange.length; xi++) {
                     const exit = exitRange[xi];
                     let sumReturn = 0, sumWR = 0, sumTrades = 0, nPositive = 0, count = 0;
+                    let sumOOS = 0, oosPositive = 0, oosCount = 0;
                     for (const t of validTickers) {
                         try {
                             const d = tickerData[t];
-                            const bt = backtestStable(d.dates, d.prices, d.slopes, entry, exit, mode);
-                            sumReturn += bt.stats.total_return;
-                            sumWR += bt.stats.win_rate;
-                            sumTrades += bt.stats.total_trades;
-                            if (bt.stats.total_return > 0) nPositive++;
+                            // TRAIN: fino al giorno prima dello split
+                            const btTrain = runStableBacktest(d.dates, d.prices, d.slopes, entry, exit, mode, { endDate: trainEnd });
+                            sumReturn += btTrain.stats.total_return;
+                            sumWR += btTrain.stats.win_rate;
+                            sumTrades += btTrain.stats.total_trades;
+                            if (btTrain.stats.total_return > 0) nPositive++;
                             count++;
+                            // OOS: dallo split in poi (mai visto in ottimizzazione)
+                            const btOOS = runStableBacktest(d.dates, d.prices, d.slopes, entry, exit, mode, { startDate: splitDate });
+                            sumOOS += btOOS.stats.total_return;
+                            if (btOOS.stats.total_return > 0) oosPositive++;
+                            oosCount++;
                         } catch (e) { /* skip */ }
                     }
                     const avgRet = count > 0 ? sumReturn / count : 0;
+                    const avgOOS = oosCount > 0 ? sumOOS / oosCount : 0;
                     row.push(+avgRet.toFixed(2));
                     gridResults.push({
                         alpha: alphaLabel, entry, exit,
                         avgReturn: +avgRet.toFixed(2),
+                        oosReturn: +avgOOS.toFixed(2),
+                        oosPositive,
                         avgWR: count > 0 ? +(sumWR / count).toFixed(1) : 0,
                         avgTrades: count > 0 ? +(sumTrades / count).toFixed(0) : 0,
                         nPositive, total: count
@@ -869,7 +730,7 @@ async function runGridSearch(tickerData, entryRange, exitRange, mode, alphaLabel
                 ei++;
                 const pct = progressBase + (ei / entryRange.length) * progressSpan;
                 setProgress(pct.toFixed(0));
-                setStatus(`[α=${alphaLabel}] Grid: riga ${ei}/${entryRange.length} (Entry=${entry}) — ${nTickers} tickers`);
+                setStatus(`[α=${alphaLabel}] Grid: riga ${ei}/${entryRange.length} (Entry=${entry}) — ${nTickers} tickers (train fino a ${trainEnd}, OOS da ${splitDate})`);
                 if (ei < entryRange.length) {
                     setTimeout(processRow, 0);
                 } else {
@@ -883,7 +744,7 @@ async function runGridSearch(tickerData, entryRange, exitRange, mode, alphaLabel
         processRow();
     });
 
-    return { gridResults, zData, nTickers };
+    return { gridResults, zData, nTickers, splitDate };
 }
 
 async function runOptimizer() {
@@ -947,23 +808,25 @@ async function runOptimizer() {
         const gridSpan = progressPerAlpha * 0.5;
 
         try {
-            const { gridResults, zData, nTickers } = await runGridSearch(
-                results, entryRange, exitRange, mode, alpha, gridBase, gridSpan
+            const { gridResults, zData, nTickers, splitDate } = await runGridSearch(
+                results, entryRange, exitRange, mode, alpha, gridBase, gridSpan, getTrainFrac()
             );
 
             if (gridResults.length === 0) continue;
 
+            // La scelta dei parametri avviene sul TRAIN (avgReturn);
+            // oosReturn è la verifica onesta sul periodo mai visto.
             const sorted = [...gridResults].sort((a, b) => b.avgReturn - a.avgReturn);
             const best = sorted[0];
 
-            OPT_STORE[alpha] = { entryRange, exitRange, zData, gridResults: sorted, best, nTickers };
+            OPT_STORE[alpha] = { entryRange, exitRange, zData, gridResults: sorted, best, nTickers, splitDate };
             OPT_ALL_RESULTS.push(...gridResults);
 
             if (!OPT_GLOBAL_BEST || best.avgReturn > OPT_GLOBAL_BEST.avgReturn) {
                 OPT_GLOBAL_BEST = best;
             }
 
-            console.log(`[Optimizer] α=${alpha}: Best Entry>${best.entry} Exit<${best.exit} → ${best.avgReturn}% (${nTickers} tickers)`);
+            console.log(`[Optimizer] α=${alpha}: Best Entry>${best.entry} Exit<${best.exit} → Train ${best.avgReturn}% | OOS ${best.oosReturn}% (${nTickers} tickers, split ${splitDate})`);
         } catch (err) {
             console.error(`[Optimizer] Grid search failed for α=${alpha}:`, err);
         }
@@ -995,7 +858,7 @@ async function runOptimizer() {
     RUNNING = false;
 
     const gb = OPT_GLOBAL_BEST;
-    setStatus(`[${mode}] Ottimizzazione completa! BEST: α=${gb.alpha} Entry>${gb.entry} Exit<${gb.exit} → Avg ${gb.avgReturn}% | WR ${gb.avgWR}%`);
+    setStatus(`[${mode}] Ottimizzazione completa! BEST (su train): α=${gb.alpha} Entry>${gb.entry} Exit<${gb.exit} → Train ${gb.avgReturn}% | ✅ OOS ${gb.oosReturn}% | WR ${gb.avgWR}%`);
     switchTab('optimizer');
 }
 
@@ -1042,9 +905,12 @@ function showAlphaHeatmap(alpha) {
 function renderHeatmap(entryRange, exitRange, zData, best, alpha) {
     const info = document.getElementById('opt-info');
     const alphaLabel = alpha != null ? `α=${alpha} | ` : '';
+    const splitDate = OPT_STORE[alpha]?.splitDate;
+    const oosCls = (best.oosReturn != null && best.oosReturn >= 0) ? 'pos' : 'neg';
     info.innerHTML = `
-        <span>Migliore per questo Alpha:</span>
-        <span class="best">${alphaLabel}Entry > ${best.entry} | Exit < ${best.exit} → Avg Return ${best.avgReturn >= 0 ? '+' : ''}${best.avgReturn}% | WR ${best.avgWR}% | ${best.nPositive}/${best.total} positivi</span>
+        <span>Migliore per questo Alpha (scelto sul train):</span>
+        <span class="best">${alphaLabel}Entry > ${best.entry} | Exit < ${best.exit} → Train ${best.avgReturn >= 0 ? '+' : ''}${best.avgReturn}% | WR ${best.avgWR}% | ${best.nPositive}/${best.total} positivi</span>
+        <span style="font-weight:700;" class="${oosCls}">OOS${splitDate ? ' (da ' + splitDate + ')' : ''}: ${best.oosReturn >= 0 ? '+' : ''}${best.oosReturn != null ? best.oosReturn : '?'}% — questo è il numero che conta</span>
     `;
 
     const textData = zData.map(row => row.map(v => {
@@ -1096,6 +962,9 @@ function renderOptTable(topN) {
     tbody.innerHTML = topN.map((r, i) => {
         const cls = r.avgReturn >= 0 ? 'pos' : 'neg';
         const sign = r.avgReturn >= 0 ? '+' : '';
+        const oos = r.oosReturn != null ? r.oosReturn : 0;
+        const oosCls = oos >= 0 ? 'pos' : 'neg';
+        const oosSign = oos >= 0 ? '+' : '';
         const medal = i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : '';
         const isBest = OPT_GLOBAL_BEST && r.alpha === OPT_GLOBAL_BEST.alpha && r.entry === OPT_GLOBAL_BEST.entry && r.exit === OPT_GLOBAL_BEST.exit;
         const rowStyle = isBest ? 'background:rgba(0,255,136,0.08);' : '';
@@ -1104,6 +973,8 @@ function renderOptTable(topN) {
             <td>${r.entry}</td>
             <td>${r.exit}</td>
             <td style="text-align:right;" class="${cls}">${sign}${r.avgReturn}%</td>
+            <td style="text-align:right; font-weight:700;" class="${oosCls}">${oosSign}${oos}%</td>
+            <td style="text-align:right;">${r.oosPositive != null ? r.oosPositive : '-'}/${r.total}</td>
             <td style="text-align:right;">${r.avgWR}%</td>
             <td style="text-align:right;">${r.avgTrades}</td>
             <td style="text-align:right;">${r.nPositive}/${r.total}</td>

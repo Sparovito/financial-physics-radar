@@ -47,24 +47,48 @@ Il sistema segue un pattern strict **Fat Backend / Thin Frontend**.
 Questo file contiene le classi fondamentali che implementano i modelli fisici.
 -   **`MarketData`**:
     -   Wrapper per `yfinance`.
-    -   Gestisce il download, la pulizia dei dati e la robustezza (fallback a dati mock se offline).
+    -   Gestisce il download e la pulizia dei dati; lancia `ValueError` su dati vuoti.
 -   **`FourierEngine`**:
     -   Implementa l'Analisi Spettrale.
-    -   Esegue FFT (Fast Fourier Transform) sugli ultimi 252 giorni (1 anno).
+    -   Esegue FFT (Fast Fourier Transform) su una finestra configurabile (default 504 giorni).
     -   Genera "scenari futuri" ricostruendo il segnale dalle armoniche dominanti (`top_k`).
 -   **`ActionPath`**:
     -   Calcola le metriche energetiche.
     -   **Energia Cinetica ($K$):** Misura la violenza del movimento (Proxy: Volatilità/Velocity).
     -   **Energia Potenziale ($U$):** Misura la tensione accumulata (Proxy: Deviazione dalla media/trend).
     -   Implementa il concetto di "Minima Azione" per tracciare il percorso ideale del prezzo.
+    -   **NOTA MATEMATICA (2026-07-05):** il percorso di minima azione è lo
+        smoother MAP di un modello state-space local-level gaussiano
+        (q=1/α, r=1/β, init diffusa). NON è causale: x*(t) dipende anche dal futuro.
+-   **`kalman_frozen_series(px, alpha, beta)`** *(2026-07-05)*:
+    -   Serie "frozen" point-in-time in **O(n)** via filtro di Kalman + fixed-lag smoother.
+    -   Valori NUMERICAMENTE IDENTICI al vecchio ricalcolo `ActionPath(px[:t+1])`
+        per ogni t (O(n²)) — parità in `tests/test_kalman_frozen.py`, speedup ~73x.
+    -   Fondamento: l'ultimo punto dello smoother su [0..t] = filtro di Kalman al tempo t.
+-   **`causal_lowpass(values)`** *(2026-07-05)*:
+    -   Butterworth passa-basso CAUSALE (lfilter + lfilter_zi). Sostituisce `filtfilt`
+        (zero-phase, bidirezionale = lookahead) nel segnale Frozen SUM.
+-   **`compute_stable_kinetic_z(px, alpha)`** *(2026-07-05)*:
+    -   Calcolo S.KinZ estratto e testato (il blocco inline in main.py referenziava
+        una variabile inesistente: il pannello riceveva sempre dati vuoti).
+-   **`backtest_strategy(..., execution_lag=1)`**:
+    -   Backtest LIVE/FROZEN/SUM/MA. Da 2026-07-05 il segnale della barra j
+        viene eseguito al close della barra j+1 (default; `execution_lag=0` = legacy).
 -   **`MarketScanner`**:
     -   Parallelizza l'analisi su centinaia di ticker.
-    -   Calcola Z-Scores (deviazioni standard) per normalizzare i dati e renderli comparabili tra asset diversi.
+    -   Calcola Z-Scores rolling; serie frozen via `kalman_frozen_series` (O(n)).
 
-#### `analysis.py` - L'Orchestratore
-Funge da facciata ("Facade") per `logic.py`.
--   Espone la funzione `run_analysis(...)`.
--   Coordina: Fetch Dati -> Calcolo Fourier -> Calcolo Energie -> Packaging della risposta JSON.
+#### `stable_strategy.py` - Motore STABLE Unificato *(2026-07-05)*
+L'UNICA implementazione della strategia STABLE (vedi sezione dedicata sotto).
+Replica JS speculare in `frontend/stable_engine.js`; parità verificata da
+`tests/test_js_py_parity.py`. (Il vecchio `analysis.py` era codice morto e
+rotto — non importato da nulla — ed è stato rimosso; la versione viva di
+run_analysis vive in `main.py::analyze_stock`.)
+
+#### `tests/` - Suite di Test *(2026-07-05)*
+Script standalone (`venv/bin/python tests/test_*.py`), nessuna dipendenza nuova:
+parità Kalman, causalità S.KinZ e SUM, motore STABLE (8 scenari), parità JS↔PY
+(richiede node), scanner segnali, verifica integrità con cache sintetica.
 
 #### `main.py` - L'Interfaccia API
 Configura il server FastAPI ed espone gli endpoint.
@@ -78,6 +102,13 @@ Configura il server FastAPI ed espone gli endpoint.
 #### `stable_scanner.py` - Email Alert STABLE
 Modulo dedicato per le email giornaliere con segnali della strategia STABLE.
 -   **`download_all_prices()`**: riutilizza `PRICE_CACHE`, `TICKER_CACHE` e `MarketData` da `main.py` (stessa infrastruttura).
+-   **`analyze_ticker_signals()`** *(2026-07-05)*: segnali derivati dal MOTORE
+    UNIFICATO (`stable_strategy.backtest_stable`) — stessa semantica di Lab e
+    Strategia 5 (level-based, SHORT speculare, esecuzione t+1). I segnali con
+    `pending_execution=True` vanno eseguiti alla prossima barra.
+-   **`drop_partial_last_bar()`** *(2026-07-05)*: scarta la barra di OGGI se
+    calcolata prima delle 22:05 Europe/Rome (candela Yahoo incompleta →
+    repainting). Default trigger email: **22:30 Rome** (dopo chiusura USA).
 -   **`compute_stable_signals()`**: finestra 6 mesi auto-calcolata, download e computazione paralleli (ThreadPoolExecutor 8 workers).
 -   **`build_stable_email()`**: HTML con 3 sezioni: ENTRY OGGI (verde), INGRESSI RECENTI <5gg (giallo con badge giorni), POSIZIONI ATTIVE (viola).
 -   **`load_config()` / `save_config()`**: persistenza in `stable_alert_config.json`.
@@ -114,7 +145,11 @@ Il file JavaScript più critico (oltre 3000 righe).
 Pagina dedicata alla strategia STABLE, separata dalla dashboard principale.
 -   **Tab Analisi**: analisi singolo ticker con parametri STABLE configurabili (mode, entry_threshold, exit_threshold, alpha).
 -   **Tab Batch**: analisi massiva di tutti i ticker (o preset) con tabella ordinabile, statistiche aggregate.
--   **Tab Optimizer**: grid search su range di alpha per trovare configurazione ottimale con metriche (Win Rate, Total P/L, Sharpe).
+-   **Tab Optimizer**: grid search su range di alpha con **validazione out-of-sample**
+    *(2026-07-05)*: i parametri si scelgono sul segmento train (default 70% del periodo),
+    la colonna OOS mostra il ritorno sul periodo mai visto — il numero che conta.
+-   **Backtest nel browser**: `stable_engine.js` (replica speculare del motore Python),
+    esecuzione t+1, costi per lato configurabili, colonne B&H / vs B&H / Sharpe / Expo.
 -   **Tab 📩 Email Alert**: configurazione completa email giornaliere:
     -   Toggle ON/OFF con switch visuale.
     -   Orario trigger configurabile (ora/minuto).
@@ -146,21 +181,26 @@ Il sistema implementa diverse logiche di trading simulate nel backend (`backtest
 
 ### STABLE Strategy — Dettaglio Implementazione (STRATEGIA 5)
 La strategia viola usa la **Stable Slope** (`stable_slope_line` = EMA(14) di dF, linea verde nel pannello F.Slope).
-Gestisce **due posizioni in parallelo** con backtest custom (non usa `backtest_strategy()`):
 
-**LONG leg:**
--   Entry: stable_slope > 0.0 (slope positiva → trend rialzista)
--   Exit: stable_slope < -0.3 (trend cala forte)
--   Hysteresis: tra -0.3 e 0, LONG resta aperto
+**[UNIFICATA 2026-07-05]** Esiste UNA SOLA implementazione di riferimento:
+`backend/stable_strategy.py::backtest_stable()`, usata da:
+-   Strategia 5 in `main.py` (LONG-only, soglie 0/0)
+-   STABLE Lab (`frontend/stable_engine.js` = replica speculare JS, parità
+    garantita da `backend/tests/test_js_py_parity.py`)
+-   Email scanner (`stable_scanner.py::analyze_ticker_signals`)
 
-**SHORT leg (in parallelo):**
--   Entry: stable_slope < 0.0 (slope negativa → trend ribassista)
--   Exit: stable_slope > 0.2 (trend risale)
--   Hysteresis: tra 0 e 0.2, SHORT resta aperto
-
-**P/L curve**: combinato LONG+SHORT (entrambe le posizioni contribuiscono).
-**Output**: formato identico a `backtest_strategy()` (equity_curve, trades, trade_pnl_curve, stats).
--   **Scanner**: lo scanner chiama `/analyze` per ogni ticker, quindi riceve `stable_strategy` con la stessa logica.
+**Semantica unificata:**
+-   Segnale valutato sul close della barra j, **esecuzione al close della barra j+1**
+    (`execution_lag=1`; 0 = vecchio same-bar, solo per confronto)
+-   LONG: entry slope > entry_th, exit slope < exit_th
+-   SHORT: soglie **speculari** — entry slope < -entry_th, exit slope > -exit_th
+-   BOTH: due leg paralleli indipendenti, capitale condiviso
+-   Costi di transazione parametrici (`cost_pct` % per lato)
+-   Win rate / avg trade / profit factor **solo sui trade chiusi**
+-   Stats estese: `max_drawdown`, `profit_factor`, `exposure_pct`, `sharpe`,
+    `buy_hold_return` (benchmark nello stesso periodo)
+-   `signal_events`: eventi ENTRY/EXIT, inclusi PENDENTI (segnale sull'ultima
+    barra, esecuzione alla prossima)
 
 ### Indicatori Stabili (Causal Indicators) — Pannello S.KinZ
 Usati per la visualizzazione nel pannello S.KinZ (NON più per la strategia STABLE). I valori passati **non cambiano mai** aggiungendo nuovi dati.
@@ -181,8 +221,9 @@ Usati per la visualizzazione nel pannello S.KinZ (NON più per la strategia STAB
 
 | File | Percorso | Ruolo | Note |
 | :--- | :--- | :--- | :--- |
-| **logic.py** | `backend/logic.py` | Modelli Fisici | *Non modificare la matematica senza approvazione*. `MarketData.fetch()` raises ValueError su dati vuoti (no mock fallback). |
-| **analysis.py** | `backend/analysis.py` | Workflow Analisi | Colla tra dati e modelli |
+| **logic.py** | `backend/logic.py` | Modelli Fisici | *Non modificare la matematica senza approvazione*. `MarketData.fetch()` raises ValueError su dati vuoti (no mock fallback). Include `kalman_frozen_series`, `causal_lowpass`, `compute_stable_kinetic_z`. |
+| **stable_strategy.py** | `backend/stable_strategy.py` | Motore STABLE unificato | Fonte di verità della strategia; replica JS in `frontend/stable_engine.js` (parità testata) |
+| **tests/** | `backend/tests/` | Suite di test | Parità Kalman/JS, causalità, motore STABLE, scanner |
 | **main.py** | `backend/main.py` | API Server + Scheduler | Definisce contratti JSON, scheduler APScheduler (2 job: email originale + STABLE alert), cache condivise (PRICE_CACHE, TICKER_CACHE) |
 | **stable_scanner.py** | `backend/stable_scanner.py` | Email Alert STABLE | Scanner segnali STABLE, download via main.py infra, email HTML 3 sezioni |
 | **scanner.py** | `backend/scanner.py` | Email Scanner Originale | Segnali BUY/SELL da Frozen/Sum, email HTML 4 sezioni, portfolio HOLD/SELL |
@@ -211,6 +252,23 @@ Per le email STABLE, la finestra dati è auto-calcolata a 6 mesi (`today - 180 g
 
 ### Causal Stable Slope
 Formula: `EMA(prices, span=alpha/10)` → `diff()` → `EMA(14)`. Puramente backward-looking, dipendente da alpha. NON usa `filtfilt` (non-causale).
+
+### Causalità end-to-end (2026-07-05)
+-   Il segnale Frozen SUM usa `causal_lowpass` (lfilter) al posto di `filtfilt`:
+    NESSUN filtro zero-phase è ammesso su segnali usati nei backtest.
+-   `/verify-integrity` (bug chiave cache corretto: legge `TICKER_CACHE[ticker]["frozen"]`)
+    certifica 0 trade corrotti per FROZEN e SUM su dati reali.
+-   Tutti i backtest usano esecuzione t+1 di default (`execution_lag=1`).
+-   Le email STABLE calcolano i segnali SOLO su barre daily COMPLETE
+    (`drop_partial_last_bar`, trigger default 22:30 Rome).
+
+### Fondamento state-space del modello (2026-07-05)
+Il percorso di Minima Azione = smoother di Kalman di un modello local-level
+(q=1/α, r=1/β). La versione point-in-time ("frozen") = filtro di Kalman causale,
+calcolata in O(n) da `kalman_frozen_series` con valori identici al vecchio
+ricalcolo O(n²). Il rapporto segnale/rumore λ=β/α è l'unico parametro reale;
+per α=200, β=1 il guadagno steady-state equivale a una EMA di ~28 giorni
+(la Stable Slope causale è l'approssimazione steady-state del filtro esatto).
 
 ### Scheduler Re-init
 Quando l'utente salva una nuova configurazione (orario diverso), `_init_stable_scheduler()` rimuove il job esistente e ne crea uno nuovo con il nuovo orario.

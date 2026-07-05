@@ -13,14 +13,13 @@ import json
 import uuid
 from datetime import datetime, timezone
 import yfinance as yf
-from scipy.signal import butter, filtfilt
 import concurrent.futures
 
 # Ensure the directory containing this file is in the Python path
 # This fixes "ModuleNotFoundError: No module named 'logic'" on Railway
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from logic import MarketData, ActionPath, FourierEngine, MarketScanner
+from logic import MarketData, ActionPath, FourierEngine, MarketScanner, compute_stable_kinetic_z, kalman_frozen_series, causal_lowpass
 
 app = FastAPI(title="Financial Physics API")
 
@@ -349,41 +348,23 @@ def analyze_stock(req: AnalysisRequest):
                 print(f"⚠️ Errore calcolo ZigZag: {e}")
                 zigzag_series = pd.Series([0]*len(px), index=px.index)
             
-            # --- PRE-CALCOLO FROZEN HISTORY (Heavy Computation) ---
-            print(f"🧊 Pre-calcolo Frozen History completa (può richiedere tempo)...")
-            SAMPLE_EVERY = 1
+            # --- PRE-CALCOLO FROZEN HISTORY (point-in-time) ---
+            # [PERF] O(n) via filtro di Kalman: valori numericamente identici
+            # al vecchio ricalcolo ActionPath(px[:t+1]) per ogni t (O(n²)).
+            # Parità dimostrata in tests/test_kalman_frozen.py.
+            print(f"🧊 Pre-calcolo Frozen History (Kalman O(n))...")
             MIN_POINTS = 100
-            
-            f_kin, f_pot, f_sum, f_dates = [], [], [], []
-            n_total = len(px)
-            
-            for t in range(MIN_POINTS, n_total, SAMPLE_EVERY):
-                px_t = px.iloc[:t+1]
-                try:
-                    mech_t = ActionPath(px_t, alpha=req.alpha, beta=req.beta)
-                    
-                    # 1. Kinetic Frozen (Shifted T-25 for prediction comparison)
-                    lag_idx = -25
-                    if len(mech_t.kin_density) >= 25:
-                        val_kin = round(float(mech_t.kin_density.iloc[lag_idx]), 2)
-                    else:
-                        val_kin = 0.0
-                    f_kin.append(val_kin)
-                    
-                    # 2. Potential Frozen (Current T)
-                    val_pot = round(float(mech_t.pot_density.iloc[-1]), 2)
-                    f_pot.append(val_pot)
-                    
-                    # 3. [NEW] Frozen Sum Index (Sum of Current Kin & Current Pot)
-                    # We use Current Kin (iloc[-1]) for this index, not the shifted one
-                    curr_kin_raw = float(mech_t.kin_density.iloc[-1])
-                    curr_pot_raw = float(mech_t.pot_density.iloc[-1])
-                    val_sum = curr_kin_raw + curr_pot_raw
-                    f_sum.append(val_sum)
-                    
-                    f_dates.append(px.index[t].strftime('%Y-%m-%d'))
-                except:
-                    continue
+            frozen_res = kalman_frozen_series(
+                px, alpha=req.alpha, beta=req.beta,
+                min_points=MIN_POINTS, kin_lag=25
+            )
+            f_dates = [px.index[t].strftime('%Y-%m-%d') for t in frozen_res["t_index"]]
+            # 1. Kinetic Frozen (shifted T-25 for prediction comparison)
+            f_kin = [round(v, 2) for v in frozen_res["kin_lag"]]
+            # 2. Potential Frozen (current T)
+            f_pot = [round(v, 2) for v in frozen_res["pot_last"]]
+            # 3. Frozen Sum Index (current kin + current pot, not shifted)
+            f_sum = [k + p for k, p in zip(frozen_res["kin_last"], frozen_res["pot_last"])]
             
             # [NEW] Normalize Frozen Sum Index (Rolling Z-Score 252)
             f_sum_series = pd.Series(f_sum)
@@ -391,11 +372,10 @@ def analyze_stock(req: AnalysisRequest):
             roll_fsum_std = f_sum_series.rolling(window=252, min_periods=20).std()
             z_frozen_sum = ((f_sum_series - roll_fsum_mean) / (roll_fsum_std + 1e-6)).fillna(0).tolist()
             
-            # [NEW] Apply Zero-Phase Low-Pass Filter (Butterworth)
-            # This smooths the signal without introducing lag
+            # [FIX LOOKAHEAD] Low-pass Butterworth CAUSALE (era filtfilt
+            # zero-phase: "senza lag" significava usare il futuro).
             try:
-                b, a = butter(N=2, Wn=0.05, btype='low')
-                z_frozen_sum = filtfilt(b, a, z_frozen_sum).tolist()
+                z_frozen_sum = causal_lowpass(z_frozen_sum)
             except Exception as e:
                 print(f"⚠️ Filter failed (keeping raw): {e}")
             
@@ -467,9 +447,8 @@ def analyze_stock(req: AnalysisRequest):
                     z_trunc = ((s_trunc - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
                     
                     try:
-                        b, a = butter(N=2, Wn=0.05, btype='low')
                         if len(z_trunc) > 15:
-                            trunc_z_sum = filtfilt(b, a, z_trunc).tolist()
+                            trunc_z_sum = causal_lowpass(z_trunc)
                         else:
                             trunc_z_sum = z_trunc
                     except:
@@ -560,34 +539,14 @@ def analyze_stock(req: AnalysisRequest):
         # Purely causal: NEVER changes for past dates (verified)
         SKINZ_THRESHOLD = 0.5
         try:
-            # Clean dF of any NaN/Inf
-            dF_clean = dF.fillna(0).replace([np.inf, -np.inf], 0)
-
-            # EMA(20) low-pass filter on dF, then square for kinetic proxy
-            dF_smooth20 = dF_clean.ewm(span=20, adjust=False).mean()
-            stable_kin_raw = 0.5 * req.alpha * dF_smooth20**2
-
-            # Z-score with 252-day rolling window
-            sk_mean = stable_kin_raw.rolling(window=252, min_periods=20).mean()
-            sk_std = stable_kin_raw.rolling(window=252, min_periods=20).std()
-            stable_kin_z = ((stable_kin_raw - sk_mean) / (sk_std + 1e-6)).fillna(0)
-            stable_kinetic_z_line = stable_kin_z.values.tolist()
-
-            # Hysteresis regime: +1 (bullish) / -1 (bearish)
-            # Only switches when signal crosses ±0.5 threshold
-            # Eliminates 83% of false zero-crossings
-            z_vals = stable_kin_z.values
-            regime = np.zeros(len(z_vals), dtype=float)
-            current = 0.0
-            for i in range(len(z_vals)):
-                if z_vals[i] > SKINZ_THRESHOLD:
-                    current = 1.0
-                elif z_vals[i] < -SKINZ_THRESHOLD:
-                    current = -1.0
-                regime[i] = current
-            stable_kinetic_z_regime = regime.tolist()
-
-            print(f"✅ Stable Kinetic Z: {len(stable_kinetic_z_line)} pts | Regime switches: {int(np.sum(np.abs(np.diff(regime)) > 0))}")
+            # [FIX] il vecchio blocco inline referenziava una variabile `dF`
+            # inesistente (NameError silenziato) -> pannello sempre vuoto.
+            # Ora il calcolo vive in logic.compute_stable_kinetic_z (testato).
+            stable_kinetic_z_line, stable_kinetic_z_regime = compute_stable_kinetic_z(
+                px, req.alpha, threshold=SKINZ_THRESHOLD
+            )
+            _n_switches = int(np.sum(np.abs(np.diff(stable_kinetic_z_regime)) > 0))
+            print(f"✅ Stable Kinetic Z: {len(stable_kinetic_z_line)} pts | Regime switches: {_n_switches}")
         except Exception as e:
             print(f"⚠️ Stable Kinetic Z computation failed: {e}")
             import traceback
@@ -699,93 +658,26 @@ def analyze_stock(req: AnalysisRequest):
         )
         
         # --- STRATEGIA 5: STABLE (Stable Slope, linea verde F.Slope) ---
-        # Solo LONG: entry slope > 0, exit slope < 0
+        # [UNIFICATO] usa il motore condiviso stable_strategy.backtest_stable
+        # (stessa semantica di Lab e email scanner): LONG-only, soglie 0/0,
+        # esecuzione t+1 (segnale sul close di oggi, esecuzione al close di domani).
         STABLE_ENTRY = 0.0
         STABLE_EXIT = 0.0
 
-        capital_stable = 1000.0
-        long_in = False
-        long_entry_price = None
-        long_entry_date = None
-        trades_stable = []
-        trade_pnl_stable = []
-        equity_stable = []
-
-        for i, date in enumerate(dates_historical):
-            if date is None or (req.start_date and date < req.start_date) or (req.end_date and date > req.end_date):
-                trade_pnl_stable.append(0)
-                eq_pct = ((capital_stable - 1000) / 1000) * 100
-                equity_stable.append(round(eq_pct, 2))
-                continue
-
-            price = price_real[i]
-            s_val = stable_slope_line[i] if i < len(stable_slope_line) else 0
-
-            if price is None:
-                trade_pnl_stable.append(0)
-                equity_stable.append(equity_stable[-1] if equity_stable else 0)
-                continue
-
-            # --- LONG only ---
-            if not long_in and s_val > STABLE_ENTRY:
-                long_in = True
-                long_entry_price = price
-                long_entry_date = date
-            elif long_in and s_val < STABLE_EXIT:
-                pnl = ((price - long_entry_price) / long_entry_price) * 100
-                capital_stable *= (1 + pnl / 100)
-                trades_stable.append({
-                    "entry_date": long_entry_date, "exit_date": date,
-                    "direction": "LONG", "entry_price": round(long_entry_price, 2),
-                    "exit_price": round(price, 2), "pnl_pct": round(pnl, 2),
-                    "capital_after": round(capital_stable, 2),
-                    "entry_z_value": 0, "entry_z_roc": 0
-                })
-                long_in = False
-                long_entry_price = None
-
-            # --- P/L corrente ---
-            current_pnl = 0
-            if long_in:
-                current_pnl = ((price - long_entry_price) / long_entry_price) * 100
-            trade_pnl_stable.append(round(current_pnl, 2))
-
-            # Equity
-            temp_cap = capital_stable
-            if long_in:
-                temp_cap *= (1 + ((price - long_entry_price) / long_entry_price))
-            eq_pct = ((temp_cap - 1000) / 1000) * 100
-            equity_stable.append(round(eq_pct, 2))
-
-        # Chiudi posizione aperta a fine periodo (formato OPEN standard)
-        final_price = price_real[-1] if price_real[-1] else price_real[-2]
-        if long_in and final_price:
-            pnl = ((final_price - long_entry_price) / long_entry_price) * 100
-            trades_stable.append({
-                "entry_date": long_entry_date, "exit_date": "OPEN",
-                "direction": "LONG", "entry_price": round(long_entry_price, 2),
-                "exit_price": round(final_price, 2), "pnl_pct": round(pnl, 2),
-                "capital_after": round(capital_stable * (1 + pnl/100), 2),
-                "entry_z_value": 0, "entry_z_roc": 0
-            })
-
-        # Stats
-        n_trades = len(trades_stable)
-        wins = sum(1 for t in trades_stable if t['pnl_pct'] > 0)
-        final_cap = trades_stable[-1]['capital_after'] if trades_stable else capital_stable
-        backtest_result_stable = {
-            "equity_curve": equity_stable,
-            "trades": trades_stable,
-            "skipped_trades": [],
-            "trade_pnl_curve": trade_pnl_stable,
-            "stats": {
-                "final_capital": round(final_cap, 2),
-                "total_return": round(((final_cap - 1000) / 1000) * 100, 2),
-                "win_rate": round((wins / n_trades * 100), 1) if n_trades > 0 else 0,
-                "total_trades": n_trades,
-                "avg_trade_pct": round(sum(t['pnl_pct'] for t in trades_stable) / n_trades, 2) if n_trades > 0 else 0
-            }
-        }
+        from stable_strategy import backtest_stable
+        backtest_result_stable = backtest_stable(
+            dates=dates_historical,
+            prices=price_real,
+            slopes=stable_slope_line,
+            mode="LONG",
+            entry_th=STABLE_ENTRY,
+            exit_th=STABLE_EXIT,
+            execution_lag=1,
+            cost_pct=0.0,
+            initial_capital=1000.0,
+            start_date=req.start_date,
+            end_date=req.end_date,
+        )
 
         # Dati Futuri (Proiezione)
         # Nota: future_idx potrebbe contenere timestamp o interi, convertiamo
@@ -821,8 +713,6 @@ def analyze_stock(req: AnalysisRequest):
             "market_cap": mkt_cap,
             "dates": dates_historical,
             "prices": price_real,
-            "dates": dates_historical,
-            "prices": price_real,
             "volume": volume_series.reindex(px.index).fillna(0).tolist(),
             "min_action": price_min_action,
             "fundamentals": fundamentals,
@@ -853,8 +743,6 @@ def analyze_stock(req: AnalysisRequest):
             },
             "fourier_components": fourier_comps,
             "frozen": {
-                "dates": frozen_dates,
-                "z_kinetic": frozen_z_kin,
                 "dates": frozen_dates,
                 "z_kinetic": frozen_z_kin,
                 "z_potential": frozen_z_pot,
@@ -1063,10 +951,24 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
             full_px = cached_obj.copy()
 
         # [FIX] Load full_frozen_data for FROZEN/SUM strategies
-        frozen_cache_key = f"{req.ticker}_frozen"
-        full_frozen_data = TICKER_CACHE.get(frozen_cache_key) # Can be None if not analyzed yet
+        # Bug precedente: si leggeva la chiave f"{ticker}_frozen" che NESSUNO
+        # scrive (analyze_stock salva in TICKER_CACHE[ticker]["frozen"]).
+        # Risultato: z_signal sempre vuoto -> la verifica rispondeva sempre
+        # "0 trade corrotti" senza testare nulla.
+        full_frozen_data = cached_obj.get("frozen") if isinstance(cached_obj, dict) else None
         full_frozen_dates = full_frozen_data["dates"] if full_frozen_data else []
         full_raw_sum = full_frozen_data["raw_sum"] if (full_frozen_data and "raw_sum" in full_frozen_data) else []
+
+        # Senza dati frozen la verifica FROZEN/SUM sarebbe vacua: meglio un
+        # errore esplicito che un falso "tutto ok".
+        if req.strategy in ("FROZEN", "SUM") and not full_frozen_data:
+            return {
+                "status": "error",
+                "detail": (
+                    f"Dati frozen non presenti in cache per {req.ticker}: "
+                    f"esegui prima un'analisi (/analyze) del ticker, poi riesegui la verifica."
+                ),
+            }
         
         # Determine date range
         all_dates = full_px.index.tolist()
@@ -1178,11 +1080,8 @@ async def verify_trade_integrity(req: VerifyIntegrityRequest):
                         z_frozen_raw = ((s_sum - roll_mean) / (roll_std + 1e-6)).fillna(0).tolist()
                         
                         try:
-                            b, a = butter(N=2, Wn=0.05, btype='low')
-
                             if len(z_frozen_raw) > 15:
-                                z_frozen_sum_filtered = filtfilt(b, a, z_frozen_raw).tolist()
-                                z_signal_short = z_frozen_sum_filtered
+                                z_signal_short = causal_lowpass(z_frozen_raw)
                             else:
                                 z_signal_short = z_frozen_raw
                         except:

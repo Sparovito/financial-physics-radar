@@ -1,7 +1,7 @@
 {
   "enabled": true,
-  "trigger_hour": 10,
-  "trigger_minute": 5,
+  "trigger_hour": 22,
+  "trigger_minute": 30,
   "mode": "LONG",
   "entry_threshold": -0.7,
   "exit_threshold": -1.2,
@@ -9,5 +9,6 @@
   "start_date": "2023-01-01",
   "tickers": [],
   "preset": "all",
-  "recipient": ""
+  "recipient": "",
+  "skip_partial_today": true
 }

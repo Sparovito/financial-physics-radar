@@ -2,6 +2,17 @@
 
 | Deploy ID | Date       | Change                                                                                            |
 | --------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| —         | 2026-07-05 | Fix CRITICO: `dF` non definito in main.py (NameError silenziato) — il pannello S.KinZ riceveva SEMPRE dati vuoti. Calcolo estratto in `logic.compute_stable_kinetic_z` (testato) |
+| —         | 2026-07-05 | Fix CRITICO: `/verify-integrity` leggeva la chiave cache inesistente `{ticker}_frozen` — per FROZEN/SUM rispondeva sempre "0 corrotti" senza testare nulla. Ora legge `TICKER_CACHE[ticker]["frozen"]` ed errore esplicito se i dati frozen mancano |
+| —         | 2026-07-05 | Fix LOOKAHEAD: `filtfilt` (zero-phase, bidirezionale) sostituito da `causal_lowpass` (lfilter causale) nel segnale Frozen SUM — verify-integrity ora certifica 0 trade corrotti su dati reali |
+| —         | 2026-07-05 | Perf: serie frozen point-in-time in O(n) via filtro di Kalman (`logic.kalman_frozen_series`) — valori identici al ricalcolo ActionPath O(n²) (parità 1e-11, test), ~73x più veloce; /analyze fresco su AAPL: ~1.4s |
+| —         | 2026-07-05 | Feat: motore STABLE UNIFICATO `backend/stable_strategy.py` — unica implementazione per Strategia 5, Lab e email (prima 3 semantiche divergenti). Esecuzione t+1, costi per lato, SHORT speculare, BOTH parallelo, win rate solo chiusi, stats estese (max DD, profit factor, exposure, Sharpe, buy&hold) |
+| —         | 2026-07-05 | Feat: `frontend/stable_engine.js` replica speculare JS del motore Python — parità verificata da `tests/test_js_py_parity.py` (node); Lab con colonne B&H / vs B&H / Sharpe / Expo e input costi |
+| —         | 2026-07-05 | Feat: `backtest_strategy` con `execution_lag=1` di default (segnale oggi, esecuzione al close di domani) per LIVE/FROZEN/SUM/MA — `execution_lag=0` riproduce il vecchio same-bar |
+| —         | 2026-07-05 | Feat: Optimizer del Lab con validazione OUT-OF-SAMPLE — parametri scelti sul train (default 70%), colonna OOS sul periodo mai visto; input "Train %" |
+| —         | 2026-07-05 | Fix: email STABLE su barre COMPLETE — `drop_partial_last_bar` scarta la barra di oggi prima delle 22:05 Rome (repainting da candela parziale); trigger default e config aggiornati a 22:30 Rome; scanner su motore unificato con flag `pending_execution` |
+| —         | 2026-07-05 | Chore: rimosso `backend/analysis.py` (codice morto: non importato, NameError `future_scenario`, import di `shared_state` inesistente); rimossi blocchi duplicati/irraggiungibili in logic.py e chiavi dict duplicate in main.py |
+| —         | 2026-07-05 | Test: nuova suite `backend/tests/` (8 file, standalone, no dipendenze nuove): parità Kalman, causalità S.KinZ/SUM, motore STABLE 8 scenari, parità JS↔PY, scanner, verify-integrity |
 | —         | 2026-02-17 | Fix: Remove mock data fallback in logic.py — MarketData.fetch() now raises ValueError on empty Yahoo data instead of misleading "Passo ai dati Mock" message |
 | —         | 2026-02-17 | Fix: Rewrite stable_scanner.py download system — now reuses main.py's MarketData + PRICE_CACHE + TICKER_CACHE instead of separate yf.download batch (eliminated 633 Yahoo errors) |
 | —         | 2026-02-17 | Fix: HTTP 500 on stable alert test — guard against ThreadPoolExecutor(max_workers=0) crash + single endpoint `/stable-alert/trigger-with-result` replacing double call |

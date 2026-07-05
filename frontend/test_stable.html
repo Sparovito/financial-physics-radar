@@ -297,6 +297,14 @@
             <input type="text" id="param-start" value="2023-01-01" style="width:120px;">
         </div>
         <div class="ctrl-group">
+            <label>Costo %/lato</label>
+            <input type="number" id="param-cost" value="0.05" min="0" max="2" step="0.05" style="width:75px;" title="Costo di transazione in % per lato (entrata e uscita). 0.05 = 0.05%">
+        </div>
+        <div class="ctrl-group">
+            <label>Train % (Opt)</label>
+            <input type="number" id="param-oos" value="70" min="30" max="95" step="5" style="width:70px;" title="Percentuale iniziale del periodo usata per ottimizzare (train). Il resto è out-of-sample: il numero che conta.">
+        </div>
+        <div class="ctrl-group">
             <label>Batch Size</label>
             <input type="number" id="param-batchsize" value="20" min="5" max="100" step="5" style="width:65px;" title="Ticker per richiesta HTTP (processati in parallelo lato server)">
         </div>
@@ -377,11 +385,15 @@
                         <tr>
                             <th>Ticker</th>
                             <th style="text-align:right;">Return %</th>
+                            <th style="text-align:right;" title="Buy & Hold nello stesso periodo">B&amp;H %</th>
+                            <th style="text-align:right;" title="Return strategia meno Buy & Hold">vs B&amp;H</th>
                             <th style="text-align:right;">Win Rate %</th>
                             <th style="text-align:right;">Trades</th>
                             <th style="text-align:right;">Avg Trade %</th>
                             <th style="text-align:right;">Max DD %</th>
                             <th style="text-align:right;">Profit Factor</th>
+                            <th style="text-align:right;" title="Sharpe ratio annualizzato">Sharpe</th>
+                            <th style="text-align:right;" title="% di giorni con posizione aperta">Expo %</th>
                             <th style="text-align:right;">Capital Finale</th>
                         </tr>
                     </thead>
@@ -402,17 +414,24 @@
                 <div id="chart-heatmap" style="width:100%; height:500px;"></div>
             </div>
             <div class="chart-box" style="overflow-x:auto;">
-                <h4 style="color:var(--purple); margin-bottom:10px;">Top 10 Combinazioni (Global Best across all Alpha)</h4>
+                <h4 style="color:var(--purple); margin-bottom:10px;">Top Combinazioni — ordinate sul TRAIN, giudicate sull'OOS</h4>
+                <p style="color:var(--text2); font-size:0.78rem; margin-bottom:10px;">
+                    I parametri sono scelti sul segmento train (primi N% del periodo). La colonna
+                    <b style="color:var(--green);">OOS</b> è il ritorno sul periodo successivo, mai visto
+                    durante l'ottimizzazione: se train e OOS divergono molto, i parametri sono overfittati.
+                </p>
                 <table class="data-table" id="opt-table">
                     <thead>
                         <tr>
                             <th>Alpha</th>
                             <th>Entry ></th>
                             <th>Exit <</th>
-                            <th style="text-align:right;">Avg Return %</th>
+                            <th style="text-align:right;">Train Return %</th>
+                            <th style="text-align:right;" title="Return sul periodo out-of-sample (mai visto in ottimizzazione)">OOS Return %</th>
+                            <th style="text-align:right;" title="Tickers positivi nel periodo OOS">OOS Pos.</th>
                             <th style="text-align:right;">Avg Win Rate %</th>
                             <th style="text-align:right;">Avg Trades</th>
-                            <th style="text-align:right;">Tickers Positivi</th>
+                            <th style="text-align:right;">Tickers Positivi (train)</th>
                         </tr>
                     </thead>
                     <tbody id="opt-body"></tbody>
@@ -546,6 +565,7 @@
     <div class="status-bar" id="status-bar">Pronto. Seleziona i tickers e premi Analizza.</div>
 
     <script src="tickers.js?v=6"></script>
-    <script src="test_stable.js?v=6"></script>
+    <script src="stable_engine.js?v=1"></script>
+    <script src="test_stable.js?v=7"></script>
 </body>
 </html>

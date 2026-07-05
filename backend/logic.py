@@ -303,14 +303,158 @@ class ActionPath:
             d_[i] = (d[i] - a[i-1]*d_[i-1]) / denom
             
         d_[n-1] = (d[n-1] - a[n-2]*d_[n-2]) / (b_[n-1] - a[n-2]*c_[n-2])
-        
-        x = np.zeros(n, dtype=float)
-        x[-1] = d_[n-1]
+
         x = np.zeros(n, dtype=float)
         x[-1] = d_[n-1]
         for i in range(n-2, -1, -1):
             x[i] = d_[i] - c_[i]*x[i+1]
         return x
+
+
+def compute_stable_kinetic_z(px, alpha, threshold=0.5):
+    """
+    Stable Kinetic Z (pannello S.KinZ) — stimatore CAUSALE dell'energia cinetica.
+
+    dF = derivata della curva fondamentale F_alpha (EMA span=alpha/10),
+    smussata con EMA(20) forward-only, poi kin = 0.5*alpha*dF_smooth^2.
+    Z-score rolling 252 giorni (min 20). Regime a isteresi ±threshold:
+    +1 bullish sopra +thr, -1 bearish sotto -thr, invariato in mezzo.
+
+    Puramente backward-looking: i valori passati non cambiano mai
+    aggiungendo nuovi dati.
+
+    Returns: (z_line: list[float], regime: list[float])
+    """
+    ema_span = max(5, int(alpha / 10))
+    F_alpha = px.ewm(span=ema_span, adjust=False).mean()
+    dF = F_alpha.diff().fillna(0)
+    dF_clean = dF.fillna(0).replace([np.inf, -np.inf], 0)
+
+    dF_smooth20 = dF_clean.ewm(span=20, adjust=False).mean()
+    stable_kin_raw = 0.5 * float(alpha) * dF_smooth20 ** 2
+
+    sk_mean = stable_kin_raw.rolling(window=252, min_periods=20).mean()
+    sk_std = stable_kin_raw.rolling(window=252, min_periods=20).std()
+    stable_kin_z = ((stable_kin_raw - sk_mean) / (sk_std + 1e-6)).fillna(0)
+
+    z_vals = stable_kin_z.values
+    regime = np.zeros(len(z_vals), dtype=float)
+    current = 0.0
+    for i in range(len(z_vals)):
+        if z_vals[i] > threshold:
+            current = 1.0
+        elif z_vals[i] < -threshold:
+            current = -1.0
+        regime[i] = current
+
+    return stable_kin_z.values.tolist(), regime.tolist()
+
+
+def causal_lowpass(values, wn=0.05, order=2):
+    """
+    Passa-basso Butterworth CAUSALE. Sostituisce filtfilt (zero-phase,
+    bidirezionale) nel segnale Frozen SUM.
+
+    filtfilt al tempo t usa anche i campioni FUTURI: nel backtest questo è
+    lookahead bias. lfilter è forward-only; l'inizializzazione lfilter_zi
+    scalata sul primo campione evita il transitorio di avvio senza rompere
+    la causalità (dipende solo da values[0]).
+
+    Il prezzo dell'onestà è il lag di gruppo del filtro (~qualche barra):
+    è il ritardo REALE con cui il segnale sarebbe stato disponibile.
+    """
+    from scipy.signal import butter, lfilter, lfilter_zi
+    vals = np.asarray(values, dtype=float)
+    if len(vals) == 0:
+        return []
+    b, a = butter(N=order, Wn=wn, btype='low')
+    zi = lfilter_zi(b, a) * vals[0]
+    y, _ = lfilter(b, a, vals, zi=zi)
+    return y.tolist()
+
+
+def kalman_frozen_series(px, alpha=200.0, beta=1.0, lookback_span=20,
+                         min_points=100, kin_lag=25):
+    """
+    Serie "frozen" point-in-time in O(n) via filtro di Kalman.
+
+    Sostituisce (con valori IDENTICI, vedi tests/test_kalman_frozen.py) il
+    ricalcolo brute-force O(n^2):
+
+        for t in range(min_points, n):
+            mech_t = ActionPath(px[:t+1], alpha, beta)
+            -> pot_density[-1], kin_density[-1], kin_density[-kin_lag], px_star[-1]
+
+    Fondamento matematico: il percorso di minima azione
+    min Σ ½α(Δx)² + ½β(x−F)² è la stima MAP di un modello state-space
+    local-level con varianza di processo q=1/α, varianza di osservazione
+    r=1/β e inizializzazione diffusa (le boundary condition del sistema
+    tridiagonale corrispondono esattamente alla init diffusa).
+    Per processi gaussiani l'ultimo punto dello smoother su [0..t] coincide
+    con la stima del filtro di Kalman al tempo t, e i punti interni con il
+    fixed-lag smoother (ricorsione RTS all'indietro).
+
+    Returns: dict con chiavi
+        t_index  : indici t (min_points..n-1) nella serie px
+        pot_last : 0.5*beta*(x*[t]-F[t])^2      == pot_density.iloc[-1]
+        kin_last : 0.5*alpha*(x*[t]-x*[t-1])^2  == kin_density.iloc[-1]
+        kin_lag  : kin_density.iloc[-kin_lag] point-in-time (0.0 se serie corta)
+        ma_price : x*[t]                        == px_star.iloc[-1]
+    """
+    F = px.ewm(span=int(lookback_span), adjust=False).mean()
+    y = F.values.astype(float)
+    n = len(y)
+
+    q = 1.0 / float(alpha)   # varianza di processo
+    r = 1.0 / float(beta)    # varianza di osservazione
+
+    # --- Forward pass: filtro di Kalman con init diffusa ---
+    x_f = np.zeros(n)
+    P_f = np.zeros(n)
+    x_f[0] = y[0]
+    P_f[0] = r
+    for t in range(1, n):
+        P_pred = P_f[t - 1] + q
+        K = P_pred / (P_pred + r)
+        x_f[t] = x_f[t - 1] + K * (y[t] - x_f[t - 1])
+        P_f[t] = (1.0 - K) * P_pred
+
+    # --- Per ogni t: smoothing RTS all'indietro per kin_lag passi ---
+    A = float(alpha)
+    B = float(beta)
+    t_index, pot_last, kin_last, kin_lagged, ma_price = [], [], [], [], []
+
+    for t in range(int(min_points), n):
+        L = min(int(kin_lag), t)
+        # xs[j] = valore smoothed in t-j dato tutto fino a t
+        xs = np.empty(L + 1)
+        xs[0] = x_f[t]
+        for j in range(1, L + 1):
+            k = t - j
+            C = P_f[k] / (P_f[k] + q)
+            xs[j] = x_f[k] + C * (xs[j - 1] - x_f[k])
+
+        pot_last.append(0.5 * B * (x_f[t] - y[t]) ** 2)
+        kin_last.append(0.5 * A * (x_f[t] - xs[1]) ** 2)
+
+        # kin_density.iloc[-kin_lag] su serie di lunghezza t+1:
+        # dX in posizione t-kin_lag+1 = x*[t-kin_lag+1] - x*[t-kin_lag]
+        if t + 1 >= kin_lag:
+            dx_lag = xs[kin_lag - 1] - xs[kin_lag]
+            kin_lagged.append(0.5 * A * dx_lag ** 2)
+        else:
+            kin_lagged.append(0.0)
+
+        ma_price.append(x_f[t])
+        t_index.append(t)
+
+    return {
+        "t_index": t_index,
+        "pot_last": pot_last,
+        "kin_last": kin_last,
+        "kin_lag": kin_lagged,
+        "ma_price": ma_price,
+    }
 
 # --- 4. Market Scanner (Radar) ---
 class MarketScanner:
@@ -420,28 +564,18 @@ class MarketScanner:
             except:
                 market_cap = 0
             
-            # [ACCURATE] Calculate TRUE Point-in-Time Frozen Potential (like Main Chart)
-            # This is slower but gives the EXACT same values as the Orange Line
+            # [ACCURATE] TRUE Point-in-Time Frozen series (like Main Chart)
+            # [PERF] O(n) via filtro di Kalman — valori identici al vecchio
+            # ricalcolo ActionPath per ogni t (tests/test_kalman_frozen.py).
             MIN_POINTS = 100
-            SAMPLE_EVERY = 1  # Every day for accuracy
-            
-            frozen_pot_raw = []
-            frozen_pot_raw = []
-            frozen_dates_raw = []
-            frozen_ma_price_raw = [] # [NEW] Store Min Action Prices
-            
-            # Build point-in-time series (no look-ahead bias)
-            n_total = len(px)
-            for t in range(MIN_POINTS, n_total, SAMPLE_EVERY):
-                px_t = px.iloc[:t+1]
-                try:
-                    mech_t = ActionPath(px_t, alpha=200, beta=1.0)
-                    frozen_pot_raw.append(float(mech_t.pot_density.iloc[-1]))
-                    frozen_dates_raw.append(px.index[t].strftime('%Y-%m-%d'))
-                    # [NEW] Capture Point-in-Time Min Action Price
-                    frozen_ma_price_raw.append(float(mech_t.px_star.iloc[-1]))
-                except:
-                    continue
+
+            frozen_res = kalman_frozen_series(
+                px, alpha=200, beta=1.0, min_points=MIN_POINTS, kin_lag=25
+            )
+            frozen_pot_raw = list(frozen_res["pot_last"])
+            frozen_dates_raw = [px.index[t].strftime('%Y-%m-%d') for t in frozen_res["t_index"]]
+            # Point-in-Time Min Action Price
+            frozen_ma_price_raw = list(frozen_res["ma_price"])
             
             # Align with full price history (pad with 0 at start)
             padding_size = len(hist_price) - len(frozen_pot_raw)
@@ -467,19 +601,9 @@ class MarketScanner:
             frozen_pnl_curve = strat_res['trade_pnl_curve'] 
 
             # === [NEW] FROZEN SUM STRATEGY ===
-            # 1. Calculate Frozen Kinetic (point-in-time, shifted T-25)
-            frozen_kin_raw = []
-            for t in range(MIN_POINTS, n_total, SAMPLE_EVERY):
-                px_t = px.iloc[:t+1]
-                try:
-                    mech_t = ActionPath(px_t, alpha=200, beta=1.0)
-                    if len(mech_t.kin_density) >= 25:
-                        frozen_kin_raw.append(float(mech_t.kin_density.iloc[-25]))
-                    else:
-                        frozen_kin_raw.append(0.0)
-                except:
-                    frozen_kin_raw.append(0.0)
-            
+            # 1. Frozen Kinetic (point-in-time, shifted T-25) — dal Kalman O(n)
+            frozen_kin_raw = list(frozen_res["kin_lag"])
+
             # 2. Calculate SUM (Kinetic + Potential)
             frozen_sum_raw = [k + p for k, p in zip(frozen_kin_raw, frozen_pot_raw)]
             
@@ -490,13 +614,12 @@ class MarketScanner:
             roll_fsum_std = frozen_sum_series.rolling(window=ZSCORE_WINDOW, min_periods=20).std()
             z_frozen_sum = ((frozen_sum_series - roll_fsum_mean) / (roll_fsum_std + 1e-6)).fillna(0).tolist()
             
-            # 4. Apply Zero-Phase Low-Pass Filter (Butterworth) - requires scipy
+            # 4. Low-Pass Filter Butterworth CAUSALE
+            # [FIX LOOKAHEAD] prima era filtfilt (zero-phase, bidirezionale):
+            # il segnale al giorno t incorporava il futuro.
             try:
-                from scipy.signal import butter, filtfilt
-                b, a = butter(N=2, Wn=0.05, btype='low')
-                z_frozen_sum_filtered = filtfilt(b, a, z_frozen_sum).tolist()
-                z_frozen_sum = z_frozen_sum_filtered
-            except:
+                z_frozen_sum = causal_lowpass(z_frozen_sum)
+            except Exception:
                 pass  # Keep unfiltered if scipy fails
             
             # 5. Run SUM Strategy Backtest (threshold=-0.3)
@@ -558,7 +681,7 @@ class MarketScanner:
             return None
 
 # --- 5. Backtesting Strategy ---
-def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list, initial_capital=1000.0, start_date=None, end_date=None, threshold=0.0, use_z_roc=False, trend_curve=None, trend_mode=None):
+def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list, initial_capital=1000.0, start_date=None, end_date=None, threshold=0.0, use_z_roc=False, trend_curve=None, trend_mode=None, execution_lag=1):
     """
     Esegue il backtest della strategia basata su Z-Scores.
     Filtra le operazioni in base a start_date e end_date.
@@ -566,6 +689,9 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
     use_z_roc: se True, usa Z-ROC per direzione (Frozen/SUM). Se False, usa z_slope (LIVE).
     trend_curve: array opzionale per confronto trend (es. Min Action Curve).
     trend_mode: 'PRICE_VS_CURVE' per attivare logica comparativa.
+    execution_lag: barre tra segnale ed esecuzione (default 1: segnale sul
+        close di oggi, esecuzione al close di domani — realistico).
+        0 = vecchio comportamento same-bar (ottimista, solo per confronto).
     """
     capital = initial_capital
     in_position = False
@@ -600,10 +726,15 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
             continue
             
         price = prices[i]
-        
-        # Safe access to optional arrays
-        z_kin = z_kinetic[i] if i < len(z_kinetic) else 0
-        z_sl = z_slope[i] if i < len(z_slope) else 0
+
+        # [t+1] La decisione usa SOLO informazioni della barra sig = i - lag;
+        # l'esecuzione avviene al prezzo della barra corrente i.
+        sig = i - execution_lag
+        has_signal = sig >= 0
+
+        # Safe access to optional arrays (alla barra di DECISIONE)
+        z_kin = z_kinetic[sig] if has_signal and sig < len(z_kinetic) else 0
+        z_sl = z_slope[sig] if has_signal and sig < len(z_slope) else 0
         
         # Skip if price is missing (z_kin/z_sl are allowed to be 0/mocked in curve mode)
         if price is None:
@@ -612,14 +743,7 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
             last_eq = equity_curve[-1] if equity_curve else 0
             equity_curve.append(last_eq)
             continue
-            trade_pnl_curve.append(0)
-            # Equity curve: keep last value or 0 if start?
-            last_eq = equity_curve[-1] if equity_curve else 0
-            equity_curve.append(last_eq)
-            continue
-            
-            continue
-            
+
         # [NEW] Determine Strategy Mode
         is_curve_mode = (trend_mode == 'PRICE_VS_CURVE' and trend_curve is not None)
         
@@ -628,11 +752,12 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
         curve_direction = None
         
         if is_curve_mode:
-            # Curve Logic: Price vs Trend Curve
-            t_val = trend_curve[i] if i < len(trend_curve) else None
-            
-            if t_val is not None and price is not None:
-                if price > t_val:
+            # Curve Logic: Price vs Trend Curve — valutata alla barra di DECISIONE
+            t_val = trend_curve[sig] if has_signal and sig < len(trend_curve) else None
+            decision_price = prices[sig] if has_signal and sig < len(prices) else None
+
+            if t_val is not None and decision_price is not None:
+                if decision_price > t_val:
                     curve_direction = 'LONG'
                 else:
                     curve_direction = 'SHORT'
@@ -657,6 +782,10 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
             # Standard Kinetic/Potential Logic
             should_enter = z_kin > threshold
 
+        # Nessuna barra di decisione disponibile (inizio serie): nessun segnale
+        if not has_signal:
+            should_enter = False
+
         if not in_position:
             # Check for entry signal
             if should_enter:
@@ -668,7 +797,8 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                      position_direction = curve_direction
                 else:
                      # Direction: Z-ROC for Frozen/SUM, z_slope for LIVE
-                     z_prev = z_kinetic[i-1] if i > 0 and i-1 < len(z_kinetic) and z_kinetic[i-1] is not None else 0
+                     # (calcolata alla barra di decisione sig)
+                     z_prev = z_kinetic[sig-1] if sig > 0 and sig-1 < len(z_kinetic) and z_kinetic[sig-1] is not None else 0
                      z_roc = z_kin - z_prev
                      if use_z_roc:
                          position_direction = 'LONG' if z_roc >= 0 else 'SHORT'
@@ -696,7 +826,7 @@ def backtest_strategy(prices: list, z_kinetic: list, z_slope: list, dates: list,
                  if is_curve_mode:
                      potential_direction = curve_direction
                  else:
-                     z_prev = z_kinetic[i-1] if i > 0 and i-1 < len(z_kinetic) and z_kinetic[i-1] is not None else 0
+                     z_prev = z_kinetic[sig-1] if sig > 0 and sig-1 < len(z_kinetic) and z_kinetic[sig-1] is not None else 0
                      z_roc = z_kin - z_prev
                      potential_direction = 'LONG' if (use_z_roc and z_roc >= 0) or (not use_z_roc and z_sl > 0) else 'SHORT'
                  

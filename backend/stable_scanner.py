@@ -23,8 +23,11 @@ STABLE_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "stable_alert_confi
 
 DEFAULT_CONFIG = {
     "enabled": True,
-    "trigger_hour": 18,
-    "trigger_minute": 0,
+    # 22:30 Europe/Rome = dopo la chiusura USA (22:00): la candela daily di
+    # Yahoo è completa. Girare a mercati aperti produce segnali su barre
+    # parziali che possono sparire il giorno dopo (repainting).
+    "trigger_hour": 22,
+    "trigger_minute": 30,
     "mode": "LONG",
     "entry_threshold": 0.0,
     "exit_threshold": 0.0,
@@ -33,6 +36,9 @@ DEFAULT_CONFIG = {
     "tickers": [],
     "preset": "all",
     "recipient": "",
+    # Se True (default), scarta l'ultima barra quando è quella di OGGI e
+    # sono prima delle 22:05 Rome: segnali solo su barre COMPLETE.
+    "skip_partial_today": True,
 }
 
 def load_config():
@@ -134,15 +140,118 @@ def download_all_prices(tickers, start_date, max_workers=8):
 
 
 # ============================================================
-#  SIGNAL COMPUTATION
+#  SIGNAL COMPUTATION (motore unificato stable_strategy)
 # ============================================================
 
+def drop_partial_last_bar(px, today=None, now=None):
+    """
+    Scarta l'ultima barra daily se è la barra di OGGI e siamo prima delle
+    22:05 Europe/Rome (chiusura USA = 22:00): in quel caso la candela Yahoo
+    è INCOMPLETA e un segnale calcolato su di essa può sparire entro la
+    chiusura (repainting). I segnali devono usare solo barre complete.
+    """
+    if px is None or len(px) == 0:
+        return px
+    if today is None:
+        today = datetime.date.today()
+    if now is None:
+        try:
+            import pytz
+            now = datetime.datetime.now(pytz.timezone("Europe/Rome")).replace(tzinfo=None)
+        except Exception:
+            now = datetime.datetime.now()
+
+    last = px.index[-1]
+    last_date = last.date() if hasattr(last, "date") else last
+    cutoff = now.replace(hour=22, minute=5, second=0, microsecond=0)
+    if last_date == today and now < cutoff:
+        return px.iloc[:-1]
+    return px
+
+
+def analyze_ticker_signals(ticker, px, today, alpha=200, mode="LONG",
+                           entry_threshold=0.0, exit_threshold=0.0, recent_days=5):
+    """
+    Segnali STABLE per un ticker, derivati dal MOTORE UNIFICATO
+    (stable_strategy.backtest_stable): stessa semantica di Lab e Strategia 5
+    (level-based, SHORT con soglie speculari, esecuzione t+1).
+
+    Returns: {"entries": [...], "active": [...]}
+      entries: segnali ENTRY degli ultimi `recent_days` giorni di calendario
+               (days_ago=0 = oggi; pending_execution=True se l'esecuzione
+               reale avverrà alla prossima barra)
+      active:  posizioni attualmente aperte secondo la strategia
+    """
+    from stable_strategy import backtest_stable
+
+    if len(px) < 10:
+        return {"entries": [], "active": []}
+
+    ema_span = max(5, int(alpha / 10))
+    F_alpha = px.ewm(span=ema_span, adjust=False).mean()
+    dF_alpha = F_alpha.diff().fillna(0)
+    stable_slope = dF_alpha.ewm(span=14, adjust=False).mean()
+
+    dates = [d.strftime("%Y-%m-%d") for d in px.index]
+    prices = [float(v) for v in px.values]
+    slopes = [float(v) for v in stable_slope.values]
+
+    res = backtest_stable(dates, prices, slopes, mode=mode,
+                          entry_th=entry_threshold, exit_th=exit_threshold,
+                          execution_lag=1, cost_pct=0.0)
+
+    current_price = prices[-1]
+    current_slope = slopes[-1]
+
+    entries = []
+    for ev in res["signal_events"]:
+        if ev["type"] != "ENTRY":
+            continue
+        sig_date = datetime.date.fromisoformat(ev["signal_date"])
+        days_ago = (today - sig_date).days
+        if days_ago < 0 or days_ago > recent_days:
+            continue
+        sig_price = float(ev["price_at_signal"]) if ev["price_at_signal"] else 0.0
+        entries.append({
+            "ticker": ticker,
+            "price": sig_price,
+            "current_price": current_price,
+            "slope": float(ev["slope_at_signal"]),
+            "price_change_since": ((current_price - sig_price) / sig_price * 100) if sig_price > 0 else 0,
+            "date": ev["signal_date"],
+            "direction": ev["direction"],
+            "days_ago": days_ago,
+            # True = segnale sull'ultima barra: l'ingresso reale è alla
+            # PROSSIMA barra disponibile (esecuzione t+1)
+            "pending_execution": ev["exec_date"] is None,
+        })
+
+    active = []
+    for tr in res["trades"]:
+        if tr["exit_date"] != "OPEN":
+            continue
+        active.append({
+            "ticker": ticker,
+            "direction": tr["direction"],
+            "entry_date": tr["entry_date"],
+            "entry_price": tr["entry_price"],
+            "current_price": current_price,
+            "pnl_pct": tr["pnl_pct"],
+            "slope": current_slope,
+        })
+
+    return {"entries": entries, "active": active}
+
+
 def compute_stable_signals(tickers, alpha=200, start_date=None, mode="LONG",
-                            entry_threshold=0.0, exit_threshold=0.0, max_workers=8):
+                            entry_threshold=0.0, exit_threshold=0.0, max_workers=8,
+                            skip_partial_today=True):
     """
     Compute STABLE strategy signals for all tickers.
 
     start_date: auto-calculated to 6 months ago (enough for EMA convergence).
+    skip_partial_today: scarta la barra di oggi se i mercati possono essere
+        ancora aperti (vedi drop_partial_last_bar).
     """
     today = datetime.date.today()
     today_str = today.strftime("%Y-%m-%d")
@@ -162,112 +271,26 @@ def compute_stable_signals(tickers, alpha=200, start_date=None, mode="LONG",
     all_prices, failed = download_all_prices(tickers, start_date, max_workers=max_workers)
     errors_list = [{"ticker": t, "error": "Download fallito"} for t in failed]
 
-    # --- PHASE 2: Compute signals (CPU-only) ---
-    print(f"   🧮 Calcolo segnali per {len(all_prices)} tickers...")
+    # --- PHASE 2: Compute signals (CPU-only, motore unificato) ---
+    print(f"   🧮 Calcolo segnali per {len(all_prices)} tickers (motore unificato)...")
 
     _lock = threading.Lock()
 
     def analyze_ticker(ticker, px):
         try:
-            ema_span = max(5, int(alpha / 10))
-            F_alpha = px.ewm(span=ema_span, adjust=False).mean()
-            dF_alpha = F_alpha.diff().fillna(0)
-            stable_slope = dF_alpha.ewm(span=14, adjust=False).mean()
-
-            slopes = stable_slope.values
-            prices_arr = px.values
-            dates_arr = px.index
-            n = len(slopes)
-
-            if n < 10:
-                return
-
-            current_price = float(prices_arr[-1])
-            current_slope = float(slopes[-1])
-
-            # Full backtest to determine trade state + entry signal dates
-            in_trade = False
-            trade_entry_date = None
-            trade_entry_price = None
-            trade_direction = None
-            entry_signals = []
-
-            for i in range(1, n):
-                s = float(slopes[i])
-                s_prev = float(slopes[i-1])
-
-                if mode in ("LONG", "BOTH"):
-                    if not in_trade and s > entry_threshold and s_prev <= entry_threshold:
-                        in_trade = True
-                        trade_entry_date = dates_arr[i]
-                        trade_entry_price = float(prices_arr[i])
-                        trade_direction = "LONG"
-                        entry_signals.append((i, "LONG"))
-                    elif in_trade and trade_direction == "LONG" and s < exit_threshold and s_prev >= exit_threshold:
-                        in_trade = False
-
-                if mode in ("SHORT", "BOTH"):
-                    if not in_trade and s < -entry_threshold and s_prev >= -entry_threshold:
-                        in_trade = True
-                        trade_entry_date = dates_arr[i]
-                        trade_entry_price = float(prices_arr[i])
-                        trade_direction = "SHORT"
-                        entry_signals.append((i, "SHORT"))
-                    elif in_trade and trade_direction == "SHORT" and s > -exit_threshold and s_prev <= -exit_threshold:
-                        in_trade = False
-
-            # Check recent entry signals (last 5 calendar days)
-            for (idx, direction) in entry_signals:
-                signal_date = dates_arr[idx]
-                signal_date_py = signal_date.date() if hasattr(signal_date, 'date') else signal_date
-                days_ago = (today - signal_date_py).days
-
-                if days_ago < 0 or days_ago > 5:
-                    continue
-
-                signal_price = float(prices_arr[idx])
-                signal_slope = float(slopes[idx])
-                price_change_pct = ((current_price - signal_price) / signal_price) * 100 if signal_price > 0 else 0
-
-                info = {
-                    "ticker": ticker,
-                    "price": signal_price,
-                    "current_price": current_price,
-                    "slope": signal_slope,
-                    "price_change_since": price_change_pct,
-                    "date": signal_date_py.strftime("%Y-%m-%d"),
-                    "direction": direction,
-                    "days_ago": days_ago,
-                }
-
-                with _lock:
-                    if days_ago == 0:
-                        entries_today.append(info)
+            if skip_partial_today:
+                px = drop_partial_last_bar(px, today=today)
+            res = analyze_ticker_signals(
+                ticker, px, today, alpha=alpha, mode=mode,
+                entry_threshold=entry_threshold, exit_threshold=exit_threshold,
+            )
+            with _lock:
+                for e in res["entries"]:
+                    if e["days_ago"] == 0:
+                        entries_today.append(e)
                     else:
-                        entries_recent.append(info)
-
-            # Track active positions
-            if in_trade and trade_entry_date is not None:
-                pnl = 0.0
-                if trade_entry_price and trade_entry_price > 0:
-                    if trade_direction == "LONG":
-                        pnl = ((current_price - trade_entry_price) / trade_entry_price) * 100
-                    else:
-                        pnl = ((trade_entry_price - current_price) / trade_entry_price) * 100
-
-                entry_date_str = trade_entry_date.strftime("%Y-%m-%d") if hasattr(trade_entry_date, 'strftime') else str(trade_entry_date)
-
-                with _lock:
-                    active_positions.append({
-                        "ticker": ticker,
-                        "direction": trade_direction,
-                        "entry_date": entry_date_str,
-                        "entry_price": trade_entry_price or 0,
-                        "current_price": current_price,
-                        "pnl_pct": pnl,
-                        "slope": current_slope,
-                    })
-
+                        entries_recent.append(e)
+                active_positions.extend(res["active"])
         except Exception as e:
             with _lock:
                 errors_list.append({"ticker": ticker, "error": str(e)})
@@ -373,6 +396,9 @@ def build_stable_email(scan_result):
     body += f"<b>Entry ></b> {params['entry_threshold']} &nbsp;|&nbsp; "
     body += f"<b>Exit <</b> {params['exit_threshold']} &nbsp;|&nbsp; "
     body += f"<b>Tickers:</b> {params['n_downloaded']}/{params['n_tickers']}"
+    body += "<br><span style='font-size:11px; color:#999;'>Segnali calcolati su barre COMPLETE "
+    body += "(semantica identica al backtest del Lab, esecuzione t+1: il segnale di oggi "
+    body += "si esegue realisticamente alla prossima apertura).</span>"
     body += "</div>"
 
     # Stats
@@ -488,7 +514,8 @@ def run_stable_scan(send_email=True):
         mode=cfg.get("mode", "LONG"),
         entry_threshold=cfg.get("entry_threshold", 0.0),
         exit_threshold=cfg.get("exit_threshold", 0.0),
-        max_workers=8
+        max_workers=8,
+        skip_partial_today=cfg.get("skip_partial_today", True),
     )
 
     if send_email:
