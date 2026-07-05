@@ -309,6 +309,113 @@ function backtestStable(dates, prices, slopes, opts) {
     };
 }
 
+// ============================================================
+//  SCARICO DEL POTENZIALE (linea arancione) + COMBO
+//  Mirror di stable_strategy.py: potential_discharge_positions,
+//  combo_positions, backtest_potential_discharge, backtest_combo.
+//  Parità garantita da backend/tests/test_js_py_parity.py.
+// ============================================================
+
+// Rolling z-score con semantica pandas: i NaN/null vengono SALTATI,
+// min_periods conta solo i valori validi, std con ddof=1.
+function _rollingZ(values, win, minPeriods) {
+    const n = values.length;
+    const z = new Array(n).fill(0);
+    for (let t = 0; t < n; t++) {
+        const lo = Math.max(0, t - win + 1);
+        let cnt = 0, sum = 0;
+        for (let i = lo; i <= t; i++) {
+            const v = values[i];
+            if (v != null && Number.isFinite(v)) { cnt++; sum += v; }
+        }
+        const cur = values[t];
+        if (cnt < minPeriods || cur == null || !Number.isFinite(cur)) continue;
+        const mean = sum / cnt;
+        let ss = 0;
+        for (let i = lo; i <= t; i++) {
+            const v = values[i];
+            if (v != null && Number.isFinite(v)) ss += (v - mean) * (v - mean);
+        }
+        const std = cnt > 1 ? Math.sqrt(ss / (cnt - 1)) : 0;
+        z[t] = (cur - mean) / (std + 1e-9);
+    }
+    return z;
+}
+
+function potentialDischargePositions(prices, potRaw, Fvals, entryZ, horizon, zwin, minPeriods) {
+    zwin = zwin || 252;
+    minPeriods = minPeriods || 40;
+    const n = prices.length;
+    const z = _rollingZ(potRaw, zwin, minPeriods);
+    const pos = new Array(n).fill(0);
+    let lastOnset = null, nOnsets = 0;
+    for (let t = 1; t < n; t++) {
+        const price = prices[t];
+        const f = t < Fvals.length ? Fvals[t] : null;
+        const onset = (z[t] > entryZ && z[t - 1] <= entryZ
+                       && price != null && f != null && price < f);
+        if (onset) { lastOnset = t; nOnsets++; }
+        if (lastOnset !== null && t - lastOnset < horizon) pos[t] = 1;
+    }
+    return { positions: pos, nOnsets: nOnsets };
+}
+
+function comboPositions(slopes, entryTh, exitTh, dischargePos) {
+    const n = slopes.length;
+    const pos = new Array(n).fill(0);
+    let inTrend = false;
+    for (let t = 0; t < n; t++) {
+        const s = slopes[t];
+        if (s != null) {
+            if (!inTrend && s > entryTh) inTrend = true;
+            else if (inTrend && s < exitTh) inTrend = false;
+        }
+        const d = t < dischargePos.length ? dischargePos[t] : 0;
+        pos[t] = (inTrend || d) ? 1 : 0;
+    }
+    return pos;
+}
+
+function _runPositions(dates, prices, positions, opts) {
+    const pseudo = positions.map(p => p - 0.5);
+    return backtestStable(dates, prices, pseudo, {
+        mode: 'LONG', entryTh: 0.4, exitTh: 0.0,
+        executionLag: opts.executionLag != null ? opts.executionLag : 1,
+        costPct: opts.costPct || 0,
+        initialCapital: opts.initialCapital || 1000,
+        startDate: opts.startDate || null,
+        endDate: opts.endDate || null,
+    });
+}
+
+function backtestPotentialDischarge(dates, prices, potRaw, Fvals, opts) {
+    opts = opts || {};
+    const d = potentialDischargePositions(prices, potRaw, Fvals,
+        opts.entryZ != null ? opts.entryZ : 2.0,
+        opts.horizon != null ? opts.horizon : 21,
+        opts.zwin, opts.minPeriods);
+    const res = _runPositions(dates, prices, d.positions, opts);
+    res.n_onsets = d.nOnsets;
+    res.equity = res.equity_curve;
+    return res;
+}
+
+function backtestCombo(dates, prices, slopes, potRaw, Fvals, opts) {
+    opts = opts || {};
+    const d = potentialDischargePositions(prices, potRaw, Fvals,
+        opts.entryZ != null ? opts.entryZ : 2.0,
+        opts.horizon != null ? opts.horizon : 21,
+        opts.zwin, opts.minPeriods);
+    const pos = comboPositions(slopes,
+        opts.entryTh != null ? opts.entryTh : 0.0,
+        opts.exitTh != null ? opts.exitTh : 0.0,
+        d.positions);
+    const res = _runPositions(dates, prices, pos, opts);
+    res.n_onsets = d.nOnsets;
+    res.equity = res.equity_curve;
+    return res;
+}
+
 // Compat: alias storico usato dal Lab ("equity" oltre a "equity_curve")
 function backtestStableCompat(dates, prices, slopes, opts) {
     const res = backtestStable(dates, prices, slopes, opts);
@@ -317,5 +424,7 @@ function backtestStableCompat(dates, prices, slopes, opts) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { backtestStable, backtestStableCompat };
+    module.exports = { backtestStable, backtestStableCompat,
+                       potentialDischargePositions, comboPositions,
+                       backtestPotentialDischarge, backtestCombo };
 }

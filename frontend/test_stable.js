@@ -145,6 +145,53 @@ function runStableBacktest(dates, prices, slopes, entryTh, exitTh, mode, opts) {
     });
 }
 
+function getEndDate() {
+    const v = document.getElementById('param-end')?.value?.trim();
+    return v || null;
+}
+
+// Dispatch per strategia: STABLE (trend), ARANCIONE (scarico del potenziale),
+// COMBO (trend OR arancione). ARANCIONE e COMBO sono LONG-only per evidenza
+// (gli spike di potenziale con prezzo sopra F non hanno edge misurato).
+function runLabBacktest(strategy, r, p) {
+    const opts = {
+        mode: p.mode || 'LONG',
+        entryTh: p.entryTh, exitTh: p.exitTh,
+        entryZ: p.entryZ, horizon: p.horizon,
+        executionLag: 1, costPct: getCostPct(),
+        startDate: null, endDate: p.endDate || null,
+    };
+    if (strategy === 'ARANCIONE' || strategy === 'COMBO') {
+        if (!r.pot || r.pot.length === 0) {
+            throw new Error('Serie "pot" mancante dal backend: riavvia il server aggiornato');
+        }
+        if (strategy === 'ARANCIONE') {
+            return backtestPotentialDischarge(r.dates, r.prices, r.pot, r.fund, opts);
+        }
+        return backtestCombo(r.dates, r.prices, r.slopes, r.pot, r.fund, opts);
+    }
+    return backtestStableCompat(r.dates, r.prices, r.slopes, opts);
+}
+
+function updateStrategyControls() {
+    const s = document.getElementById('param-strategy')?.value || 'STABLE';
+    const isTrend = (s === 'STABLE');
+    const modeEl = document.getElementById('param-mode');
+    if (modeEl) {
+        modeEl.disabled = !isTrend;
+        if (!isTrend) modeEl.value = 'LONG';
+    }
+    const ez = document.getElementById('param-entryz');
+    const hor = document.getElementById('param-horizon');
+    if (ez) ez.disabled = isTrend;
+    if (hor) hor.disabled = isTrend;
+    const opt = document.getElementById('btn-opt');
+    if (opt) {
+        opt.disabled = !isTrend;
+        opt.title = isTrend ? '' : 'L\'optimizer grid-search è disponibile solo per STABLE (per ARANCIONE/COMBO i parametri robusti sono Entry Z 1.5-2.5, Hold 10-42)';
+    }
+}
+
 // UI helper: update labels when mode changes
 function updateModeLabels() {
     const mode = document.getElementById('param-mode').value;
@@ -252,7 +299,9 @@ async function fetchTickersParallel(tickers, alpha, startDate, onProgress) {
                     results[t] = {
                         dates: r.dates || [],
                         prices: r.prices || [],
-                        slopes: r.stable_slope || []
+                        slopes: r.stable_slope || [],
+                        pot: r.pot || [],
+                        fund: r.fundamental || []
                     };
                     okCount++;
                     const chip = document.getElementById('chip-' + t);
@@ -324,6 +373,10 @@ async function runAnalysis() {
     const alpha = parseFloat(document.getElementById('param-alpha').value) || 200;
     const startDate = document.getElementById('param-start').value || '2023-01-01';
     const mode = document.getElementById('param-mode').value || 'LONG';
+    const strategy = document.getElementById('param-strategy')?.value || 'STABLE';
+    const entryZ = parseFloat(document.getElementById('param-entryz')?.value) || 2.0;
+    const horizon = parseInt(document.getElementById('param-horizon')?.value) || 21;
+    const endDate = getEndDate();
 
     renderChips(tickers);
     for (const k of Object.keys(RESULTS)) delete RESULTS[k];
@@ -331,15 +384,22 @@ async function runAnalysis() {
     const { results, okCount, errCount, totalTime } = await fetchTickersParallel(
         tickers, alpha, startDate,
         (t, done, total, ok, err, eta) => {
-            setStatus(`[${mode}] Batch ${t} (${done}/${total}) — ✅ ${ok} ❌ ${err} — ETA ${eta} [${getBatchSize()}x batch, ${getConcurrency()} threads]`);
+            setStatus(`[${strategy}] Batch ${t} (${done}/${total}) — ✅ ${ok} ❌ ${err} — ETA ${eta} [${getBatchSize()}x batch, ${getConcurrency()} threads]`);
             setProgress((done / total * 100).toFixed(0));
         }
     );
 
     // Run backtest on all fetched data (motore unificato, t+1 + costi)
+    let btErrors = 0, totalOnsets = 0;
     for (const [t, r] of Object.entries(results)) {
-        const bt = runStableBacktest(r.dates, r.prices, r.slopes, entryTh, exitTh, mode);
-        RESULTS[t] = { ...r, backtest: bt };
+        try {
+            const bt = runLabBacktest(strategy, r, { entryTh, exitTh, mode, entryZ, horizon, endDate });
+            if (bt.n_onsets != null) totalOnsets += bt.n_onsets;
+            RESULTS[t] = { ...r, backtest: bt };
+        } catch (e) {
+            btErrors++;
+            console.warn(`[STABLE Lab] Backtest ${t} fallito:`, e.message);
+        }
     }
 
     setProgress(100);
@@ -348,7 +408,9 @@ async function runAnalysis() {
     btn.textContent = '▶ Analizza';
     RUNNING = false;
 
-    setStatus(`[${mode}] Completato in ${totalTime}s — ✅ ${okCount} OK, ❌ ${errCount} errori su ${tickers.length} tickers`);
+    const onsetsLabel = (strategy !== 'STABLE') ? ` — 🟠 ${totalOnsets} onset potenziale` : '';
+    const rangeLabel = endDate ? ` [${startDate} → ${endDate}]` : '';
+    setStatus(`[${strategy}${strategy === 'STABLE' ? '/' + mode : ''}] Completato in ${totalTime}s — ✅ ${okCount} OK, ❌ ${errCount + btErrors} errori su ${tickers.length} tickers${onsetsLabel}${rangeLabel}`);
     renderAll(entryTh, exitTh);
 }
 
@@ -749,6 +811,11 @@ async function runGridSearch(tickerData, entryRange, exitRange, mode, alphaLabel
 
 async function runOptimizer() {
     if (RUNNING) return;
+    const strategySel = document.getElementById('param-strategy')?.value || 'STABLE';
+    if (strategySel !== 'STABLE') {
+        setStatus('🔍 L\'optimizer grid-search è per la strategia STABLE. Per ARANCIONE/COMBO usa i parametri robusti (Entry Z 1.5-2.5, Hold 10-42) e valida con End Date (train) vs periodo successivo (OOS).');
+        return;
+    }
     const tickers = getTickerList();
     if (tickers.length === 0) { setStatus('Inserisci almeno un ticker per ottimizzare.'); return; }
 
@@ -1225,6 +1292,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Default: Mega Cap preset
     document.getElementById('preset-select').value = 'mega';
     applyPreset();
+    updateStrategyControls();
 
     // Load alert config when tab is available
     // Delay slightly to allow API_BASE to be set

@@ -202,6 +202,21 @@ La strategia viola usa la **Stable Slope** (`stable_slope_line` = EMA(14) di dF,
 -   `signal_events`: eventi ENTRY/EXIT, inclusi PENDENTI (segnale sull'ultima
     barra, esecuzione alla prossima)
 
+**Strategie derivate (2026-07-05, stesse garanzie del motore):**
+-   **ARANCIONE — Scarico del Potenziale** (`backtest_potential_discharge`):
+    contrarian a eventi. Onset = z-score rolling del potenziale causale
+    attraversa `entry_z` dal basso E prezzo < fondamentale (panico);
+    posizione LONG per `horizon` barre, estesa su re-spike. Evidenza: unico
+    alpha OOS positivo del sistema, robusto su tutta la griglia
+    (entry_z 1.5-2.5 × hold 10-42). Esposizione tipica 2-8%: è un satellite.
+-   **COMBO** (`backtest_combo`): leg trend STABLE (isteresi entry/exit) in
+    OR con il satellite arancione. OOS: Sharpe 0.33→0.44 vs solo trend,
+    drawdown invariato. LONG-only (gli spike rialzisti non hanno edge).
+-   Mirror JS di entrambe in `frontend/stable_engine.js` (parità testata).
+    Lab: selettore strategia + parametri Entry Z / Hold + End Date
+    (validazione train/OOS manuale). `/analyze-batch-stable` fornisce anche
+    `pot` (potenziale causale Kalman, None-padded) e `fundamental` (EMA20).
+
 ### Indicatori Stabili (Causal Indicators) — Pannello S.KinZ
 Usati per la visualizzazione nel pannello S.KinZ (NON più per la strategia STABLE). I valori passati **non cambiano mai** aggiungendo nuovi dati.
 

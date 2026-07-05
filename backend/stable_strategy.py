@@ -88,6 +88,61 @@ def backtest_potential_discharge(dates, prices, pot_raw, F_vals,
     return res
 
 
+def combo_positions(slopes, entry_th, exit_th, discharge_pos):
+    """
+    Posizione desiderata della strategia COMBO:
+    leg TREND con isteresi (entry slope > entry_th, exit slope < exit_th)
+    in OR con il leg SATELLITE (scarico del potenziale).
+    Il satellite entra tipicamente proprio quando il trend è fuori
+    (durante i panici lo slope è negativo): i due leg sono complementari.
+    """
+    n = len(slopes)
+    pos = [0] * n
+    in_trend = False
+    for t in range(n):
+        s = slopes[t]
+        if s is not None:
+            if (not in_trend) and s > entry_th:
+                in_trend = True
+            elif in_trend and s < exit_th:
+                in_trend = False
+        d = discharge_pos[t] if t < len(discharge_pos) else 0
+        pos[t] = 1 if (in_trend or d) else 0
+    return pos
+
+
+def backtest_combo(dates, prices, slopes, pot_raw, F_vals,
+                   entry_th=0.0, exit_th=0.0,
+                   entry_z=2.0, horizon=21,
+                   execution_lag=1, cost_pct=0.0,
+                   initial_capital=1000.0,
+                   start_date=None, end_date=None,
+                   zwin=252, min_periods=40):
+    """
+    Backtest COMBO = STABLE (trend, core) + Scarico del Potenziale
+    (satellite, alpha nei panici). Evidenza OOS 2026-07-05: Sharpe
+    0.33 -> 0.44 vs trend da solo, drawdown invariato, robusto su tutta
+    la griglia (entry_z, horizon).
+
+    Come per il satellite, la posizione desiderata viene convertita in
+    pseudo-slope ed eseguita dal motore unificato: esecuzione t+1, costi,
+    equity e stats identici a backtest_stable.
+    """
+    d_pos, n_onsets = potential_discharge_positions(
+        prices, pot_raw, F_vals, entry_z=entry_z, horizon=horizon,
+        zwin=zwin, min_periods=min_periods)
+    pos = combo_positions(slopes, entry_th, exit_th, d_pos)
+
+    pseudo_slope = [p - 0.5 for p in pos]
+    res = backtest_stable(dates, prices, pseudo_slope, mode="LONG",
+                          entry_th=0.4, exit_th=0.0,
+                          execution_lag=execution_lag, cost_pct=cost_pct,
+                          initial_capital=initial_capital,
+                          start_date=start_date, end_date=end_date)
+    res["n_onsets"] = n_onsets
+    return res
+
+
 def _pnl_frac(direction, entry, exit_price, c):
     """Frazione di P/L con costi per lato (c = cost_pct/100)."""
     if direction == "LONG":

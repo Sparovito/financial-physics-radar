@@ -28,7 +28,10 @@ def _make_series(seed, n=350):
     slopes = np.convolve(np.diff([prices[0]] + prices),
                          np.ones(8) / 8, mode="same").round(6).tolist()
     dates = [d.strftime("%Y-%m-%d") for d in pd.date_range("2023-01-02", periods=n, freq="B")]
-    return {"dates": dates, "prices": prices, "slopes": slopes}
+    # pot con prefisso None (come il padding NaN del frozen reale) e code grasse
+    pot = [None] * 100 + (np.abs(rng.normal(0, 1.2, n - 100)) ** 2).round(6).tolist()
+    F = pd.Series(prices).ewm(span=20, adjust=False).mean().round(6).tolist()
+    return {"dates": dates, "prices": prices, "slopes": slopes, "pot": pot, "F": F}
 
 
 def _compare_run(idx, py, js):
@@ -82,19 +85,51 @@ def main():
         {"series": "c", "mode": "BOTH", "entry_th": -0.7, "exit_th": -1.2,
          "execution_lag": 1, "cost_pct": 0.0, "initial_capital": 1000.0,
          "start_date": "2023-06-01", "end_date": "2024-03-01"},
+        # --- linea arancione (scarico del potenziale) ---
+        {"series": "a", "type": "discharge", "mode": "LONG",
+         "entry_th": 0.0, "exit_th": 0.0, "entry_z": 1.5, "horizon": 21,
+         "execution_lag": 1, "cost_pct": 0.05, "initial_capital": 1000.0},
+        # --- combo trend + arancione ---
+        {"series": "b", "type": "combo", "mode": "LONG",
+         "entry_th": 0.0, "exit_th": 0.0, "entry_z": 2.0, "horizon": 21,
+         "execution_lag": 1, "cost_pct": 0.05, "initial_capital": 1000.0},
+        {"series": "c", "type": "combo", "mode": "LONG",
+         "entry_th": 0.05, "exit_th": -0.05, "entry_z": 1.5, "horizon": 42,
+         "execution_lag": 1, "cost_pct": 0.0, "initial_capital": 1000.0,
+         "start_date": "2023-08-01"},
     ]
+
+    from stable_strategy import backtest_potential_discharge, backtest_combo
 
     # Python
     py_results = []
     for r in runs:
         s = series[r["series"]]
-        py_results.append(backtest_stable(
-            s["dates"], s["prices"], s["slopes"], mode=r["mode"],
-            entry_th=r["entry_th"], exit_th=r["exit_th"],
-            execution_lag=r["execution_lag"], cost_pct=r["cost_pct"],
-            initial_capital=r["initial_capital"],
-            start_date=r.get("start_date"), end_date=r.get("end_date"),
-        ))
+        if r.get("type") == "discharge":
+            py_results.append(backtest_potential_discharge(
+                s["dates"], s["prices"], s["pot"], s["F"],
+                entry_z=r["entry_z"], horizon=r["horizon"],
+                execution_lag=r["execution_lag"], cost_pct=r["cost_pct"],
+                initial_capital=r["initial_capital"],
+                start_date=r.get("start_date"), end_date=r.get("end_date"),
+            ))
+        elif r.get("type") == "combo":
+            py_results.append(backtest_combo(
+                s["dates"], s["prices"], s["slopes"], s["pot"], s["F"],
+                entry_th=r["entry_th"], exit_th=r["exit_th"],
+                entry_z=r["entry_z"], horizon=r["horizon"],
+                execution_lag=r["execution_lag"], cost_pct=r["cost_pct"],
+                initial_capital=r["initial_capital"],
+                start_date=r.get("start_date"), end_date=r.get("end_date"),
+            ))
+        else:
+            py_results.append(backtest_stable(
+                s["dates"], s["prices"], s["slopes"], mode=r["mode"],
+                entry_th=r["entry_th"], exit_th=r["exit_th"],
+                execution_lag=r["execution_lag"], cost_pct=r["cost_pct"],
+                initial_capital=r["initial_capital"],
+                start_date=r.get("start_date"), end_date=r.get("end_date"),
+            ))
 
     # JavaScript
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
@@ -116,7 +151,8 @@ def main():
         print(f"  OK run {idx} ({runs[idx]['mode']}, lag={runs[idx]['execution_lag']}, "
               f"cost={runs[idx]['cost_pct']}): {n_tr} trades identici")
 
-    print("OK test_js_py_parity — motore JS speculare al Python su 6 configurazioni")
+    print(f"OK test_js_py_parity — motore JS speculare al Python su {len(runs)} run "
+          f"(stable, discharge, combo)")
 
 
 if __name__ == "__main__":

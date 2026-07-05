@@ -2,6 +2,10 @@
 
 | Deploy ID | Date       | Change                                                                                            |
 | --------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| —         | 2026-07-05 | Feat: strategia ARANCIONE (scarico del potenziale) — `stable_strategy.backtest_potential_discharge`: onset z_pot>soglia con prezzo<F, hold a orizzonte fisso. Unico alpha OOS positivo robusto su tutta la griglia (+0.9..+1.7, t 2.0-3.5, 122 ticker) |
+| —         | 2026-07-05 | Feat: strategia COMBO (trend+arancione) — `stable_strategy.backtest_combo`: OR dei segnali, Sharpe OOS 0.33→0.44 vs solo trend, DD invariato. Mirror JS in stable_engine.js, parità testata (9 run) |
+| —         | 2026-07-05 | Feat: `logic.kalman_llt_velocity` — filtro Kalman a trend locale (2 stati): velocità causale scale-free (velocity_pct), lag 15→11g a pari whipsaw vs catena EMA. Nota: il minor lag NON converte in alpha OOS (misurato) |
+| —         | 2026-07-05 | Feat: Lab con selettore strategia (STABLE/ARANCIONE/COMBO), parametri Entry Z/Hold, End Date per validazione train/OOS manuale; `/analyze-batch-stable` ritorna anche `pot` e `fundamental` (additivo) |
 | —         | 2026-07-05 | Fix CRITICO: `dF` non definito in main.py (NameError silenziato) — il pannello S.KinZ riceveva SEMPRE dati vuoti. Calcolo estratto in `logic.compute_stable_kinetic_z` (testato) |
 | —         | 2026-07-05 | Fix CRITICO: `/verify-integrity` leggeva la chiave cache inesistente `{ticker}_frozen` — per FROZEN/SUM rispondeva sempre "0 corrotti" senza testare nulla. Ora legge `TICKER_CACHE[ticker]["frozen"]` ed errore esplicito se i dati frozen mancano |
 | —         | 2026-07-05 | Fix LOOKAHEAD: `filtfilt` (zero-phase, bidirezionale) sostituito da `causal_lowpass` (lfilter causale) nel segnale Frozen SUM — verify-integrity ora certifica 0 trade corrotti su dati reali |

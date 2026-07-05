@@ -847,10 +847,28 @@ def analyze_batch_stable(req: BatchStableRequest):
             dates = px.index.strftime('%Y-%m-%d').tolist()
             prices = px.values.tolist()
 
+            # [NEW additive] Serie per strategie ARANCIONE/COMBO nel Lab:
+            # potenziale causale point-in-time (Kalman O(n), None-padded ai
+            # primi MIN_POINTS) + fondamentale EMA20 del modello.
+            pot_aligned = []
+            fundamental = []
+            try:
+                if len(px) > 110:
+                    fr = kalman_frozen_series(px, alpha=req.alpha, beta=1.0,
+                                              min_points=100, kin_lag=25)
+                    pad = len(prices) - len(fr["pot_last"])
+                    pot_aligned = [None] * pad + [round(v, 6) for v in fr["pot_last"]]
+                    fundamental = px.ewm(span=20, adjust=False).mean().values.tolist()
+            except Exception:
+                pot_aligned = []
+                fundamental = []
+
             return (ticker, {
                 "dates": dates,
                 "prices": prices,
-                "stable_slope": stable_slope
+                "stable_slope": stable_slope,
+                "pot": pot_aligned,
+                "fundamental": fundamental
             }, None)
         except Exception as e:
             return (ticker, None, str(e))
