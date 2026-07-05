@@ -39,3 +39,6 @@ backend/venv/
 *.log
 backend/portfolio.json
 backend/serviceAccountKey.json
+
+# Forward test journal (dati operativi, non versionare)
+backend/forward_test_journal*.json

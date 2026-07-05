@@ -10,5 +10,9 @@
   "tickers": [],
   "preset": "all",
   "recipient": "",
-  "skip_partial_today": true
+  "skip_partial_today": true,
+  "strategy": "ARANCIONE",
+  "entry_z": 2.0,
+  "horizon": 21,
+  "forward_test": true
 }

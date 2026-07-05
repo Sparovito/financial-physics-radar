@@ -2,6 +2,10 @@
 
 | Deploy ID | Date       | Change                                                                                            |
 | --------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| —         | 2026-07-06 | Feat: email scanner con STRATEGIA CONFIGURABILE (STABLE/ARANCIONE/COMBO) — config `strategy`+`entry_z`+`horizon`, finestra dati auto 24 mesi per ARANCIONE/COMBO, badge 🟠 PANICO, barre residue sulle posizioni attive, colonna Segnale (z_pot per gli onset). Config utente impostata su ARANCIONE |
+| —         | 2026-07-06 | Feat: FORWARD TEST — `forward_test.py`: journal persistente dei segnali reali (pending→open t+1→closed a orizzonte, P&L con costi, quota fissa), aggiornato a ogni scan; sezione 🧪 nella email; endpoint GET `/forward-test/status`, POST `/forward-test/reset`; journal in .gitignore |
+| —         | 2026-07-06 | Fix: `StableAlertConfig` (pydantic) non aveva `skip_partial_today` → il salvataggio config dalla UI lo perdeva; aggiunti anche strategy/entry_z/horizon/forward_test |
+| —         | 2026-07-06 | Analisi: verifica ARANCIONE dal 2021 — corr con B&H 0.07 (≈zero), alpha expo-adj +3.77 (t=2.5), 2022 orso = anno migliore (137 trade, +1.9%/trade): NESSUN bias rialzista nascosto. Sizing: reinvestimento 10% equity con cap 10 posizioni +64% vs quota fissa +53% (maxDD 17.4% vs 13.3%) |
 | —         | 2026-07-05 | Feat: strategia ARANCIONE (scarico del potenziale) — `stable_strategy.backtest_potential_discharge`: onset z_pot>soglia con prezzo<F, hold a orizzonte fisso. Unico alpha OOS positivo robusto su tutta la griglia (+0.9..+1.7, t 2.0-3.5, 122 ticker) |
 | —         | 2026-07-05 | Feat: strategia COMBO (trend+arancione) — `stable_strategy.backtest_combo`: OR dei segnali, Sharpe OOS 0.33→0.44 vs solo trend, DD invariato. Mirror JS in stable_engine.js, parità testata (9 run) |
 | —         | 2026-07-05 | Feat: `logic.kalman_llt_velocity` — filtro Kalman a trend locale (2 stati): velocità causale scale-free (velocity_pct), lag 15→11g a pari whipsaw vs catena EMA. Nota: il minor lag NON converte in alpha OOS (misurato) |

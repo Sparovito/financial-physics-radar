@@ -1609,8 +1609,8 @@ def test_email_config():
 
 class StableAlertConfig(BaseModel):
     enabled: bool = True
-    trigger_hour: int = 18
-    trigger_minute: int = 0
+    trigger_hour: int = 22
+    trigger_minute: int = 30
     mode: str = "LONG"
     entry_threshold: float = 0.0
     exit_threshold: float = 0.0
@@ -1619,6 +1619,12 @@ class StableAlertConfig(BaseModel):
     tickers: List[str] = []
     preset: str = "all"
     recipient: str = ""
+    skip_partial_today: bool = True
+    # STABLE (trend) | ARANCIONE (scarico del potenziale) | COMBO
+    strategy: str = "STABLE"
+    entry_z: float = 2.0
+    horizon: int = 21
+    forward_test: bool = True
 
 @app.get("/stable-alert/config")
 def get_stable_alert_config():
@@ -1677,6 +1683,31 @@ def trigger_stable_with_result():
     from stable_scanner import run_stable_scan
     result = run_stable_scan(send_email=True)
     return result
+
+# =============================================
+#  FORWARD TEST (paper trading dei segnali reali)
+# =============================================
+
+@app.get("/forward-test/status")
+def forward_test_status():
+    """Track record del forward test: stats + trades del journal."""
+    from forward_test import load_journal, journal_stats
+    j = load_journal()
+    return {"stats": journal_stats(j), "config": j.get("config", {}),
+            "trades": j.get("trades", [])}
+
+@app.post("/forward-test/reset")
+def forward_test_reset():
+    """Archivia il journal corrente e riparte da zero."""
+    from forward_test import JOURNAL_PATH
+    import shutil
+    from datetime import datetime as _dt
+    if os.path.exists(JOURNAL_PATH):
+        arch = JOURNAL_PATH.replace(
+            ".json", f"_archive_{_dt.now().strftime('%Y%m%d_%H%M%S')}.json")
+        shutil.move(JOURNAL_PATH, arch)
+        return {"status": "ok", "archived": os.path.basename(arch)}
+    return {"status": "ok", "archived": None}
 
 # =============================================
 

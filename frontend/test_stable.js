@@ -1113,6 +1113,11 @@ async function loadAlertConfig() {
         document.getElementById('alert-entry').value = cfg.entry_threshold || 0;
         document.getElementById('alert-exit').value = cfg.exit_threshold || 0;
         document.getElementById('alert-alpha').value = cfg.alpha || 200;
+        if (document.getElementById('alert-strategy')) {
+            document.getElementById('alert-strategy').value = cfg.strategy || 'STABLE';
+            document.getElementById('alert-entryz').value = cfg.entry_z != null ? cfg.entry_z : 2.0;
+            document.getElementById('alert-horizon').value = cfg.horizon != null ? cfg.horizon : 21;
+        }
         document.getElementById('alert-start').value = cfg.start_date || '2023-01-01';
         document.getElementById('alert-recipient').value = cfg.recipient || '';
 
@@ -1163,8 +1168,8 @@ async function saveAlertConfig() {
 
         const config = {
             enabled: document.getElementById('alert-enabled').checked,
-            trigger_hour: parseInt(document.getElementById('alert-hour').value) || 18,
-            trigger_minute: parseInt(document.getElementById('alert-minute').value) || 0,
+            trigger_hour: parseInt(document.getElementById('alert-hour').value) || 22,
+            trigger_minute: parseInt(document.getElementById('alert-minute').value) || 30,
             mode: document.getElementById('alert-mode').value,
             entry_threshold: parseFloat(document.getElementById('alert-entry').value) || 0,
             exit_threshold: parseFloat(document.getElementById('alert-exit').value) || 0,
@@ -1173,6 +1178,9 @@ async function saveAlertConfig() {
             tickers: tickers,
             preset: preset,
             recipient: document.getElementById('alert-recipient').value.trim(),
+            strategy: document.getElementById('alert-strategy')?.value || 'STABLE',
+            entry_z: parseFloat(document.getElementById('alert-entryz')?.value) || 2.0,
+            horizon: parseInt(document.getElementById('alert-horizon')?.value) || 21,
         };
 
         const resp = await fetch(`${API_BASE}/stable-alert/config`, {

@@ -126,7 +126,47 @@ def test_default_config():
     assert DEFAULT_CONFIG["trigger_hour"] == 22, "trigger default deve essere dopo la chiusura USA"
     assert DEFAULT_CONFIG["trigger_minute"] == 30
     assert DEFAULT_CONFIG.get("skip_partial_today") is True
-    print("  OK default config (22:30 Rome, skip_partial_today)")
+    assert DEFAULT_CONFIG.get("strategy") == "STABLE"
+    assert DEFAULT_CONFIG.get("entry_z") == 2.0
+    assert DEFAULT_CONFIG.get("horizon") == 21
+    assert DEFAULT_CONFIG.get("forward_test") is True
+    print("  OK default config (22:30 Rome, skip_partial_today, strategy/forward_test)")
+
+
+def test_arancione_strategy_signals():
+    """Crash negli ultimi giorni -> onset del potenziale -> entry PANIC +
+    posizione attiva con days_left."""
+    from stable_scanner import analyze_ticker_signals
+
+    # 3 barre di crollo: l'onset (prima barra) resta dentro la finestra
+    # "recenti <5 giorni di calendario" rispetto all'ultima barra
+    n_flat, n_crash = 500, 3
+    vals = [100.0] * n_flat
+    for _ in range(n_crash):
+        vals.append(vals[-1] * 0.97)  # -3% al giorno: dislocazione violenta
+    px = pd.Series(vals, index=pd.date_range("2024-06-03", periods=len(vals), freq="B"))
+
+    today = px.index[-1].date()
+    res = analyze_ticker_signals("TEST", px, today, alpha=200,
+                                 strategy="ARANCIONE", entry_z=2.0, horizon=21)
+
+    all_entries = res["entries"]
+    assert len(all_entries) >= 1, f"atteso almeno 1 entry PANIC: {res}"
+    e = all_entries[0]
+    assert e["kind"] == "PANIC", f"kind atteso PANIC: {e}"
+    assert e["direction"] == "LONG"
+    assert e["days_ago"] <= 5
+    # lo "slope" per i segnali PANIC è lo z del potenziale (>2 all'onset)
+    assert e["slope"] > 2.0, f"z_pot atteso >2: {e['slope']}"
+
+    assert len(res["active"]) == 1, f"attesa posizione attiva: {res['active']}"
+    act = res["active"][0]
+    assert act["days_left"] is not None and 1 <= act["days_left"] <= 21
+
+    # STABLE sullo stesso scenario NON deve dare entry (slope in crollo)
+    res_st = analyze_ticker_signals("TEST", px, today, alpha=200, strategy="STABLE")
+    assert res_st["entries"] == [], "il trend non deve entrare in un crollo"
+    print(f"  OK ARANCIONE (entry PANIC z={e['slope']:.1f}, active con {act['days_left']} barre residue)")
 
 
 def main():
@@ -134,7 +174,8 @@ def main():
     test_short_mirror_thresholds()
     test_drop_partial_last_bar()
     test_default_config()
-    print("OK test_stable_scanner_signals — 4/4")
+    test_arancione_strategy_signals()
+    print("OK test_stable_scanner_signals — 5/5")
 
 
 if __name__ == "__main__":

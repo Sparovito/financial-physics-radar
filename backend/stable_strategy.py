@@ -20,23 +20,15 @@ Semantica (condivisa da Strategia 5 in main.py, STABLE Lab e email scanner):
 """
 
 
-def potential_discharge_positions(prices, pot_raw, F_vals,
-                                  entry_z=2.0, horizon=21,
-                                  zwin=252, min_periods=40):
+def potential_discharge_onsets(prices, pot_raw, F_vals,
+                               entry_z=2.0, zwin=252, min_periods=40):
     """
-    Serie di POSIZIONE DESIDERATA (0/1) della strategia "scarico del
-    potenziale" — la linea arancione resa regola operativa.
+    Indici degli ONSET della strategia arancione (tutto causale):
+    lo z-score rolling del potenziale attraversa entry_z dal basso
+    E il prezzo è SOTTO il fondamentale F (dislocazione al ribasso).
 
-    Onset (tutto causale): lo z-score rolling del potenziale attraversa
-    entry_z dal basso E il prezzo è SOTTO il fondamentale F (dislocazione
-    al ribasso). Dall'onset la posizione resta 1 per `horizon` barre; un
-    nuovo onset durante l'holding estende la finestra.
-
-    Evidenza (event study 2026-07-05, 16 ticker 2022-2026): dopo questi
-    onset il ritorno a 10 gg è ~4x la baseline; gli spike con prezzo sopra
-    F non hanno edge, per questo il filtro direzionale.
-
-    Returns: (positions list[0/1], n_onsets)
+    Ritorna anche la serie z (utile per email/diagnostica).
+    Returns: (onset_indices: list[int], z: list[float])
     """
     import pandas as pd
 
@@ -46,20 +38,46 @@ def potential_discharge_positions(prices, pot_raw, F_vals,
     std = s.rolling(zwin, min_periods=min_periods).std()
     z = ((s - mean) / (std + 1e-9)).fillna(0).values
 
-    positions = [0] * n
-    last_onset = None
-    n_onsets = 0
+    onsets = []
     for t in range(1, n):
         price = prices[t]
         f = F_vals[t] if t < len(F_vals) else None
-        onset = (z[t] > entry_z and z[t - 1] <= entry_z
-                 and price is not None and f is not None and price < f)
-        if onset:
-            last_onset = t
-            n_onsets += 1
+        if (z[t] > entry_z and z[t - 1] <= entry_z
+                and price is not None and f is not None and price < f):
+            onsets.append(t)
+    return onsets, z.tolist()
+
+
+def potential_discharge_positions(prices, pot_raw, F_vals,
+                                  entry_z=2.0, horizon=21,
+                                  zwin=252, min_periods=40):
+    """
+    Serie di POSIZIONE DESIDERATA (0/1) della strategia "scarico del
+    potenziale" — la linea arancione resa regola operativa.
+
+    Dall'onset (vedi potential_discharge_onsets) la posizione resta 1 per
+    `horizon` barre; un nuovo onset durante l'holding estende la finestra.
+
+    Evidenza (event study 2026-07-05, 16 ticker 2022-2026): dopo questi
+    onset il ritorno a 10 gg è ~4x la baseline; gli spike con prezzo sopra
+    F non hanno edge, per questo il filtro direzionale.
+
+    Returns: (positions list[0/1], n_onsets)
+    """
+    n = len(prices)
+    onsets, _ = potential_discharge_onsets(prices, pot_raw, F_vals,
+                                           entry_z=entry_z, zwin=zwin,
+                                           min_periods=min_periods)
+    positions = [0] * n
+    oi = 0
+    last_onset = None
+    for t in range(n):
+        while oi < len(onsets) and onsets[oi] <= t:
+            last_onset = onsets[oi]
+            oi += 1
         if last_onset is not None and t - last_onset < horizon:
             positions[t] = 1
-    return positions, n_onsets
+    return positions, len(onsets)
 
 
 def backtest_potential_discharge(dates, prices, pot_raw, F_vals,

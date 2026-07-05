@@ -109,7 +109,17 @@ Modulo dedicato per le email giornaliere con segnali della strategia STABLE.
 -   **`drop_partial_last_bar()`** *(2026-07-05)*: scarta la barra di OGGI se
     calcolata prima delle 22:05 Europe/Rome (candela Yahoo incompleta →
     repainting). Default trigger email: **22:30 Rome** (dopo chiusura USA).
--   **`compute_stable_signals()`**: finestra 6 mesi auto-calcolata, download e computazione paralleli (ThreadPoolExecutor 8 workers).
+-   **`compute_stable_signals()`**: finestra auto (6 mesi STABLE, 24 mesi
+    ARANCIONE/COMBO per warmup Kalman+z), download e computazione paralleli.
+-   **Strategia configurabile** *(2026-07-06)*: config `strategy`
+    (STABLE/ARANCIONE/COMBO) + `entry_z`/`horizon`; entries con `kind`
+    PANIC/TREND e z_pot come "Segnale"; posizioni attive con `days_left`.
+-   **Forward test** *(2026-07-06)*: `forward_test.py` — journal persistente
+    dei segnali reali (paper trading a quota fissa: pending → open alla barra
+    successiva → closed a orizzonte, P&L con costi identico al motore).
+    Aggiornato a ogni scan (`price_sink`), sezione 🧪 nell'email, endpoint
+    `GET /forward-test/status` e `POST /forward-test/reset` (archivia).
+    Il journal (`forward_test_journal.json`) è dato operativo, in .gitignore.
 -   **`build_stable_email()`**: HTML con 3 sezioni: ENTRY OGGI (verde), INGRESSI RECENTI <5gg (giallo con badge giorni), POSIZIONI ATTIVE (viola).
 -   **`load_config()` / `save_config()`**: persistenza in `stable_alert_config.json`.
 -   **Principio critico**: NO `yf.download` batch separato — usa esclusivamente il sistema di download del main app per evitare rate-limiting Yahoo.
