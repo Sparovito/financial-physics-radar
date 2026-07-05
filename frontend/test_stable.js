@@ -1054,6 +1054,195 @@ function renderOptTable(topN) {
 // ============================================================
 
 // ============================================================
+//  FORWARD TEST (monitor journal) + SIMULATORE DI INVESTIMENTO
+// ============================================================
+
+let FWD_JOURNAL = null;
+
+async function loadForwardStatus() {
+    try {
+        setStatus('Caricamento forward test...');
+        const resp = await fetch(`${API_BASE}/forward-test/status`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        FWD_JOURNAL = await resp.json();
+        renderForward();
+        setStatus('✅ Forward test aggiornato.');
+    } catch (e) {
+        console.error('forward status:', e);
+        document.getElementById('fwd-info').textContent = `❌ Errore: ${e.message} (backend attivo?)`;
+        setStatus(`❌ Forward test: ${e.message}`);
+    }
+}
+
+async function resetForwardJournal() {
+    if (!confirm('Archiviare il journal corrente e ripartire da zero?\n(Il file attuale viene rinominato, non cancellato)')) return;
+    try {
+        const resp = await fetch(`${API_BASE}/forward-test/reset`, { method: 'POST' });
+        const data = await resp.json();
+        setStatus(`🗑 Journal archiviato${data.archived ? ': ' + data.archived : ''}. Riparte col prossimo scan.`);
+        loadForwardStatus();
+    } catch (e) {
+        setStatus(`❌ Reset fallito: ${e.message}`);
+    }
+}
+
+function renderForward() {
+    const stats = FWD_JOURNAL?.stats || {};
+    const trades = FWD_JOURNAL?.trades || [];
+    const info = document.getElementById('fwd-info');
+    info.textContent = trades.length === 0
+        ? 'Journal vuoto: si popola automaticamente a ogni scan email (22:30). Nessun dato retroattivo, solo segnali reali da oggi in poi.'
+        : `Journal dal ${stats.created} — ${trades.length} segnali registrati.`;
+
+    const c = (v) => v >= 0 ? 'pos' : 'neg';
+    document.getElementById('fwd-cards').innerHTML = `
+        <div class="card"><div class="label">Inizio</div><div class="value" style="font-size:1rem;">${stats.created || '-'}</div></div>
+        <div class="card"><div class="label">In ingresso</div><div class="value">${stats.pending ?? 0}</div></div>
+        <div class="card"><div class="label">Aperti</div><div class="value">${stats.open ?? 0}</div></div>
+        <div class="card"><div class="label">Chiusi</div><div class="value">${stats.closed ?? 0}</div></div>
+        <div class="card"><div class="label">Somma P/L (quota fissa)</div><div class="value ${c(stats.sum_pnl_pct || 0)}">${(stats.sum_pnl_pct ?? 0) >= 0 ? '+' : ''}${stats.sum_pnl_pct ?? 0}%</div></div>
+        <div class="card"><div class="label">Media / Trade</div><div class="value ${c(stats.avg_pnl_pct || 0)}">${(stats.avg_pnl_pct ?? 0) >= 0 ? '+' : ''}${stats.avg_pnl_pct ?? 0}%</div></div>
+        <div class="card"><div class="label">Win Rate</div><div class="value">${stats.win_rate ?? 0}%</div></div>
+        <div class="card"><div class="label">Aperti: P/L medio</div><div class="value ${c(stats.open_avg_pnl_pct || 0)}">${(stats.open_avg_pnl_pct ?? 0) >= 0 ? '+' : ''}${stats.open_avg_pnl_pct ?? 0}%</div></div>
+    `;
+
+    // tabella (più recenti in alto)
+    const tbody = document.getElementById('fwd-body');
+    const stCls = { pending: 'color:#ff9900;', open: 'color:var(--cyan);', closed: 'color:var(--text2);' };
+    const stLbl = { pending: '⏳ ingresso t+1', open: '🔵 aperto', closed: '✔ chiuso' };
+    tbody.innerHTML = [...trades].reverse().map(t => {
+        const pnl = t.status === 'closed' ? t.pnl_pct : t.current_pnl_pct;
+        const pnlCls = (pnl ?? 0) >= 0 ? 'pos' : 'neg';
+        return `<tr>
+            <td style="font-weight:600;">${t.ticker}</td>
+            <td>${t.strategy || '-'}</td>
+            <td>${t.direction === 'SHORT' ? '🔴' : '🟢'} ${t.direction}</td>
+            <td>${t.signal_date}</td>
+            <td>${t.entry_date || '-'}</td>
+            <td style="text-align:right;">${t.entry_price != null ? t.entry_price.toFixed(2) : '-'}</td>
+            <td style="text-align:right;">${t.bars_held ?? 0}/${t.horizon}</td>
+            <td>${t.exit_date || '-'}</td>
+            <td style="text-align:right;">${t.exit_price != null ? t.exit_price.toFixed(2) : '-'}</td>
+            <td style="text-align:right;" class="${pnlCls}">${pnl != null ? (pnl >= 0 ? '+' : '') + pnl + '%' : '-'}</td>
+            <td style="${stCls[t.status] || ''}">${stLbl[t.status] || t.status}</td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="11" style="text-align:center; color:#888; padding:24px;">Nessun trade ancora: il journal parte col primo segnale reale.</td></tr>';
+
+    // curva P/L realizzata (quota fissa: cumsum dei pnl% per data di uscita)
+    const closed = trades.filter(t => t.status === 'closed' && t.pnl_pct != null)
+        .sort((a, b) => a.exit_date < b.exit_date ? -1 : 1);
+    let cum = 0;
+    const xs = [], ys = [];
+    for (const t of closed) { cum += t.pnl_pct; xs.push(t.exit_date); ys.push(+cum.toFixed(2)); }
+    const traces = [{
+        x: xs, y: ys, type: 'scatter', mode: 'lines+markers',
+        name: 'P/L realizzato cum. (quota fissa)', line: { color: '#00e5ff', width: 2 }
+    }];
+    const openSum = trades.filter(t => t.status === 'open' && t.current_pnl_pct != null)
+        .reduce((s, t) => s + t.current_pnl_pct, 0);
+    if (trades.some(t => t.status === 'open')) {
+        traces.push({
+            x: [xs.length ? xs[xs.length - 1] : (trades[0]?.signal_date), new Date().toISOString().slice(0, 10)],
+            y: [ys.length ? ys[ys.length - 1] : 0, +(cum + openSum).toFixed(2)],
+            type: 'scatter', mode: 'lines', name: 'con aperti (MTM)',
+            line: { color: '#ff9900', width: 2, dash: 'dot' }
+        });
+    }
+    Plotly.newPlot('chart-fwd-equity', traces, {
+        title: { text: 'Forward test — P/L cumulato (ogni trade pesa 1)', font: { color: '#ccc', size: 13 } },
+        paper_bgcolor: '#1a1d29', plot_bgcolor: '#1a1d29',
+        font: { color: '#aaa', family: 'Inter' },
+        xaxis: { gridcolor: '#252836' }, yaxis: { gridcolor: '#252836', title: 'P/L % cum.', zeroline: true, zerolinecolor: '#444' },
+        legend: { orientation: 'h', y: -0.2, font: { size: 10 } },
+        margin: { t: 35, b: 45, l: 55, r: 15 },
+    }, { responsive: true });
+}
+
+// --- Simulatore di sizing ---
+function collectSimTrades(source) {
+    if (source === 'journal') {
+        return (FWD_JOURNAL?.trades || [])
+            .filter(t => t.status === 'closed' && t.pnl_pct != null)
+            .map(t => ({ entry_date: t.entry_date, exit_date: t.exit_date, pnl_pct: t.pnl_pct }));
+    }
+    // backtest corrente: tutti i trade chiusi dei ticker analizzati
+    const out = [];
+    for (const r of Object.values(RESULTS)) {
+        for (const t of (r.backtest?.trades || [])) {
+            if (t.exit_date !== 'OPEN' && t.pnl_pct != null) {
+                out.push({ entry_date: t.entry_date, exit_date: t.exit_date, pnl_pct: t.pnl_pct });
+            }
+        }
+    }
+    return out;
+}
+
+function runSizingSim() {
+    const source = document.getElementById('sim-source').value;
+    const capital = parseFloat(document.getElementById('sim-capital').value) || 10000;
+    const stakePct = parseFloat(document.getElementById('sim-stake').value) || 10;
+    const cap = parseInt(document.getElementById('sim-cap').value) || 10;
+
+    const trades = collectSimTrades(source);
+    if (trades.length === 0) {
+        setStatus(source === 'journal'
+            ? '🧪 Il journal non ha ancora trade chiusi: usa la fonte "Backtest corrente" (lancia prima un\'analisi).'
+            : '📊 Nessun trade: lancia prima un\'analisi nel tab Analizza.');
+        return;
+    }
+
+    const schemes = [
+        { key: 'fixed_unlimited', label: `Quota fissa ${stakePct}% — SENZA tetto (riferimento, può servire leva)`, color: '#888888' },
+        { key: 'fixed', label: `Quota fissa ${stakePct}% — max ${cap} posizioni`, color: '#00e5ff' },
+        { key: 'compound', label: `Reinvestimento ${stakePct}% equity — max ${cap} posizioni`, color: '#00ff88' },
+    ];
+
+    const rows = [];
+    const eqTraces = [], cashTraces = [];
+    for (const s of schemes) {
+        const r = simulateSizing(trades, { scheme: s.key, capital, stakePct, cap });
+        rows.push(`<tr>
+            <td style="color:${s.color}; font-weight:600;">${s.label}</td>
+            <td style="text-align:right;">${r.finalCapital.toFixed(0)}</td>
+            <td style="text-align:right;" class="${r.returnPct >= 0 ? 'pos' : 'neg'}">${r.returnPct >= 0 ? '+' : ''}${r.returnPct}%</td>
+            <td style="text-align:right; color:var(--red);">-${r.maxDD}%</td>
+            <td style="text-align:right;">${r.maxConcurrent}</td>
+            <td style="text-align:right;">${r.skipped}</td>
+        </tr>`);
+        eqTraces.push({
+            x: r.curve.map(p => p.date), y: r.curve.map(p => p.equity),
+            name: s.label, type: 'scatter', mode: 'lines',
+            line: { color: s.color, width: s.key === 'fixed_unlimited' ? 1 : 2, dash: s.key === 'fixed_unlimited' ? 'dot' : 'solid' },
+        });
+        cashTraces.push({
+            x: r.curve.map(p => p.date), y: r.curve.map(p => p.invested),
+            name: s.label, type: 'scatter', mode: 'lines', fill: s.key === 'fixed' ? 'tozeroy' : 'none',
+            line: { color: s.color, width: 1.5, dash: s.key === 'fixed_unlimited' ? 'dot' : 'solid' },
+        });
+    }
+    document.getElementById('sizing-body').innerHTML = rows.join('');
+
+    const layout = (title, ytitle) => ({
+        title: { text: title, font: { color: '#ccc', size: 13 } },
+        paper_bgcolor: '#1a1d29', plot_bgcolor: '#1a1d29',
+        font: { color: '#aaa', family: 'Inter' },
+        xaxis: { gridcolor: '#252836' },
+        yaxis: { gridcolor: '#252836', title: ytitle },
+        legend: { orientation: 'h', y: -0.22, font: { size: 10 } },
+        margin: { t: 35, b: 55, l: 60, r: 15 },
+        hovermode: 'x unified',
+    });
+    Plotly.newPlot('chart-sizing-equity', eqTraces,
+        layout(`Equity nel tempo — ${trades.length} trade (${source === 'journal' ? 'forward journal' : 'backtest corrente'})`, 'Capitale'),
+        { responsive: true });
+    Plotly.newPlot('chart-sizing-cash', cashTraces,
+        layout('Flusso di cassa — capitale IMPEGNATO nel tempo (il resto è liquidità)', 'Capitale impegnato'),
+        { responsive: true });
+
+    setStatus(`💰 Simulazione su ${trades.length} trade chiusi (${source}).`);
+}
+
+// ============================================================
 //  EMAIL ALERT CONFIG
 // ============================================================
 

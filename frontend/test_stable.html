@@ -354,6 +354,7 @@
         <div class="tab" data-tab="trades" onclick="switchTab('trades')">📋 Trades</div>
         <div class="tab" data-tab="comparison" onclick="switchTab('comparison')">📊 Confronto</div>
         <div class="tab" data-tab="optimizer" onclick="switchTab('optimizer')">🔍 Optimizer</div>
+        <div class="tab" data-tab="forward" onclick="switchTab('forward'); loadForwardStatus();">🧪 Forward</div>
         <div class="tab" data-tab="alerts" onclick="switchTab('alerts')">📩 Email Alert</div>
     </div>
 
@@ -460,6 +461,91 @@
                     </thead>
                     <tbody id="opt-body"></tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- TAB: FORWARD TEST + SIMULATORE INVESTIMENTO -->
+        <div class="panel-section" id="panel-forward">
+            <div style="display:flex; gap:10px; margin-bottom:12px; align-items:center; flex-wrap:wrap;">
+                <button class="btn btn-run" onclick="loadForwardStatus()">🔄 Aggiorna</button>
+                <button class="btn" style="background:#402a2a; color:var(--red);" onclick="resetForwardJournal()">🗑 Reset journal</button>
+                <span id="fwd-info" style="color:var(--text2); font-size:0.85rem;"></span>
+            </div>
+
+            <!-- Monitor journal -->
+            <div class="cards" id="fwd-cards"></div>
+            <div class="chart-box">
+                <div id="chart-fwd-equity" style="width:100%; height:280px;"></div>
+            </div>
+            <div class="chart-box" style="overflow-x:auto;">
+                <h4 style="color:var(--purple); margin-bottom:10px;">Trade del forward test (segnali reali, esecuzione t+1)</h4>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Ticker</th><th>Strategia</th><th>Dir</th>
+                            <th>Segnale</th><th>Entry</th>
+                            <th style="text-align:right;">Prezzo In</th>
+                            <th style="text-align:right;">Barre</th>
+                            <th>Exit</th>
+                            <th style="text-align:right;">Prezzo Out</th>
+                            <th style="text-align:right;">P/L %</th>
+                            <th>Stato</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fwd-body"></tbody>
+                </table>
+            </div>
+
+            <!-- Simulatore di investimento -->
+            <div class="chart-box" style="padding:16px;">
+                <h4 style="color:var(--cyan); margin-bottom:6px;">💰 Simulatore di investimento</h4>
+                <p style="color:var(--text2); font-size:0.8rem; margin-bottom:12px;">
+                    Applica gli schemi di money management ai trade CHIUSI della fonte scelta.
+                    Base realizzata: posizioni valutate al costo fino alla chiusura (il drawdown
+                    intra-trade è sottostimato). Il grafico in basso mostra il flusso di cassa:
+                    quanto capitale è impegnato nel tempo.
+                </p>
+                <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
+                    <div class="ctrl-group">
+                        <label>Fonte trade</label>
+                        <select id="sim-source" style="min-width:220px;">
+                            <option value="backtest">📊 Backtest corrente (tab Analizza)</option>
+                            <option value="journal">🧪 Forward journal (segnali reali)</option>
+                        </select>
+                    </div>
+                    <div class="ctrl-group">
+                        <label>Capitale iniziale</label>
+                        <input type="number" id="sim-capital" value="10000" min="100" step="500" style="width:110px;">
+                    </div>
+                    <div class="ctrl-group">
+                        <label>Quota per trade %</label>
+                        <input type="number" id="sim-stake" value="10" min="1" max="100" step="1" style="width:90px;"
+                            title="Percentuale del capitale (iniziale per quota fissa, corrente per reinvestimento) impegnata su ogni trade">
+                    </div>
+                    <div class="ctrl-group">
+                        <label>Max posizioni</label>
+                        <input type="number" id="sim-cap" value="10" min="1" max="100" step="1" style="width:80px;"
+                            title="Tetto di posizioni simultanee (i segnali oltre il tetto vengono saltati)">
+                    </div>
+                    <button class="btn btn-opt" onclick="runSizingSim()">▶ Simula</button>
+                </div>
+                <div class="chart-box" style="overflow-x:auto; margin-bottom:12px;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Schema</th>
+                                <th style="text-align:right;">Capitale finale</th>
+                                <th style="text-align:right;">Ritorno %</th>
+                                <th style="text-align:right;">Max DD %</th>
+                                <th style="text-align:right;">Max simultanee</th>
+                                <th style="text-align:right;">Segnali saltati</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sizing-body"></tbody>
+                    </table>
+                </div>
+                <div id="chart-sizing-equity" style="width:100%; height:300px;"></div>
+                <div id="chart-sizing-cash" style="width:100%; height:260px;"></div>
             </div>
         </div>
 
@@ -606,7 +692,7 @@
     <div class="status-bar" id="status-bar">Pronto. Seleziona i tickers e premi Analizza.</div>
 
     <script src="tickers.js?v=6"></script>
-    <script src="stable_engine.js?v=2"></script>
-    <script src="test_stable.js?v=8"></script>
+    <script src="stable_engine.js?v=3"></script>
+    <script src="test_stable.js?v=9"></script>
 </body>
 </html>

@@ -416,6 +416,90 @@ function backtestCombo(dates, prices, slopes, potRaw, Fvals, opts) {
     return res;
 }
 
+// ============================================================
+//  SIMULATORE DI SIZING (money management)
+//  Applica uno schema di investimento a una lista di trade chiusi:
+//  - 'fixed'           : quota fissa (capital*stakePct/100 per trade),
+//                        tetto `cap` posizioni e vincolo di cassa
+//  - 'fixed_unlimited' : quota fissa senza vincoli (riferimento teorico,
+//                        può richiedere leva nei giorni di cluster)
+//  - 'compound'        : reinvestimento — stakePct% dell'equity corrente,
+//                        tetto `cap` e vincolo di cassa
+//  Base realizzata: le posizioni aperte sono valutate al costo, il P&L
+//  si materializza alla chiusura (il drawdown intra-trade è sottostimato).
+//  La curva registra OGNI evento: {date, equity, cash, invested} — la
+//  vista "flusso di cassa" del portafoglio nel tempo.
+// ============================================================
+function simulateSizing(trades, opts) {
+    opts = opts || {};
+    const scheme = opts.scheme || 'fixed';
+    const capital0 = opts.capital != null ? opts.capital : 10000;
+    const stakePct = opts.stakePct != null ? opts.stakePct : 10;
+    const cap = opts.cap != null ? opts.cap : 10;
+
+    const closed = (trades || []).filter(t =>
+        t && t.entry_date && t.exit_date && t.exit_date !== 'OPEN' && t.pnl_pct != null);
+
+    // eventi ordinati per data; a parità di data le USCITE precedono le
+    // entrate (liberano slot e cassa per i nuovi segnali)
+    const events = [];
+    for (const t of closed) {
+        events.push({ date: t.entry_date, kind: 1, t });
+        events.push({ date: t.exit_date, kind: 0, t });
+    }
+    events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.kind - b.kind));
+
+    const fixedStake = capital0 * stakePct / 100;
+    let cash = capital0;
+    const open = new Map();   // trade -> stake
+    let skipped = 0, maxConcurrent = 0;
+    let peak = capital0, maxDD = 0;
+    const curve = [];
+
+    for (const ev of events) {
+        if (ev.kind === 0) {
+            if (!open.has(ev.t)) continue;   // entry era stata saltata
+            const stake = open.get(ev.t);
+            open.delete(ev.t);
+            cash += stake * (1 + ev.t.pnl_pct / 100);
+        } else {
+            let invested = 0; open.forEach(s => invested += s);
+            let stake;
+            if (scheme === 'compound') stake = (cash + invested) * stakePct / 100;
+            else stake = fixedStake;
+
+            if (scheme !== 'fixed_unlimited') {
+                if (open.size >= cap || stake > cash + 1e-9) { skipped++; continue; }
+            }
+            cash -= stake;
+            open.set(ev.t, stake);
+            if (open.size > maxConcurrent) maxConcurrent = open.size;
+        }
+        let invested = 0; open.forEach(s => invested += s);
+        const equity = cash + invested;   // posizioni al costo
+        curve.push({
+            date: ev.date,
+            equity: Math.round(equity * 100) / 100,
+            cash: Math.round(cash * 100) / 100,
+            invested: Math.round(invested * 100) / 100,
+        });
+        if (equity > peak) peak = equity;
+        const dd = (peak - equity) / peak * 100;
+        if (dd > maxDD) maxDD = dd;
+    }
+
+    const finalCapital = Math.round(cash * 100) / 100;   // a fine eventi tutto è chiuso
+    return {
+        finalCapital: finalCapital,
+        returnPct: Math.round((finalCapital / capital0 - 1) * 10000) / 100,
+        maxDD: Math.round(maxDD * 100) / 100,
+        skipped: skipped,
+        maxConcurrent: maxConcurrent,
+        nTrades: closed.length,
+        curve: curve,
+    };
+}
+
 // Compat: alias storico usato dal Lab ("equity" oltre a "equity_curve")
 function backtestStableCompat(dates, prices, slopes, opts) {
     const res = backtestStable(dates, prices, slopes, opts);
@@ -426,5 +510,6 @@ function backtestStableCompat(dates, prices, slopes, opts) {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { backtestStable, backtestStableCompat,
                        potentialDischargePositions, comboPositions,
-                       backtestPotentialDischarge, backtestCombo };
+                       backtestPotentialDischarge, backtestCombo,
+                       simulateSizing };
 }
