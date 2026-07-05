@@ -350,6 +350,80 @@ def compute_stable_kinetic_z(px, alpha, threshold=0.5):
     return stable_kin_z.values.tolist(), regime.tolist()
 
 
+def kalman_llt_velocity(px, lam=1e-5):
+    """
+    Filtro di Kalman a TREND LOCALE (2 stati: livello + velocità) — la
+    "cinetica causale" vera del progetto.
+
+    Motivazione: nel modello local-level (ActionPath/kalman_frozen_series)
+    la cinetica causale è matematicamente proporzionale al potenziale
+    (entrambi = innovazione², identità esatta): in tempo reale non esiste
+    una "velocità" distinta dalla "sorpresa". Con due stati la velocità è
+    uno stato separato con la sua inerzia — è l'analogo causale del filtro
+    di Hodrick-Prescott (azione di ordine 2: penalizza l'accelerazione del
+    percorso invece della sola velocità).
+
+    Modello: l_t = l_{t-1} + v_{t-1};  v_t = v_{t-1} + w,  w~N(0, lam·r)
+             y_t = l_t + eps,          eps~N(0, r)
+    L'unico parametro è lam = q_v / r (rapporto segnale/rumore del trend):
+    piccolo = trend molto liscio (più ritardo), grande = reattivo.
+
+    Returns dict:
+      level        : stima causale del livello l̂_t
+      velocity     : stima causale della velocità v̂_t (unità prezzo/barra)
+      velocity_pct : 100·v̂/l̂ — %/barra, invariante di scala (confrontabile
+                     tra ticker: è QUESTA da usare per soglie e optimizer)
+    """
+    y = px.values.astype(float) if hasattr(px, "values") else np.asarray(px, dtype=float)
+    n = len(y)
+    if n == 0:
+        return {"level": [], "velocity": [], "velocity_pct": []}
+
+    r = 1.0
+    q = float(lam) * r
+
+    # stato [l, v], transizione F=[[1,1],[0,1]], osservazione H=[1,0]
+    l, v = y[0], 0.0
+    # covarianza: init quasi-diffusa
+    P11, P12, P22 = 1e6, 0.0, 1e6
+
+    level = np.empty(n)
+    vel = np.empty(n)
+    level[0], vel[0] = l, v
+
+    for t_i in range(1, n):
+        # --- predict ---
+        l_p = l + v
+        v_p = v
+        # P_pred = F P F' + Q  (Q = diag(0, q))
+        A11 = P11 + 2 * P12 + P22
+        A12 = P12 + P22
+        A22 = P22 + q
+        # --- update (H=[1,0]) ---
+        S = A11 + r
+        K1 = A11 / S
+        K2 = A12 / S
+        innov = y[t_i] - l_p
+        l = l_p + K1 * innov
+        v = v_p + K2 * innov
+        # P = (I - K H) P_pred
+        P11 = (1 - K1) * A11
+        P12 = (1 - K1) * A12
+        P22 = A22 - K2 * A12
+
+        level[t_i] = l
+        vel[t_i] = v
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        vpct = np.where(np.abs(level) > 1e-12, 100.0 * vel / level, 0.0)
+
+    return {
+        "level": level.tolist(),
+        "velocity": vel.tolist(),
+        "velocity_pct": vpct.tolist(),
+    }
+
+
 def causal_lowpass(values, wn=0.05, order=2):
     """
     Passa-basso Butterworth CAUSALE. Sostituisce filtfilt (zero-phase,

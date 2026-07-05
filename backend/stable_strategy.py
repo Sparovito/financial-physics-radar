@@ -20,6 +20,74 @@ Semantica (condivisa da Strategia 5 in main.py, STABLE Lab e email scanner):
 """
 
 
+def potential_discharge_positions(prices, pot_raw, F_vals,
+                                  entry_z=2.0, horizon=21,
+                                  zwin=252, min_periods=40):
+    """
+    Serie di POSIZIONE DESIDERATA (0/1) della strategia "scarico del
+    potenziale" — la linea arancione resa regola operativa.
+
+    Onset (tutto causale): lo z-score rolling del potenziale attraversa
+    entry_z dal basso E il prezzo è SOTTO il fondamentale F (dislocazione
+    al ribasso). Dall'onset la posizione resta 1 per `horizon` barre; un
+    nuovo onset durante l'holding estende la finestra.
+
+    Evidenza (event study 2026-07-05, 16 ticker 2022-2026): dopo questi
+    onset il ritorno a 10 gg è ~4x la baseline; gli spike con prezzo sopra
+    F non hanno edge, per questo il filtro direzionale.
+
+    Returns: (positions list[0/1], n_onsets)
+    """
+    import pandas as pd
+
+    n = len(prices)
+    s = pd.Series(pot_raw, dtype=float)
+    mean = s.rolling(zwin, min_periods=min_periods).mean()
+    std = s.rolling(zwin, min_periods=min_periods).std()
+    z = ((s - mean) / (std + 1e-9)).fillna(0).values
+
+    positions = [0] * n
+    last_onset = None
+    n_onsets = 0
+    for t in range(1, n):
+        price = prices[t]
+        f = F_vals[t] if t < len(F_vals) else None
+        onset = (z[t] > entry_z and z[t - 1] <= entry_z
+                 and price is not None and f is not None and price < f)
+        if onset:
+            last_onset = t
+            n_onsets += 1
+        if last_onset is not None and t - last_onset < horizon:
+            positions[t] = 1
+    return positions, n_onsets
+
+
+def backtest_potential_discharge(dates, prices, pot_raw, F_vals,
+                                 entry_z=2.0, horizon=21,
+                                 execution_lag=1, cost_pct=0.0,
+                                 initial_capital=1000.0,
+                                 start_date=None, end_date=None,
+                                 zwin=252, min_periods=40):
+    """
+    Backtest della strategia "scarico del potenziale" usando il motore
+    unificato come esecutore: la serie di posizione desiderata viene
+    convertita in pseudo-slope (pos−0.5) con soglie 0.4/0.0, così esecuzione
+    t+1, costi, equity e stats sono ESATTAMENTE quelli di backtest_stable.
+    """
+    positions, n_onsets = potential_discharge_positions(
+        prices, pot_raw, F_vals, entry_z=entry_z, horizon=horizon,
+        zwin=zwin, min_periods=min_periods)
+
+    pseudo_slope = [p - 0.5 for p in positions]
+    res = backtest_stable(dates, prices, pseudo_slope, mode="LONG",
+                          entry_th=0.4, exit_th=0.0,
+                          execution_lag=execution_lag, cost_pct=cost_pct,
+                          initial_capital=initial_capital,
+                          start_date=start_date, end_date=end_date)
+    res["n_onsets"] = n_onsets
+    return res
+
+
 def _pnl_frac(direction, entry, exit_price, c):
     """Frazione di P/L con costi per lato (c = cost_pct/100)."""
     if direction == "LONG":
