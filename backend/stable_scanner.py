@@ -962,11 +962,17 @@ def run_stable_scan(send_email=True):
             # oggi + recenti (<5gg): se uno scan salta un giorno il segnale
             # non va perso. L'ingresso resta la prima barra dopo il segnale,
             # quindi registrarlo in ritardo non cambia il prezzo di carico.
+            candidates = result["entries_today"] + result["entries_recent"]
+            if not journal.get("runs"):
+                # journal appena nato: si parte da zero, senza nulla di
+                # retroattivo. Entrano solo i segnali dell'ultima seduta
+                # chiusa (ancora da eseguire), non quelli dei giorni prima.
+                candidates = [e for e in candidates if e.get("pending_execution")]
             new_signals = [{
                 "ticker": e["ticker"], "signal_date": e["date"],
                 "direction": e.get("direction", "LONG"),
                 "strategy": strategy, "price": e.get("price"),
-            } for e in result["entries_today"] + result["entries_recent"]]
+            } for e in candidates]
             update_journal(journal, price_sink, new_signals, horizon=horizon,
                            params=strategy_params(cfg),
                            universe=list(price_sink.keys()))
