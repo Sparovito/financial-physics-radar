@@ -522,6 +522,29 @@
                         <option value="stable">➡️ Stabile</option>
                     </select>
                 </div>
+
+                <!-- Metrica mostrata nelle colonne delle strategie -->
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <label style="color:#aaa; font-size:0.8rem;">Mostra:</label>
+                    <select id="scan-metric" onchange="applyScanFilters()"
+                        style="background:#333; border:1px solid #444; color:#fff; padding:4px; border-radius:4px;">
+                        <option value="roi">ROI %</option>
+                        <option value="alpha">Alpha (ROI − esposizione × B&amp;H)</option>
+                        <option value="win_rate">Win rate %</option>
+                        <option value="expo">Esposizione %</option>
+                        <option value="trades">N. trade chiusi</option>
+                    </select>
+                </div>
+            </div>
+            <div id="scan-reading-note"
+                style="padding:8px 15px; background:#16181f; border-bottom:1px solid #333; color:#999; font-size:0.8rem; line-height:1.5;">
+                <b style="color:#ccc;">Come leggerla.</b> È una fotografia del passato, senza costi: nei test il rendimento
+                passato di una strategia su un titolo <b>non</b> prevede quello futuro, quindi non serve a scegliere i titoli.
+                In ROI, <span style="color:#00ff88;">verde</span> = ha battuto il compra-e-tieni (B&amp;H),
+                <span style="color:#ddd;">bianco</span> = positivo ma sotto il B&amp;H,
+                <span style="color:#ff4444;">rosso</span> = negativo.
+                <i>Oracolo</i> conosce il futuro: è il soffitto teorico, non una strategia.
+                Clic sulle intestazioni per ordinare; passa il mouse su una cella per il dettaglio.
             </div>
 
             <!-- RESULTS TABLE -->
@@ -533,19 +556,16 @@
                             <th style="padding:12px; width:40px; text-align:center;">
                                 <input type="checkbox" id="scan-select-all" checked onclick="toggleAllScanRows(this)">
                             </th>
-                            <th style="padding:12px;">Ticker</th>
-                            <th style="padding:12px; color:#aaa;" title="Trend Prezzo nel Periodo">📊 Trend</th>
-                            <th style="padding:12px; color:#aaa;"># Trades</th>
-                            <th style="padding:12px; color:#00ff88;">✅ Win% (Live)</th>
-                            <th style="padding:12px; color:#00ff88;">📈 ROI (Live)</th>
-                            <th style="padding:12px; color:#ff9900;">✅ Win% (Frozen)</th>
-                            <th style="padding:12px; color:#ff9900;">📉 ROI (Frozen)</th>
-                            <th style="padding:12px; color:#ff4444;">✅ Win% (SUM)</th>
-                            <th style="padding:12px; color:#ff4444;">📈 ROI (SUM)</th>
-                            <th style="padding:12px; color:#aa44ff;">✅ Win% (Stable)</th>
-                            <th style="padding:12px; color:#aa44ff;">📈 ROI (Stable)</th>
-                            <th style="padding:12px;">Delta ROI</th>
-                            <th style="padding:12px;">Action</th>
+                            <th class="scan-sort" data-sort="ticker" style="padding:12px; cursor:pointer;">Ticker</th>
+                            <th style="padding:12px; color:#aaa;" title="Andamento del prezzo nel periodo">Trend</th>
+                            <th class="scan-sort" data-sort="bh" style="padding:12px; cursor:pointer; text-align:right; color:#fff;" title="Compra-e-tieni nello stesso periodo: il termine di paragone">B&amp;H %</th>
+                            <th class="scan-sort" data-sort="live" style="padding:12px; cursor:pointer; text-align:right; color:#6a8f7a; font-style:italic;" title="LIVE usa lo smoother bidirezionale: conosce il futuro. Soffitto teorico, non eseguibile.">Oracolo</th>
+                            <th class="scan-sort" data-sort="frozen" style="padding:12px; cursor:pointer; text-align:right; color:#ff9900;">Frozen</th>
+                            <th class="scan-sort" data-sort="sum" style="padding:12px; cursor:pointer; text-align:right; color:#ff6666;">SUM</th>
+                            <th class="scan-sort" data-sort="stable" style="padding:12px; cursor:pointer; text-align:right; color:#aa44ff;">Stable</th>
+                            <th class="scan-sort" data-sort="orange" style="padding:12px; cursor:pointer; text-align:right; color:#ffb347;" title="Scarico del potenziale: poche operazioni, esposizione bassa. Confrontala con Alpha, non con il ROI.">Arancione</th>
+                            <th class="scan-sort" data-sort="combo" style="padding:12px; cursor:pointer; text-align:right; color:#00e5ff;" title="Stable + Arancione">Combo</th>
+                            <th style="padding:12px;">Azione</th>
                         </tr>
                     </thead>
                     <tbody id="scanner-results">
@@ -581,8 +601,12 @@
                         <label style="color:#888; font-size:0.8rem;">Modalità</label>
                         <select id="sim-mode" onchange="runPortfolioSimulation()"
                             style="padding:10px; background:#222; color:#fff; border:1px solid #444; border-radius:4px; font-weight:bold; width:180px;">
-                            <option value="FROZEN" selected>❄️ Frozen (Honest)</option>
-                            <option value="LIVE">🚀 Live (Ideal!)</option>
+                            <option value="COMBO" selected>⚡ Combo</option>
+                            <option value="ARANCIONE">🟠 Arancione</option>
+                            <option value="STABLE">🟣 Stable</option>
+                            <option value="FROZEN">❄️ Frozen</option>
+                            <option value="SUM">🔴 SUM</option>
+                            <option value="LIVE">🔮 Oracolo (usa il futuro)</option>
                         </select>
                     </div>
                     <button onclick="runPortfolioSimulation()"
@@ -658,7 +682,7 @@
 
             <div
                 style="padding: 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
-                <h3 style="margin: 0; color: #00ff88;">🔍 Scansione Giornaliera</h3>
+                <h3 style="margin: 0; color: #ff9900;">🟠 Scansione Giornaliera — segnali arancioni</h3>
                 <button onclick="closeDailyScanModal()"
                     style="background:none; border:none; color:#888; font-size:1.5rem; cursor:pointer;">&times;</button>
             </div>
@@ -720,6 +744,9 @@
                 style="width:100%; height:4px; display:none; border:none; background:#222;"></progress>
             <div id="daily-scan-status" style="padding:10px 20px; color:#888; font-size:0.9rem; display:none;">In
                 attesa...</div>
+            <div id="daily-scan-summary"
+                style="display:none; margin:0 20px 12px; padding:12px 14px; background:#0f111a; border:1px solid #333; border-radius:8px; color:#bbb; font-size:0.85rem; line-height:1.55;">
+            </div>
 
             <div style="padding: 0; overflow-x: auto; flex:1;">
                 <table class="scanner-table"
@@ -727,12 +754,12 @@
                     <thead style="background: #222; color: #ccc;">
                         <tr>
                             <th style="padding:12px;">Ticker</th>
-                            <th style="padding:12px;">Prezzo</th>
-                            <th style="padding:12px;">Data Frozen</th>
-                            <th style="padding:12px; color:#00aaff;">❄️ Frozen Sig.</th>
-                            <th style="padding:12px;">Data Sum</th>
-                            <th style="padding:12px; color:#ff4444;">🔴 Sum Sig.</th>
-                            <th style="padding:12px;">Azione Consigliata</th>
+                            <th style="padding:12px;">Stato</th>
+                            <th style="padding:12px;">Segnale del</th>
+                            <th style="padding:12px; text-align:right;">Prezzo al segnale</th>
+                            <th style="padding:12px; text-align:right;" title="Distanza del prezzo sotto il fondamentale (EMA20). Nel backtest la metà più distante ha reso +4.8% contro +2.1%.">Sotto il fondam.</th>
+                            <th style="padding:12px; text-align:right;" title="z-score del potenziale al momento del segnale">z pot.</th>
+                            <th style="padding:12px;" title="Ingresso alla chiusura successiva al segnale, uscita dopo 21 barre">Uscita indicativa</th>
                             <th style="padding:12px; text-align:center;">🔎</th>
                         </tr>
                     </thead>
@@ -841,7 +868,8 @@
         </div>
     </div>
     <script src="tickers.js?v=6"></script>
-    <script src="app.js?v=23"></script>
+    <script src="api_auth.js?v=1"></script>
+    <script src="app.js?v=26"></script>
 </body>
 
 </html>

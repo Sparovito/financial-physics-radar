@@ -18,6 +18,8 @@ Esecuzione: backend/venv/bin/python backend/tests/test_causal_sum.py
 """
 import sys
 import os
+
+os.environ.setdefault("FPR_STORAGE", "local")  # mai il Firestore vero nei test
 import asyncio
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

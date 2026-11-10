@@ -8,6 +8,8 @@ Esecuzione: backend/venv/bin/python backend/tests/test_forward_journal.py
 """
 import sys
 import os
+
+os.environ.setdefault("FPR_STORAGE", "local")  # mai il Firestore vero nei test
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

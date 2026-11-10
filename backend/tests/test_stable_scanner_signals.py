@@ -14,6 +14,8 @@ Esecuzione: backend/venv/bin/python backend/tests/test_stable_scanner_signals.py
 """
 import sys
 import os
+
+os.environ.setdefault("FPR_STORAGE", "local")  # mai il Firestore vero nei test
 import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -169,13 +171,45 @@ def test_arancione_strategy_signals():
     print(f"  OK ARANCIONE (entry PANIC z={e['slope']:.1f}, active con {act['days_left']} barre residue)")
 
 
+def test_potential_independent_of_trend_alpha():
+    """Il potenziale dell'arancione usa SEMPRE i parametri validati
+    (alpha=200, beta=1): l'alpha della config governa solo il leg trend.
+    Prima un alpha=350 residuo cambiava di nascosto il segnale in produzione."""
+    from stable_scanner import analyze_ticker_signals
+    from stable_strategy import POTENTIAL_ALPHA, POTENTIAL_BETA
+    assert POTENTIAL_ALPHA == 200.0 and POTENTIAL_BETA == 1.0
+
+    rng = np.random.default_rng(21)
+    n = 520
+    rets = rng.normal(0.0003, 0.012, n)
+    px = pd.Series(100 * np.exp(np.cumsum(rets)),
+                   index=pd.date_range("2024-06-03", periods=n, freq="B"))
+    # con questo seme il potenziale ha un onset naturale alla barra 217:
+    # tronco subito dopo, così il segnale è "recente" e la posizione attiva
+    px = px.iloc[:220]
+    today = px.index[-1].date()
+
+    a = analyze_ticker_signals("T", px, today, alpha=200, strategy="ARANCIONE")
+    b = analyze_ticker_signals("T", px, today, alpha=350, strategy="ARANCIONE")
+    # "slope" nelle posizioni attive è la pendenza del TREND (diagnostica):
+    # dipende da alpha per definizione e non fa parte del segnale arancione
+    def signal_only(res):
+        return (res["entries"],
+                [{k: v for k, v in p.items() if k != "slope"} for p in res["active"]])
+    assert signal_only(a) == signal_only(b), \
+        "il segnale arancione non deve dipendere dall'alpha del trend"
+    assert len(a["entries"]) + len(a["active"]) >= 1, "lo scenario deve produrre almeno un segnale"
+    print("  OK potenziale indipendente dall'alpha del trend (200 e 350 identici)")
+
+
 def main():
     test_active_position_and_entry_window()
     test_short_mirror_thresholds()
     test_drop_partial_last_bar()
     test_default_config()
     test_arancione_strategy_signals()
-    print("OK test_stable_scanner_signals — 5/5")
+    test_potential_independent_of_trend_alpha()
+    print("OK test_stable_scanner_signals — 6/6")
 
 
 if __name__ == "__main__":

@@ -20,6 +20,14 @@ Semantica (condivisa da Strategia 5 in main.py, STABLE Lab e email scanner):
 """
 
 
+# Parametri del modello con cui il POTENZIALE dell'arancione è stato
+# validato (OOS 2025-26, verifica 2021-oggi). Sono costanti di proposito:
+# l'alpha della config/del Lab governa solo il leg trend (span della EMA),
+# non deve poter cambiare di nascosto il segnale del potenziale.
+POTENTIAL_ALPHA = 200.0
+POTENTIAL_BETA = 1.0
+
+
 def potential_discharge_onsets(prices, pot_raw, F_vals,
                                entry_z=2.0, zwin=252, min_periods=40):
     """

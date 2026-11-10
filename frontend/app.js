@@ -472,7 +472,7 @@ function renderCharts(data) {
             traceBacktest = {
                 x: data.dates,
                 y: data.backtest.trade_pnl_curve,
-                name: `LIVE Strat (Avg: ${data.backtest.stats.avg_trade}%)`,
+                name: `LIVE = ORACOLO, usa il futuro (Avg: ${data.backtest.stats.avg_trade}%)`,
                 type: 'scatter',
                 fill: 'tozeroy',
                 line: { color: '#00ff88', width: 2 },
@@ -830,7 +830,7 @@ function renderCharts(data) {
         if (backtestStats) {
             html += `
                 <div style="color: #00ff88; margin-bottom: 4px;">
-                    <strong>🟢 LIVE Strat:</strong> 
+                    <strong title="Calcolata con lo smoother bidirezionale: conosce il futuro. È il soffitto teorico, non una strategia eseguibile.">🟢 LIVE (oracolo, non eseguibile):</strong>
                     Trades: ${backtestStats.total_trades} | 
                     Win: ${backtestStats.win_rate}% | 
                     Return: ${backtestStats.total_return}%
@@ -2167,274 +2167,261 @@ function closeScannerModal() {
     stopBulkScan();
 }
 
+// ============================================================
+//  SCANNER STRATEGIE (Massivo)
+//  Dati da POST /scan-strategies (calcolo dedicato, a batch).
+//  Stato in memoria (SCAN_ROWS) e UNA funzione di resa: filtri,
+//  ordinamento, riga delle medie e spunte restano coerenti.
+// ============================================================
+const SCAN_STRATS = ['live', 'frozen', 'sum', 'stable', 'orange', 'combo'];
+const SCAN_BATCH_SIZE = 20;
+let SCAN_ROWS = [];                 // [{ticker, bh, trend, strategies:{...}}]
+let SCAN_ERRORS = {};               // {ticker: motivo}
+let SCAN_UNCHECKED = new Set();     // titoli esclusi dal simulatore
+let SCAN_SORT = { key: 'ticker', dir: 1 };
+
+function scanEsc(v) {
+    return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function scanMetric() {
+    return document.getElementById('scan-metric')?.value || 'roi';
+}
+
+function scanFmt(v, metric) {
+    if (v == null || !Number.isFinite(v)) return '—';
+    if (metric === 'trades') return String(v);
+    const sign = (metric === 'roi' || metric === 'alpha') && v > 0 ? '+' : '';
+    return sign + v.toFixed(1) + '%';
+}
+
+// Colore della cella: in ROI il confronto è col compra-e-tieni dello stesso titolo
+function scanColor(v, metric, bh) {
+    if (v == null) return '#666';
+    if (metric === 'roi') return v < 0 ? '#ff4444' : (v > bh ? '#00ff88' : '#ddd');
+    if (metric === 'alpha') return v > 0 ? '#00ff88' : (v < 0 ? '#ff4444' : '#ddd');
+    return '#ccc';
+}
+
+function scanCellTitle(st, bh) {
+    return `ROI ${scanFmt(st.roi, 'roi')} · B&H ${scanFmt(bh, 'roi')} · alpha ${scanFmt(st.alpha, 'alpha')}` +
+        ` · win rate ${st.win_rate}% su ${st.trades} trade chiusi · esposizione ${st.expo}%`;
+}
+
 async function startBulkScan() {
     const cat = document.getElementById('scanner-category').value;
-    const tableBody = document.getElementById('scanner-results');
     const progressBar = document.getElementById('scan-progress');
     const statusLabel = document.getElementById('scan-status');
     const btnStart = document.getElementById('btn-start-scan');
     const btnStop = document.getElementById('btn-stop-scan');
 
-    // UI Reset
-    tableBody.innerHTML = '';
-    progressBar.style.display = 'block';
-    progressBar.value = 0;
-    btnStart.style.display = 'none';
-    btnStop.style.display = 'inline-block';
-    SCAN_STOP_SIGNAL = false;
-
-    // Build Ticker List
+    // Elenco titoli
     let tickersToScan = [];
     if (cat === 'ALL') {
         Object.values(TICKERS_DATA).forEach(list => {
             tickersToScan = tickersToScan.concat(list.map(t => t.symbol));
         });
-        // Deduplicate
-        tickersToScan = [...new Set(tickersToScan)];
     } else {
-        tickersToScan = TICKERS_DATA[cat].map(t => t.symbol);
+        tickersToScan = (TICKERS_DATA[cat] || []).map(t => t.symbol);
+    }
+    tickersToScan = [...new Set(tickersToScan)];
+    if (tickersToScan.length === 0) {
+        statusLabel.innerHTML = '⚠️ Nessun titolo in questa categoria.';
+        return;
     }
 
+    // Reset stato e interfaccia
+    SCAN_ROWS = [];
+    SCAN_ERRORS = {};
+    SCAN_UNCHECKED = new Set();
+    SCAN_STOP_SIGNAL = false;
+    window.SCAN_TRADES = { LIVE: [], FROZEN: [], SUM: [], STABLE: [], ARANCIONE: [], COMBO: [] };
+    window.ALL_SCAN_TRADES_LIVE = window.SCAN_TRADES.LIVE;
+    window.ALL_SCAN_TRADES_FROZEN = window.SCAN_TRADES.FROZEN;
+    window.ALL_SCAN_TRADES = window.SCAN_TRADES.COMBO;
+    renderScanTable();
+    progressBar.style.display = 'block';
     progressBar.max = tickersToScan.length;
+    progressBar.value = 0;
+    btnStart.style.display = 'none';
+    btnStop.style.display = 'inline-block';
 
-    // --- ACCUMULATORS FOR AVERAGE ---
-    let totalLiveRet = 0;
-    let totalFrozenRet = 0;
-    let totalSumRet = 0;
-    let totalStableRet = 0;
-    let totalWinLive = 0;
-    let totalWinFrozen = 0;
-    let totalWinSum = 0;
-    let totalWinStable = 0;
-    let countStats = 0;
+    const alpha = parseFloat(document.getElementById('alpha').value) || 200;
+    const beta = parseFloat(document.getElementById('beta').value) || 1.0;
+    const startDate = document.getElementById('scanner-start').value || '2023-01-01';
+    const endDate = document.getElementById('scanner-end').value || null;
+    // il selettore "x1/x4/x6" diventa il numero di richieste a batch in parallelo (max 3:
+    // ogni batch scarica già più titoli insieme lato server)
+    const concurrency = Math.max(1, Math.min(3, parseInt(document.getElementById('scan-parallel').value) || 2));
+    const tradeKey = { live: 'LIVE', frozen: 'FROZEN', sum: 'SUM', stable: 'STABLE', orange: 'ARANCIONE', combo: 'COMBO' };
 
-    // Global Trade Accumulator for Portfolio Simulator
-    // Global Trade Accumulator for Portfolio Simulator
-    window.ALL_SCAN_TRADES_LIVE = [];
-    window.ALL_SCAN_TRADES_FROZEN = [];
-    window.ALL_SCAN_TRADES = []; // Fallback/Reference
+    const batches = [];
+    for (let i = 0; i < tickersToScan.length; i += SCAN_BATCH_SIZE) {
+        batches.push(tickersToScan.slice(i, i + SCAN_BATCH_SIZE));
+    }
+    let done = 0;
+    const t0 = Date.now();
 
-    // Get Parallelism Level
-    const parallelism = parseInt(document.getElementById('scan-parallel').value) || 4;
-
-    // Helper: Analyze a single ticker and return result
-    async function analyzeTicker(ticker) {
-        if (SCAN_STOP_SIGNAL) return null;
-
+    async function runBatch(batch) {
         try {
-            const alpha = parseFloat(document.getElementById('alpha').value) || 200;
-            const beta = parseFloat(document.getElementById('beta').value) || 1.0;
-            const startDate = document.getElementById('scanner-start').value || "2023-01-01";
-            let endDate = document.getElementById('scanner-end').value;
-            if (endDate === "") endDate = null;
-
-            const response = await fetch(`${API_URL}/analyze`, {
+            const response = await fetch(`${API_URL}/scan-strategies`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    ticker: ticker,
-                    alpha: alpha,
-                    beta: beta,
-                    top_k: 5,
-                    forecast_days: 60,
-                    start_date: startDate,
-                    end_date: endDate,
-                    use_cache: true
-                })
+                body: JSON.stringify({ tickers: batch, start_date: startDate, end_date: endDate, alpha, beta })
             });
-
-            if (!response.ok) return null;
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
-            return { ticker, data };
+            for (const [ticker, r] of Object.entries(data.results || {})) {
+                SCAN_ROWS.push({ ticker, bh: r.bh, trend: r.trend, strategies: r.strategies });
+                for (const name of SCAN_STRATS) {
+                    (r.trades?.[name] || []).forEach(t => window.SCAN_TRADES[tradeKey[name]].push({ ...t, ticker }));
+                }
+            }
+            Object.assign(SCAN_ERRORS, data.errors || {});
         } catch (e) {
-            console.error(`Error analyzing ${ticker}:`, e);
-            return null;
+            console.error('Scanner batch fallito:', batch, e);
+            batch.forEach(t => { SCAN_ERRORS[t] = 'richiesta fallita: ' + e.message; });
+        }
+        done += batch.length;
+        progressBar.value = done;
+        const nErr = Object.keys(SCAN_ERRORS).length;
+        statusLabel.innerHTML = `⚡ ${done}/${tickersToScan.length} titoli` + (nErr ? ` · ${nErr} non analizzati` : '');
+        renderScanTable();
+    }
+
+    const queue = [...batches];
+    async function worker() {
+        while (queue.length > 0 && !SCAN_STOP_SIGNAL) {
+            await runBatch(queue.shift());
         }
     }
+    await Promise.all(Array.from({ length: Math.min(concurrency, batches.length) }, worker));
 
-    // Process in batches
-    let processed = 0;
-    for (let i = 0; i < tickersToScan.length; i += parallelism) {
-        if (SCAN_STOP_SIGNAL) {
-            statusLabel.innerHTML = '🛑 Scan Interrotto.';
-            break;
-        }
+    const nErr = Object.keys(SCAN_ERRORS).length;
+    const secs = ((Date.now() - t0) / 1000).toFixed(0);
+    const errNames = Object.keys(SCAN_ERRORS).slice(0, 40).join(', ');
+    statusLabel.innerHTML = (SCAN_STOP_SIGNAL ? '🛑 Interrotto: ' : '✅ Completato: ') +
+        `${SCAN_ROWS.length} analizzati in ${secs}s` +
+        (nErr ? ` · <span title="${scanEsc(errNames)}" style="color:#ff9900; cursor:help;">${nErr} non analizzati</span>` : '');
 
-        // Create batch
-        const batch = tickersToScan.slice(i, i + parallelism);
-        statusLabel.innerHTML = `⚡ Analisi batch ${Math.floor(i / parallelism) + 1}/${Math.ceil(tickersToScan.length / parallelism)} (${batch.join(', ')})...`;
-
-        // Execute batch in parallel
-        const results = await Promise.all(batch.map(t => analyzeTicker(t)));
-
-        // Process results
-        for (const result of results) {
-            if (!result) continue;
-
-            const { ticker, data } = result;
-            processed++;
-            progressBar.value = processed;
-
-            // Capture trades
-            if (data.backtest?.trades) {
-                data.backtest.trades.forEach(t => {
-                    window.ALL_SCAN_TRADES_LIVE.push({ ...t, ticker: ticker });
-                });
-            }
-            if (data.frozen_strategy?.trades) {
-                data.frozen_strategy.trades.forEach(t => {
-                    window.ALL_SCAN_TRADES_FROZEN.push({ ...t, ticker: ticker });
-                });
-            }
-            window.ALL_SCAN_TRADES = window.ALL_SCAN_TRADES_LIVE;
-
-            const liveStats = data.backtest?.stats;
-            const frozenStats = data.frozen_strategy?.stats;
-            const sumStats = data.frozen_sum_strategy?.stats;
-            const stableStats2 = data.stable_strategy?.stats;
-
-            if (liveStats && frozenStats) {
-                totalLiveRet += liveStats.total_return;
-                totalFrozenRet += frozenStats.total_return;
-                totalWinLive += liveStats.win_rate;
-                totalWinFrozen += frozenStats.win_rate;
-                if (sumStats) {
-                    totalSumRet += sumStats.total_return;
-                    totalWinSum += sumStats.win_rate;
-                }
-                if (stableStats2) {
-                    totalStableRet += stableStats2.total_return;
-                    totalWinStable += stableStats2.win_rate;
-                }
-                countStats++;
-
-                const liveRet = liveStats.total_return;
-                const frozenRet = frozenStats.total_return;
-                const sumRet = sumStats ? sumStats.total_return : 0;
-                const sumWin = sumStats ? sumStats.win_rate : 0;
-                const stableRet = stableStats2 ? stableStats2.total_return : 0;
-                const stableWin = stableStats2 ? stableStats2.win_rate : 0;
-                const delta = (liveRet - frozenRet).toFixed(2);
-                const deltaColor = parseFloat(delta) > 20 ? '#ff4444' : (parseFloat(delta) < -5 ? '#00ff88' : '#888');
-
-                // Calculate price trend
-                let trendIcon = '●';
-                let trendColor = '#888';
-                let trendType = 'stable';
-                if (data.prices && data.prices.length > 1) {
-                    const startPrice = data.prices[0];
-                    const endPrice = data.prices[data.prices.length - 1];
-                    const pctChange = ((endPrice - startPrice) / startPrice) * 100;
-                    if (pctChange > 15) {
-                        trendIcon = '▲';
-                        trendColor = '#00ff88';
-                        trendType = 'up';
-                    } else if (pctChange < -15) {
-                        trendIcon = '▼';
-                        trendColor = '#ff4444';
-                        trendType = 'down';
-                    }
-                }
-
-                const row = `
-                    <tr class="scan-row" data-trend="${trendType}" 
-                        data-live-win="${liveStats.win_rate}" data-live-ret="${liveRet}"
-                        data-frozen-win="${frozenStats.win_rate}" data-frozen-ret="${frozenRet}"
-                        data-sum-win="${sumWin}" data-sum-ret="${sumRet}"
-                        data-stable-win="${stableWin}" data-stable-ret="${stableRet}"
-                        style="border-bottom:1px solid #333;">
-                        <td style="padding:10px; text-align:center;">
-                            <input type="checkbox" class="scan-ticker-checkbox" data-ticker="${ticker}" checked>
-                        </td>
-                        <td style="padding:10px; font-weight:bold;">${ticker}</td>
-                        <td style="padding:10px; color:${trendColor}; font-size:1.2em;">${trendIcon}</td>
-                        <td style="padding:10px; color:#ccc;">${data.backtest?.trades?.length || 0}</td>
-                        <td style="color:${liveStats.win_rate >= 50 ? '#00ff88' : '#888'}">${liveStats.win_rate}%</td>
-                        <td style="color:${liveRet > 0 ? '#00ff88' : '#ff4444'}">${liveRet}%</td>
-                        <td style="color:${frozenStats.win_rate >= 50 ? '#ff9900' : '#888'}">${frozenStats.win_rate}%</td>
-                        <td style="color:${frozenRet > 0 ? '#ff9900' : '#ff4444'}">${frozenRet}%</td>
-                        <td style="color:${sumWin >= 50 ? '#ff4444' : '#888'}">${sumWin}%</td>
-                        <td style="color:${sumRet > 0 ? '#ff4444' : '#888'}">${sumRet}%</td>
-                        <td style="color:${stableWin >= 50 ? '#aa44ff' : '#888'}">${stableWin}%</td>
-                        <td style="color:${stableRet > 0 ? '#aa44ff' : '#888'}">${stableRet}%</td>
-                        <td style="color:${deltaColor}; font-weight:bold;">${delta}%</td>
-                        <td>
-                            <button onclick="loadTickerFromScan('${ticker}')" style="background:#333; color:#fff; border:none; padding:4px 8px; cursor:pointer; font-size:0.8em; border-radius:4px;">🔍 Vedi</button>
-                        </td>
-                    </tr>
-                `;
-                tableBody.innerHTML += row;
-            }
-        }
-
-        // Small delay between batches
-        await new Promise(r => setTimeout(r, 50));
-    }
-
-    // --- APPEND AVERAGE ROW & SIMULATOR BUTTON ---
-    if (countStats > 0) {
-        const avgLiveRet = (totalLiveRet / countStats).toFixed(2);
-        const avgFrozenRet = (totalFrozenRet / countStats).toFixed(2);
-        const avgSumRet = (totalSumRet / countStats).toFixed(2);
-        const avgStableRet = (totalStableRet / countStats).toFixed(2);
-        const avgWinLive = (totalWinLive / countStats).toFixed(1);
-        const avgWinFrozen = (totalWinFrozen / countStats).toFixed(1);
-        const avgWinSum = (totalWinSum / countStats).toFixed(1);
-        const avgWinStable = (totalWinStable / countStats).toFixed(1);
-        const avgDelta = (avgLiveRet - avgFrozenRet).toFixed(2);
-
-        const statsRow = `
-            <tr id="scanner-stats-row" style="border-top: 3px solid #eba834; background: rgba(235, 168, 52, 0.15); font-weight: bold; font-size: 1.05em;">
-                <td></td>
-                <td colspan="3" style="padding:15px; color:#eba834; text-align:center;">📊 MEDIA (${countStats})</td>
-                <td style="color:${avgWinLive >= 50 ? '#00ff88' : '#bbb'}">${avgWinLive}%</td>
-                <td style="color:${avgLiveRet > 0 ? '#00ff88' : '#ff4444'}">${avgLiveRet}%</td>
-                <td style="color:${avgWinFrozen >= 50 ? '#ff9900' : '#bbb'}">${avgWinFrozen}%</td>
-                <td style="color:${avgFrozenRet > 0 ? '#ff9900' : '#ff4444'}">${avgFrozenRet}%</td>
-                <td style="color:${avgWinSum >= 50 ? '#ff4444' : '#bbb'}">${avgWinSum}%</td>
-                <td style="color:${avgSumRet > 0 ? '#ff4444' : '#888'}">${avgSumRet}%</td>
-                <td style="color:${avgWinStable >= 50 ? '#aa44ff' : '#bbb'}">${avgWinStable}%</td>
-                <td style="color:${avgStableRet > 0 ? '#aa44ff' : '#888'}">${avgStableRet}%</td>
-                <td style="color:#eba834;">${avgDelta}%</td>
-                <td>
-                    <button onclick="openSimulatorModal()" style="background:#00ff88; color:#000; font-weight:bold; border:none; padding:6px 10px; cursor:pointer; border-radius:4px; box-shadow:0 2px 5px rgba(0,0,0,0.5);">
-                        💰 SIMULA
-                    </button>
-                </td>
-            </tr>
-        `;
-        tableBody.innerHTML += statsRow;
-
-        // Auto scroll to bottom
-        tableBody.parentElement.parentElement.scrollTop = tableBody.parentElement.parentElement.scrollHeight;
-    }
-
-    if (!SCAN_STOP_SIGNAL) {
-        statusLabel.innerHTML = '✅ Scan Completato!';
-    }
-
-    // Reset Buttons
-    document.getElementById('btn-stop-scan').style.display = 'none';
-    document.getElementById('btn-start-scan').style.display = 'inline-block';
+    btnStop.style.display = 'none';
+    btnStart.style.display = 'inline-block';
+    renderScanTable();
 }
+
+function scanVisibleRows() {
+    const trendFilter = document.getElementById('filter-trend')?.value || 'all';
+    const metric = scanMetric();
+    const rows = SCAN_ROWS.filter(r => trendFilter === 'all' || r.trend === trendFilter);
+    const { key, dir } = SCAN_SORT;
+    const val = (r) => {
+        if (key === 'ticker') return r.ticker;
+        if (key === 'bh') return r.bh;
+        return r.strategies[key]?.[metric] ?? -Infinity;
+    };
+    rows.sort((x, y) => {
+        const a = val(x), b = val(y);
+        if (typeof a === 'string') return a.localeCompare(b) * dir;
+        return (a - b) * dir;
+    });
+    return rows;
+}
+
+function renderScanTable() {
+    const tbody = document.getElementById('scanner-results');
+    if (!tbody) return;
+    const metric = scanMetric();
+    const rows = scanVisibleRows();
+    const trendIcon = { up: ['▲', '#00ff88'], down: ['▼', '#ff4444'], stable: ['●', '#888'] };
+
+    let html = rows.map(r => {
+        const [icon, color] = trendIcon[r.trend] || trendIcon.stable;
+        const t = scanEsc(r.ticker);
+        const cells = SCAN_STRATS.map(name => {
+            const st = r.strategies[name];
+            if (!st) return '<td style="padding:10px; text-align:right; color:#666;">—</td>';
+            const v = st[metric];
+            const dim = name === 'live' ? ' opacity:0.55; font-style:italic;' : '';
+            return `<td style="padding:10px; text-align:right; color:${scanColor(v, metric, r.bh)};${dim}" title="${scanEsc(scanCellTitle(st, r.bh))}">${scanFmt(v, metric)}</td>`;
+        }).join('');
+        return `<tr class="scan-row" data-trend="${r.trend}" style="border-bottom:1px solid #333;">
+            <td style="padding:10px; text-align:center;">
+                <input type="checkbox" class="scan-ticker-checkbox" data-ticker="${t}" ${SCAN_UNCHECKED.has(r.ticker) ? '' : 'checked'}
+                    onchange="scanToggleTicker(this)">
+            </td>
+            <td style="padding:10px; font-weight:bold;">${t}</td>
+            <td style="padding:10px; color:${color}; font-size:1.1em;">${icon}</td>
+            <td style="padding:10px; text-align:right; color:${r.bh >= 0 ? '#fff' : '#ff4444'}; font-weight:bold;">${scanFmt(r.bh, 'roi')}</td>
+            ${cells}
+            <td style="padding:10px;">
+                <button onclick="loadTickerFromScan('${t}')" style="background:#333; color:#fff; border:none; padding:4px 8px; cursor:pointer; font-size:0.8em; border-radius:4px;">🔍 Vedi</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    // --- riga di sintesi: media e, in ROI, quota di titoli che batte il compra-e-tieni ---
+    if (rows.length > 0) {
+        const mean = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
+        const avgBh = mean(rows.map(r => r.bh));
+        const cells = SCAN_STRATS.map(name => {
+            const have = rows.filter(r => r.strategies[name]);
+            if (have.length === 0) return '<td style="padding:12px; text-align:right;">—</td>';
+            const avg = mean(have.map(r => r.strategies[name][metric]));
+            const beat = have.filter(r => r.strategies[name].roi > r.bh).length / have.length * 100;
+            const sub = metric === 'roi'
+                ? `<div style="font-size:0.72em; font-weight:normal; color:#aaa;" title="Quota di titoli in cui la strategia ha reso più del compra-e-tieni">batte B&H ${beat.toFixed(0)}%</div>`
+                : '';
+            const dim = name === 'live' ? ' opacity:0.55; font-style:italic;' : '';
+            return `<td style="padding:12px; text-align:right; color:${scanColor(avg, metric, avgBh)};${dim}">${scanFmt(avg, metric)}${sub}</td>`;
+        }).join('');
+        html += `<tr id="scanner-stats-row" style="border-top:3px solid #eba834; background:rgba(235,168,52,0.15); font-weight:bold;">
+            <td></td>
+            <td colspan="2" style="padding:12px; color:#eba834;">📊 MEDIA (${rows.length})</td>
+            <td style="padding:12px; text-align:right; color:#fff;">${scanFmt(avgBh, 'roi')}</td>
+            ${cells}
+            <td style="padding:12px;">
+                <button onclick="openSimulatorModal()" style="background:#00ff88; color:#000; font-weight:bold; border:none; padding:6px 10px; cursor:pointer; border-radius:4px;">💰 SIMULA</button>
+            </td>
+        </tr>`;
+    } else if (SCAN_ROWS.length > 0) {
+        html = '<tr><td colspan="11" style="padding:15px; color:#888; text-align:center;">Nessun risultato con questo filtro</td></tr>';
+    }
+    tbody.innerHTML = html;
+
+    // freccia sull'intestazione ordinata
+    document.querySelectorAll('.scan-sort').forEach(th => {
+        const base = th.dataset.label || (th.dataset.label = th.textContent.trim());
+        th.textContent = base + (th.dataset.sort === SCAN_SORT.key ? (SCAN_SORT.dir > 0 ? ' ▲' : ' ▼') : '');
+    });
+}
+
+function scanToggleTicker(cb) {
+    if (cb.checked) SCAN_UNCHECKED.delete(cb.dataset.ticker);
+    else SCAN_UNCHECKED.add(cb.dataset.ticker);
+}
+
+// Ordinamento: clic sull'intestazione (secondo clic inverte)
+document.addEventListener('click', (ev) => {
+    const th = ev.target.closest && ev.target.closest('.scan-sort');
+    if (!th) return;
+    const key = th.dataset.sort;
+    if (SCAN_SORT.key === key) SCAN_SORT.dir *= -1;
+    else SCAN_SORT = { key, dir: key === 'ticker' ? 1 : -1 };
+    renderScanTable();
+});
 
 // --- PORTFOLIO SIMULATOR FUNCTIONS ---
 
 function openSimulatorModal() {
     const modal = document.getElementById('simulator-modal');
     // Check if we have trades
-    if (!window.ALL_SCAN_TRADES || window.ALL_SCAN_TRADES.length === 0) {
+    if (!window.SCAN_TRADES || SCAN_ROWS.length === 0) {
         alert("Esegui prima una scansione per raccogliere i dati!");
         return;
     }
 
-    document.getElementById('sim-total-trades').textContent = window.ALL_SCAN_TRADES.length;
     modal.style.display = 'flex';
-
-    // Auto-run with default capital if trades exist
-    if (window.ALL_SCAN_TRADES.length > 0) {
-        runPortfolioSimulation();
-    }
+    runPortfolioSimulation();
 }
 
 function closeSimulatorModal() {
@@ -2446,15 +2433,14 @@ function runPortfolioSimulation() {
     const mode = document.getElementById('sim-mode').value; // LIVE or FROZEN
 
     // Select Source Data
-    let sourceTrades = window.ALL_SCAN_TRADES_LIVE;
+    let sourceTrades = (window.SCAN_TRADES && window.SCAN_TRADES[mode]) || [];
     const content = document.getElementById('sim-modal-content');
 
-    if (mode === 'FROZEN') {
-        sourceTrades = window.ALL_SCAN_TRADES_FROZEN;
-        if (content) content.style.background = '#1a1d2a'; // Reset
-    } else {
-        // LIVE/IDEAL -> Warning Background
+    if (mode === 'LIVE') {
+        // ORACOLO: usa il futuro -> sfondo di avvertimento
         if (content) content.style.background = 'linear-gradient(180deg, rgba(60, 20, 20, 1) 0%, #1a1d2a 100%)';
+    } else {
+        if (content) content.style.background = '#1a1d2a';
     }
 
     // Filter tickers based on checkboxes AND visibility
@@ -2673,16 +2659,13 @@ function loadTickerFromScan(ticker) {
     runAnalysis();
 }
 
-// Toggle All Checkboxes
+// Toggle All Checkboxes (solo le righe visibili col filtro corrente)
 function toggleAllScanRows(source) {
-    const checkboxes = document.querySelectorAll('.scan-ticker-checkbox');
-    checkboxes.forEach(cb => {
-        // Only toggle visible rows if we want to be smart? Or all?
-        // Standard behavior: Toggle All (even hidden). But mostly user wants visible.
-        if (cb.closest('tr').style.display !== 'none') {
-            cb.checked = source.checked;
-        }
+    scanVisibleRows().forEach(r => {
+        if (source.checked) SCAN_UNCHECKED.delete(r.ticker);
+        else SCAN_UNCHECKED.add(r.ticker);
     });
+    renderScanTable();
 }
 
 // FORMAT MARKET CAP
@@ -2694,76 +2677,9 @@ function formatMarketCap(value) {
     return parseInt(value).toLocaleString();
 }
 
-// APPLY FILTERS
+// APPLY FILTERS (trend e metrica mostrata): la resa è tutta in renderScanTable
 function applyScanFilters() {
-    const trendFilter = document.getElementById('filter-trend')?.value || 'all';
-
-    const rows = document.querySelectorAll('.scan-row');
-    let visibleCount = 0;
-    let totalLiveWin = 0, totalLiveRet = 0;
-    let totalFrozenWin = 0, totalFrozenRet = 0;
-    let totalSumWin = 0, totalSumRet = 0;
-    let totalStableWin = 0, totalStableRet2 = 0;
-
-    rows.forEach(row => {
-        const trend = row.dataset.trend;
-
-        let visible = true;
-        if (trendFilter !== 'all' && trend !== trendFilter) visible = false;
-
-        row.style.display = visible ? '' : 'none';
-
-        // Accumulate stats for visible rows
-        if (visible) {
-            visibleCount++;
-            totalLiveWin += parseFloat(row.dataset.liveWin) || 0;
-            totalLiveRet += parseFloat(row.dataset.liveRet) || 0;
-            totalFrozenWin += parseFloat(row.dataset.frozenWin) || 0;
-            totalFrozenRet += parseFloat(row.dataset.frozenRet) || 0;
-            totalSumWin += parseFloat(row.dataset.sumWin) || 0;
-            totalSumRet += parseFloat(row.dataset.sumRet) || 0;
-            totalStableWin += parseFloat(row.dataset.stableWin) || 0;
-            totalStableRet2 += parseFloat(row.dataset.stableRet) || 0;
-        }
-    });
-
-    // Update the stats row
-    const statsRow = document.getElementById('scanner-stats-row');
-    if (statsRow && visibleCount > 0) {
-        const avgLiveWin = (totalLiveWin / visibleCount).toFixed(1);
-        const avgLiveRet = (totalLiveRet / visibleCount).toFixed(2);
-        const avgFrozenWin = (totalFrozenWin / visibleCount).toFixed(1);
-        const avgFrozenRet = (totalFrozenRet / visibleCount).toFixed(2);
-        const avgSumWin = (totalSumWin / visibleCount).toFixed(1);
-        const avgSumRet = (totalSumRet / visibleCount).toFixed(2);
-        const avgStableWin = (totalStableWin / visibleCount).toFixed(1);
-        const avgStableRet2 = (totalStableRet2 / visibleCount).toFixed(2);
-        const avgDelta = (avgLiveRet - avgFrozenRet).toFixed(2);
-
-        statsRow.innerHTML = `
-            <td></td>
-            <td colspan="3" style="padding:15px; color:#eba834; text-align:center;">📊 MEDIA (${visibleCount})</td>
-            <td style="color:${avgLiveWin >= 50 ? '#00ff88' : '#bbb'}">${avgLiveWin}%</td>
-            <td style="color:${avgLiveRet > 0 ? '#00ff88' : '#ff4444'}">${avgLiveRet}%</td>
-            <td style="color:${avgFrozenWin >= 50 ? '#ff9900' : '#bbb'}">${avgFrozenWin}%</td>
-            <td style="color:${avgFrozenRet > 0 ? '#ff9900' : '#ff4444'}">${avgFrozenRet}%</td>
-            <td style="color:${avgSumWin >= 50 ? '#ff4444' : '#bbb'}">${avgSumWin}%</td>
-            <td style="color:${avgSumRet > 0 ? '#ff4444' : '#888'}">${avgSumRet}%</td>
-            <td style="color:${avgStableWin >= 50 ? '#aa44ff' : '#bbb'}">${avgStableWin}%</td>
-            <td style="color:${avgStableRet2 > 0 ? '#aa44ff' : '#888'}">${avgStableRet2}%</td>
-            <td style="color:#eba834;">${avgDelta}%</td>
-            <td>
-                <button onclick="openSimulatorModal()" style="background:#00ff88; color:#000; font-weight:bold; border:none; padding:6px 10px; cursor:pointer; border-radius:4px; box-shadow:0 2px 5px rgba(0,0,0,0.5);">
-                    💰 SIMULA
-                </button>
-            </td>
-        `;
-    } else if (statsRow) {
-        statsRow.innerHTML = `
-            <td></td>
-            <td colspan="13" style="padding:15px; color:#888; text-align:center;">Nessun risultato con questo filtro</td>
-        `;
-    }
+    renderScanTable();
 }
 
 // --- CHART VISIBILITY TOGGLE LISTENERS ---
@@ -3355,7 +3271,7 @@ async function runDailyScan() {
 
     try {
         // Call API
-        const response = await fetch(`${API_URL}/scan-daily`, {
+        const response = await fetch(`${API_URL}/scan-daily-orange`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tickers: tickers, as_of_date: asOfDate })
@@ -3366,7 +3282,9 @@ async function runDailyScan() {
         const results = await response.json();
 
         progress.value = 100;
-        status.innerText = `Scansione completata: ${results.length} risultati.`;
+        const nNew = (results.signals_new || []).length;
+        status.innerText = `Scansione completata: ${results.n_scanned}/${results.n_requested} titoli, ` +
+            `${nNew} segnal${nNew === 1 ? 'e nuovo' : 'i nuovi'}.`;
 
         renderDailyScanResults(results);
 
@@ -3377,141 +3295,87 @@ async function runDailyScan() {
     }
 }
 
-function renderDailyScanResults(results) {
+function renderDailyScanResults(res) {
+    // Scansione giornaliera sull'ARANCIONE. La versione precedente dava
+    // "STRONG BUY / BUY" in base a Frozen e SUM, strategie che nei test non
+    // hanno mostrato vantaggio: qui si mostrano solo i segnali del potenziale.
     const tbody = document.getElementById('daily-scan-results');
-    let html = '';
+    const summary = document.getElementById('daily-scan-summary');
+    const esc = (v) => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const pct = (v, d = 1) => (v == null ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(d) + '%');
 
-    if (!results || results.length === 0) {
-        html = '<tr><td colspan="6" style="padding:20px; text-align:center; color:#888;">Nessun segnale rilevato o errore di connessione.</td></tr>';
-        tbody.innerHTML = html;
+    if (!res || !Array.isArray(res.signals_new)) {
+        summary.style.display = 'none';
+        tbody.innerHTML = '<tr><td colspan="8" style="padding:20px; text-align:center; color:#888;">Errore di connessione o risposta non valida.</td></tr>';
         return;
     }
 
-    // Sort logic: Actionable first (BUY/SELL), then others
-    // Sorting happens in backend by Market Cap, but let's prioritize ACTION here
-    const actionable = [];
-    const others = [];
+    const fresh = res.signals_new;
+    const recent = res.signals_recent || [];
+    const exp = res.expected || {};
+    const horizon = res.horizon || 21;
+    const failed = (res.failed || []).length;
 
-    results.forEach(r => {
-        const hasAction = (r.frozen && (r.frozen.action === 'BUY' || r.frozen.action === 'SELL')) ||
-            (r.sum && (r.sum.action === 'BUY' || r.sum.action === 'SELL'));
-        if (hasAction) actionable.push(r);
-        else others.push(r);
-    });
-
-    // Combine: Actionable first
-    const sortedResults = [...actionable, ...others];
-
-    sortedResults.forEach(r => {
-        // Resolve Action & Date Logic
-        const scanDateInput = document.getElementById('daily-scan-date').value;
-        const todayStr = new Date().toISOString().split('T')[0];
-        const refDate = scanDateInput || todayStr;
-
-        const resolveStat = (resObj) => {
-            if (!resObj || !resObj.action) return { action: '-', date: '-', isRecent: false };
-
-            let act = resObj.action;
-            let date = '-';
-            let isRecent = false;
-
-            if (resObj.trade) {
-                date = resObj.trade.entry_date;
-                // Calc Diff
-                const d1 = new Date(refDate);
-                const d2 = new Date(date);
-                const diffTime = d1 - d2;
-                const diffDays = diffTime / (1000 * 60 * 60 * 24);
-
-                // Highlight if recent (<= 5 days) & not future
-                if (diffDays >= 0 && diffDays <= 5) isRecent = true;
-
-                // Override BUY -> HOLD if strictly past
-                if (act === 'BUY' && date < refDate) {
-                    act = 'HOLD';
-                }
-
-                // Append Direction (LONG/SHORT)
-                if (resObj.trade.direction) {
-                    act += ` ${resObj.trade.direction}`;
-                }
-            }
-            return { action: act, date: date, isRecent: isRecent };
-        };
-
-        const fInfo = resolveStat(r.frozen);
-        const sInfo = resolveStat(r.sum);
-
-        const frozenAction = fInfo.action;
-        const sumAction = sInfo.action;
-
-        // Date Styles
-        let fDateStyle = "color:#888;";
-        if (fInfo.isRecent) fDateStyle = "color:#00ff88; font-weight:bold;";
-
-        let sDateStyle = "color:#888;";
-        if (sInfo.isRecent) sDateStyle = "color:#00ff88; font-weight:bold;";
-
-        const getActionStyle = (action) => {
-            if (action.includes('BUY')) return 'color:#00ff88; font-weight:bold;';
-            if (action.includes('SELL')) return 'color:#ff4444; font-weight:bold;';
-            return 'color:#888;';
-        };
-
-        const frozenStyle = getActionStyle(frozenAction);
-        const sumStyle = getActionStyle(sumAction);
-
-        // Final Action Logic (Combined recommendation)
-        let finalAction = "-";
-        let finalStyle = "color:#666;";
-
-        const isBuy = (a) => a.includes('BUY');
-        const isHold = (a) => a.includes('HOLD');
-        const isSell = (a) => a.includes('SELL');
-
-        if (isBuy(frozenAction) && isBuy(sumAction)) {
-            finalAction = "🚀 STRONG BUY";
-            finalStyle = "color:#00ff88; font-weight:900; background:rgba(0,255,136,0.2); padding:4px 8px; border-radius:4px;";
-        } else if (isBuy(frozenAction)) {
-            finalAction = "🟢 BUY (Trend)";
-            finalStyle = "color:#00ff88; font-weight:bold;";
-        } else if (isBuy(sumAction)) {
-            finalAction = "🟡 BUY (Speculative)";
-            finalStyle = "color:#ffcc00; font-weight:bold;";
-        } else if (isSell(frozenAction) || isSell(sumAction)) {
-            finalAction = "🔴 SELL / EXIT";
-            finalStyle = "color:#ff4444; font-weight:bold;";
+    // --- riepilogo ---
+    let html = `<b style="color:#fff;">${res.as_of ? 'Alla data ' + esc(res.as_of) : 'Oggi'}:</b> ` +
+        `${fresh.length} segnal${fresh.length === 1 ? 'e nuovo' : 'i nuovi'} su ${res.n_scanned} titoli ` +
+        `(${Number(res.breadth_pct).toFixed(1)}%)` + (failed ? `, ${failed} non scaricati` : '') + '. ';
+    if (fresh.length === 0) {
+        html += 'Nessun segnale è la norma: in media scatta circa 1 titolo su 800 al giorno, a grappoli nei giorni di tensione.';
+    } else {
+        html += `Ingresso alla prossima chiusura, uscita dopo ${horizon} barre. `;
+        // l'ampiezza ha senso solo su un universo largo: 1 segnale su 30 titoli non è "panico"
+        if (res.breadth_pct >= 2 && res.n_scanned >= 200) {
+            html += `<br><span style="color:#ff9900;"><b>Panico diffuso</b>: ha dato segnale almeno il 2% dei titoli. ` +
+                `Nel backtest, dopo giornate così, anche l'indice SPY ha reso +3.9% in 21 barre contro +1.1% di un giorno qualsiasi (26 casi).</span>`;
         }
+    }
+    html += `<br><span style="color:#888;">Cosa aspettarsi (backtest, 21 barre, costi inclusi): titolo del segnale ` +
+        `${pct(exp.signal)}, titolo a caso lo stesso giorno ${pct(exp.control)}, titolo a caso in un giorno qualsiasi ${pct(exp.baseline)}. ` +
+        `Il vantaggio sta soprattutto nel giorno, poco nel singolo titolo: è indicativo, non provato.</span>`;
+    const fw = res.forward;
+    if (fw) {
+        const labels = { IN_CORSO: 'in corso', COERENTE: 'coerente col backtest', STOP: 'stop', ESTENDI: 'da estendere', NON_CONFERMATO: 'non confermato' };
+        html += `<br><b style="color:#fff;">Forward test:</b> ${fw.closed} chiusi, ${fw.open} aperti` +
+            (fw.closed ? `, media ${pct(fw.avg_pnl_pct, 2)} (base giornaliera ${pct(fw.baseline_avg_pnl_pct, 2)})` : '') +
+            ` — semaforo: ${labels[fw.verdict] || fw.verdict}.`;
+    }
+    summary.innerHTML = html;
+    summary.style.display = 'block';
 
-        const tradeDir = (frozenAction.includes('SHORT') || sumAction.includes('SHORT')) ? 'SHORT' : 'LONG';
-
-        html += `<tr style="border-bottom:1px solid #333;">
-            <td style="padding:12px; font-weight:bold; color:#fff;">${r.ticker}</td>
-            <td style="padding:12px; color:#ccc;">${r.frozen ? r.frozen.value : '-'} (Z)</td>
-            
-            <td style="padding:12px; ${fDateStyle}">${fInfo.date}</td>
-            <td style="padding:12px; ${frozenStyle}">${frozenAction}</td>
-            
-            <td style="padding:12px; ${sDateStyle}">${sInfo.date}</td>
-            <td style="padding:12px; ${sumStyle}">${sumAction}</td>
-            
-            <td style="padding:12px; ${finalStyle}">${finalAction}</td>
+    // --- tabella ---
+    const rowHtml = (r, isNew) => {
+        const state = isNew
+            ? '<span style="color:#00ff88; font-weight:bold;">NUOVO</span>'
+            : `<span style="color:#888;">${r.days_ago} g fa (${pct(r.change_since_pct)})</span>`;
+        const t = esc(r.ticker);
+        return `<tr style="border-bottom:1px solid #333;${isNew ? '' : ' opacity:0.75;'}">
+            <td style="padding:12px; font-weight:bold; color:#fff;">${t}</td>
+            <td style="padding:12px;">${state}</td>
+            <td style="padding:12px; color:#ccc;">${esc(r.signal_date)}</td>
+            <td style="padding:12px; text-align:right; color:#ccc;">${Number(r.price).toFixed(2)}</td>
+            <td style="padding:12px; text-align:right; color:#ff9900;">${Number(r.depth_pct).toFixed(1)}%</td>
+            <td style="padding:12px; text-align:right; color:#ccc;">${Number(r.z).toFixed(1)}</td>
+            <td style="padding:12px; color:#ccc;">~${esc(r.exit_estimate)}</td>
             <td style="padding:12px;">
                 <div style="display:flex; justify-content:center; gap:8px;">
-                    <button onclick="pfQuickOpen('${r.ticker}', '${tradeDir}')" 
+                    <button onclick="pfQuickOpen('${t}', 'LONG')"
                         style="background:#2d3342; border:1px solid #7d4bf0; color:#d9ccff; border-radius:4px; padding:4px 8px; cursor:pointer;" title="Apri in Portafoglio Reale">
                         💼
                     </button>
-                    <button onclick="loadTickerFromScanner('${r.ticker}')" 
+                    <button onclick="loadTickerFromScanner('${t}')"
                         style="background:#333; border:1px solid #555; color:#fff; border-radius:4px; padding:4px 8px; cursor:pointer;" title="Carica nel Grafico">
                         ⚡
                     </button>
                 </div>
             </td>
         </tr>`;
-    });
+    };
 
-    tbody.innerHTML = html;
+    const rows = fresh.map(r => rowHtml(r, true)).concat(recent.map(r => rowHtml(r, false)));
+    tbody.innerHTML = rows.length
+        ? rows.join('')
+        : '<tr><td colspan="8" style="padding:20px; text-align:center; color:#888;">Nessun segnale arancione negli ultimi 5 giorni su questi titoli.</td></tr>';
 }
 
 function loadTickerFromScanner(ticker) {
@@ -3692,7 +3556,7 @@ async function pfOpenPosition() {
     status.style.color = "orange";
 
     try {
-        const res = await fetch(`${API_URL}/portfolio/open`, {
+        const res = await apiFetch(`${API_URL}/portfolio/open`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -3726,7 +3590,7 @@ async function pfClosePosition(id) {
     if (!confirm("Chiudere questa posizione al prezzo di mercato attuale?")) return;
 
     try {
-        const res = await fetch(`${API_URL}/portfolio/close/${id}`, { method: 'POST' });
+        const res = await apiFetch(`${API_URL}/portfolio/close/${id}`, { method: 'POST' });
         if (res.ok) {
             pfLoadData();
         } else {
@@ -3742,7 +3606,7 @@ async function pfQuickOpen(ticker, direction) {
     if (!confirm(`Aprire posizione ${direction} su ${ticker} al prezzo di mercato attuale?`)) return;
 
     try {
-        const res = await fetch(`${API_URL}/portfolio/open`, {
+        const res = await apiFetch(`${API_URL}/portfolio/open`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -3770,7 +3634,7 @@ async function pfUpdateField(id, field, current) {
         const payload = {};
         payload[field] = newVal;
 
-        const res = await fetch(`${API_URL}/portfolio/update/${id}`, {
+        const res = await apiFetch(`${API_URL}/portfolio/update/${id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -3812,7 +3676,7 @@ function pfEditStrategy(td, id, current) {
 
 async function pfSaveStrategy(id, val) {
     try {
-        const res = await fetch(`${API_URL}/portfolio/update/${id}`, {
+        const res = await apiFetch(`${API_URL}/portfolio/update/${id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ strategy: val })
@@ -3829,7 +3693,7 @@ async function runAlertScan() {
     if (!confirm("Avviare scansione completa e invio email? (Richiede circa 2-5 minuti)")) return;
 
     try {
-        const res = await fetch(`${API_URL}/scan/email`, { method: 'POST' });
+        const res = await apiFetch(`${API_URL}/scan/email`, { method: 'POST' });
         const data = await res.json();
         alert(data.message);
     } catch (e) {

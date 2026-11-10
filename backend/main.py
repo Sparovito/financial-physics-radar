@@ -1,5 +1,6 @@
 import uvicorn
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Header
+import hmac
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -44,13 +45,18 @@ def scheduled_scan_job():
         traceback.print_exc()
         sys.stdout.flush()
 
-# Schedule: Every day at 16:30 Rome time
-scheduler.add_job(
-    scheduled_scan_job,
-    CronTrigger(hour=16, minute=30, timezone="Europe/Rome"),
-    id="daily_scan",
-    replace_existing=True
-)
+# Email originale Frozen/SUM delle 16:30: SPENTA di default (2026-11-11).
+# Gira a mercato USA aperto (candele incomplete) e usa strategie che nei
+# test non mostrano vantaggio; l'email giornaliera è quella dell'arancione
+# (22:30, barre complete). Per riattivarla: env LEGACY_FROZEN_SUM_EMAIL=1.
+# L'invio manuale (POST /scan/email) resta disponibile.
+if os.getenv("LEGACY_FROZEN_SUM_EMAIL") == "1":
+    scheduler.add_job(
+        scheduled_scan_job,
+        CronTrigger(hour=16, minute=30, timezone="Europe/Rome"),
+        id="daily_scan",
+        replace_existing=True
+    )
 
 # --- STABLE STRATEGY DAILY ALERT ---
 def scheduled_stable_job():
@@ -159,6 +165,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- AUTENTICAZIONE degli endpoint che modificano dati ---
+# Se la variabile d'ambiente API_KEY è impostata, gli endpoint mutanti
+# (email, config, journal, portfolio) richiedono l'header X-API-Key.
+# Senza API_KEY il server resta aperto: va bene solo in sviluppo locale.
+def require_api_key(x_api_key: Optional[str] = Header(None)):
+    expected = os.getenv("API_KEY")
+    if not expected:
+        return None
+    if not x_api_key or not hmac.compare_digest(x_api_key, expected):
+        raise HTTPException(status_code=401, detail="API key mancante o errata")
+    return None
+
+AUTH = [Depends(require_api_key)]
+
+if not os.getenv("API_KEY"):
+    print("⚠️ API_KEY non impostata: gli endpoint che modificano dati sono APERTI "
+          "(ok in locale, da impostare in produzione).", flush=True)
+
+@app.get("/auth/status")
+def auth_status():
+    """Dice al frontend se serve la chiave e dove vive lo stato operativo."""
+    try:
+        from storage import get_storage
+        backend = get_storage().status()["backend"]
+    except Exception:
+        backend = "sconosciuto"
+    return {"auth_required": bool(os.getenv("API_KEY")), "storage": backend}
 
 # Modelli Dati (Pydantic)
 class AnalysisRequest(BaseModel):
@@ -854,7 +888,10 @@ def analyze_batch_stable(req: BatchStableRequest):
             fundamental = []
             try:
                 if len(px) > 110:
-                    fr = kalman_frozen_series(px, alpha=req.alpha, beta=1.0,
+                    # potenziale sempre con i parametri validati (non req.alpha,
+                    # che governa solo lo span della slope del trend)
+                    from stable_strategy import POTENTIAL_ALPHA, POTENTIAL_BETA
+                    fr = kalman_frozen_series(px, alpha=POTENTIAL_ALPHA, beta=POTENTIAL_BETA,
                                               min_points=100, kin_lag=25)
                     pad = len(prices) - len(fr["pot_last"])
                     pot_aligned = [None] * pad + [round(v, 6) for v in fr["pot_last"]]
@@ -1414,6 +1451,58 @@ def scan_daily_signals(req: DailyScanRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+class StrategyScanRequest(BaseModel):
+    tickers: List[str]
+    start_date: Optional[str] = "2023-01-01"
+    end_date: Optional[str] = None
+    alpha: float = 200.0
+    beta: float = 1.0
+    max_workers: int = 8
+
+@app.post("/scan-strategies")
+def scan_strategies(req: StrategyScanRequest):
+    """
+    Scanner Strategie (Massivo): per ogni titolo buy & hold, e per ogni
+    strategia ROI / win rate / trade / esposizione / alpha. Calcolo dedicato
+    (strategy_scan.py), molto più leggero di una /analyze per titolo.
+    I titoli non scaricabili o con storia insufficiente tornano in `errors`.
+    """
+    from datetime import date, timedelta
+    from strategy_scan import scan_one, fetch_prices_cached, WARMUP_DAYS
+
+    start = req.start_date or "2023-01-01"
+    warm_start = (date.fromisoformat(start) - timedelta(days=WARMUP_DAYS)).strftime("%Y-%m-%d")
+
+    def fetch(ticker, since):
+        return MarketData(ticker, start_date=since).fetch()
+
+    prices, errors = fetch_prices_cached(req.tickers, warm_start, fetch,
+                                         max_workers=max(1, min(req.max_workers, 12)))
+    results = {}
+    for ticker, px in prices.items():
+        try:
+            results[ticker] = scan_one(px, start_date=start, end_date=req.end_date,
+                                       alpha=req.alpha, beta=req.beta)
+        except Exception as e:
+            errors[ticker] = str(e)
+    return {"status": "ok", "results": results, "errors": errors,
+            "count_ok": len(results), "count_err": len(errors)}
+
+@app.post("/scan-daily-orange")
+def scan_daily_orange(req: DailyScanRequest):
+    """
+    Scansione giornaliera sull'ARANCIONE (sostituisce /scan-daily nella
+    dashboard: quella si basava su Frozen/SUM, senza vantaggio misurato).
+    Sola lettura: non scrive il journal e non manda email.
+    """
+    try:
+        from stable_scanner import orange_daily_scan
+        return orange_daily_scan(req.tickers, as_of_date=req.as_of_date)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 # --- PORTFOLIO API ---
 PORTFOLIO_FILE = "portfolio.json"
 
@@ -1565,7 +1654,7 @@ class PortfolioManager:
 
 
 
-@app.post("/scan/email")
+@app.post("/scan/email", dependencies=AUTH)
 def trigger_email_scan(background_tasks: BackgroundTasks):
     """
     Triggers a full market scan of all tickers and sends results via email.
@@ -1575,7 +1664,7 @@ def trigger_email_scan(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_market_scan, send_email=True)
     return {"status": "started", "message": "📩 Scansione avviata! Riceverai l'email al termine (circa 5-10 min)."}
 
-@app.post("/scan/test-email")
+@app.post("/scan/test-email", dependencies=AUTH)
 def test_email_config():
     """Quick test to verify email configuration works."""
     import os
@@ -1649,7 +1738,7 @@ def get_stable_alert_config():
         "scheduler": job_info,
     }
 
-@app.post("/stable-alert/config")
+@app.post("/stable-alert/config", dependencies=AUTH)
 def save_stable_alert_config(cfg: StableAlertConfig):
     """Save STABLE alert configuration and update scheduler."""
     from stable_scanner import save_config
@@ -1663,21 +1752,21 @@ def save_stable_alert_config(cfg: StableAlertConfig):
 
     return {"status": "ok" if ok else "error", "config": config_dict}
 
-@app.post("/stable-alert/trigger")
+@app.post("/stable-alert/trigger", dependencies=AUTH)
 def trigger_stable_alert(background_tasks: BackgroundTasks):
     """Manually trigger STABLE alert email (runs in background)."""
     from stable_scanner import run_stable_scan
     background_tasks.add_task(run_stable_scan, send_email=True)
     return {"status": "started", "message": "🔬 STABLE scan avviata! Riceverai l'email al termine."}
 
-@app.post("/stable-alert/test")
+@app.post("/stable-alert/test", dependencies=AUTH)
 def test_stable_alert():
     """Run STABLE scan synchronously and return results (no email)."""
     from stable_scanner import run_stable_scan
     result = run_stable_scan(send_email=False)
     return result
 
-@app.post("/stable-alert/trigger-with-result")
+@app.post("/stable-alert/trigger-with-result", dependencies=AUTH)
 def trigger_stable_with_result():
     """Run STABLE scan synchronously: sends email AND returns results for UI preview."""
     from stable_scanner import run_stable_scan
@@ -1696,18 +1785,19 @@ def forward_test_status():
     return {"stats": journal_stats(j), "config": j.get("config", {}),
             "trades": j.get("trades", [])}
 
-@app.post("/forward-test/reset")
+@app.post("/forward-test/reset", dependencies=AUTH)
 def forward_test_reset():
-    """Archivia il journal corrente e riparte da zero."""
-    from forward_test import JOURNAL_PATH
-    import shutil
+    """Archivia il journal corrente (nello storage persistente) e riparte da zero."""
+    from forward_test import JOURNAL_NAME, load_journal, save_journal, _new_journal
+    from storage import get_storage
     from datetime import datetime as _dt
-    if os.path.exists(JOURNAL_PATH):
-        arch = JOURNAL_PATH.replace(
-            ".json", f"_archive_{_dt.now().strftime('%Y%m%d_%H%M%S')}.json")
-        shutil.move(JOURNAL_PATH, arch)
-        return {"status": "ok", "archived": os.path.basename(arch)}
-    return {"status": "ok", "archived": None}
+    current = load_journal()
+    archived = None
+    if current.get("trades") or current.get("runs"):
+        archived = f"{JOURNAL_NAME}_archive_{_dt.now().strftime('%Y%m%d_%H%M%S')}"
+        get_storage().save(archived, current)
+    save_journal(_new_journal())
+    return {"status": "ok", "archived": archived}
 
 # =============================================
 
@@ -1764,7 +1854,7 @@ class PortfolioTrade(BaseModel):
     strategy: str = "Manual"
     notes: str = ""
 
-@app.post("/portfolio/open")
+@app.post("/portfolio/open", dependencies=AUTH)
 def open_position(trade: PortfolioTrade):
     ticker = trade.ticker.upper()
     try:
@@ -1797,7 +1887,7 @@ class PortfolioUpdate(BaseModel):
     strategy: str = None
     notes: str = None
 
-@app.post("/portfolio/update/{pos_id}")
+@app.post("/portfolio/update/{pos_id}", dependencies=AUTH)
 def update_position(pos_id: str, update: PortfolioUpdate):
     try:
         data = portfolio_mgr.load()
@@ -1820,7 +1910,7 @@ def update_position(pos_id: str, update: PortfolioUpdate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/portfolio/close/{pos_id}")
+@app.post("/portfolio/close/{pos_id}", dependencies=AUTH)
 def close_position(pos_id: str):
     try:
         data = portfolio_mgr.load()

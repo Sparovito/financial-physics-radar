@@ -287,6 +287,56 @@ Formula: `EMA(prices, span=alpha/10)` → `diff()` → `EMA(14)`. Puramente back
 -   Le email STABLE calcolano i segnali SOLO su barre daily COMPLETE
     (`drop_partial_last_bar`, trigger default 22:30 Rome).
 
+### Stato operativo, sicurezza e protocollo (2026-11-10)
+-   **Persistenza**: `storage.py` — journal del forward test e config email
+    vivono su Firestore (collezione `app_state`), con file locale come
+    mirror/fallback. Mai affidarsi al disco di Railway (si azzera a ogni deploy).
+    Il file `stable_alert_config.json` nel repo è solo il seed iniziale: dopo il
+    primo salvataggio dalla UI vince Firestore.
+-   **Variabili d'ambiente**: `API_KEY` (se impostata, gli endpoint mutanti
+    richiedono l'header `X-API-Key`; senza, il server è aperto — solo sviluppo);
+    `FIREBASE_SERVICE_ACCOUNT_BASE64` (credenziali Firestore in produzione);
+    `FPR_STORAGE=local` (forza i file locali: test e CI).
+-   **Potenziale dell'arancione**: sempre `POTENTIAL_ALPHA=200`, `POTENTIAL_BETA=1`
+    (`stable_strategy.py`). L'`alpha` di config/Lab governa solo il leg trend.
+-   **Forward test**: regole in `memory/FORWARD_TEST_PROTOCOL.md`, applicate dal
+    codice (`forward_test.PROTOCOL`, `journal_stats()["verdict"]`). Registrato solo
+    per ARANCIONE. Non cambiare parametri a journal avviato: reset e ripartenza.
+-   **Confronto corretto (2026-11-11)**: mai giudicare i segnali contro lo zero.
+    Il journal registra con la stessa regola tre gruppi di confronto (`control`
+    stesso giorno, `baseline` giorno qualsiasi, `index` SPY nei giorni di panico)
+    e il rendimento di SPY sulle stesse date. Dal backtest: base +1.2%, stesso
+    giorno +2.7%, segnale +3.4% → il vantaggio è +2.2 sulla base (t a cluster 1.7),
+    quasi tutto dal *quando*, poco dal *quale titolo*. Il verdetto è un semaforo
+    di coerenza (`COERENTE`/`STOP`/`ESTENDI`/`NON_CONFERMATO`), non una prova.
+-   **Email ARANCIONE**: `stable_scanner.build_orange_email` — (1) cosa fare oggi
+    (segnali ordinati per distanza dal fondamentale, uscite eseguite e in scadenza),
+    (2) posizioni del journal, (3) tabella di confronto con i valori attesi.
+-   **Scanner massivo**: il rendimento passato di una strategia su un titolo NON
+    prevede quello futuro (correlazione di rango train→OOS ≈ 0 o negativa per
+    FROZEN/SUM/STABLE; i "migliori" dello scanner fanno peggio della media).
+    Non usarlo per scegliere titoli. Vedi `research/scanner_persistence.py`.
+-   **Scanner Strategie (Massivo)**: `POST /scan-strategies` → `strategy_scan.scan_one`
+    (non più una `/analyze` per titolo). Colonne: B&H, Oracolo (LIVE), Frozen, SUM,
+    Stable, Arancione, Combo; metrica selezionabile (ROI, alpha, win rate,
+    esposizione, trade). È una fotografia del passato, senza costi.
+-   **Scansione giornaliera (dashboard)**: `POST /scan-daily-orange` →
+    `stable_scanner.orange_daily_scan`, sola lettura. Sostituisce nella UI
+    `/scan-daily` (Frozen/SUM), che resta solo per compatibilità.
+-   **Email**: l'unica schedulata è quella dell'arancione (22:30 Rome, barre
+    complete). Quella Frozen/SUM delle 16:30 è spenta (`LEGACY_FROZEN_SUM_EMAIL=1`
+    per riattivarla).
+-   **Ricostruzione**: `research/replay_forward.py` rigioca il journal sui dati
+    reali da una data; scrive solo in `research/output/` (anteprima email inclusa).
+-   **Significatività**: i trade dello stesso panico non sono indipendenti; usare
+    sempre le statistiche a cluster (`research/common.cluster_stats`,
+    `journal_stats()["t_clustered"]`), mai il t ingenuo.
+-   **Ricerca riproducibile**: `backend/research/*.py` (seme fisso). I numeri
+    citati nei documenti vanno rigenerati da lì, non da script temporanei.
+-   **Motore doppio Python/JS**: resta (l'optimizer a griglia in Python puro
+    sarebbe troppo lento); la parità è imposta dalla CI a ogni push.
+-   **LIVE = oracolo**: usa lo smoother bidirezionale, non è eseguibile.
+
 ### Fondamento state-space del modello (2026-07-05)
 Il percorso di Minima Azione = smoother di Kalman di un modello local-level
 (q=1/α, r=1/β). La versione point-in-time ("frozen") = filtro di Kalman causale,

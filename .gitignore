@@ -42,3 +42,6 @@ backend/serviceAccountKey.json
 
 # Forward test journal (dati operativi, non versionare)
 backend/forward_test_journal*.json
+
+# Output degli script di ricerca (rigenerabili)
+backend/research/output/

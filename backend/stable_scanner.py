@@ -50,25 +50,52 @@ DEFAULT_CONFIG = {
     "forward_test": True,
 }
 
+CONFIG_NAME = "stable_alert_config"
+
+
 def load_config():
-    if os.path.exists(STABLE_CONFIG_PATH):
-        try:
-            with open(STABLE_CONFIG_PATH, "r") as f:
-                cfg = json.load(f)
+    """Config dallo storage persistente (Firestore; il file nel repo è il
+    seed iniziale e il fallback). Su Railway il disco si azzera a ogni
+    deploy: senza storage remoto le modifiche fatte dalla UI andavano perse."""
+    try:
+        from storage import get_storage
+        cfg = get_storage().load(CONFIG_NAME, default=None)
+        if cfg:
             return {**DEFAULT_CONFIG, **cfg}
-        except Exception as e:
-            print(f"⚠️ Errore caricamento config STABLE: {e}")
+    except Exception as e:
+        print(f"⚠️ Errore caricamento config STABLE: {e}")
     return DEFAULT_CONFIG.copy()
+
 
 def save_config(cfg):
     try:
-        with open(STABLE_CONFIG_PATH, "w") as f:
-            json.dump(cfg, f, indent=2)
-        print(f"✅ Config STABLE salvata: {STABLE_CONFIG_PATH}")
-        return True
+        from storage import get_storage
+        ok = get_storage().save(CONFIG_NAME, cfg)
+        print(f"✅ Config STABLE salvata ({get_storage().status()['backend']})")
+        return bool(ok)
     except Exception as e:
         print(f"❌ Errore salvataggio config STABLE: {e}")
         return False
+
+
+def strategy_params(cfg):
+    """Parametri che DEFINISCONO il segnale: sono quelli che il forward test
+    congela. L'alpha entra solo dove governa davvero il segnale (leg trend)."""
+    from stable_strategy import POTENTIAL_ALPHA, POTENTIAL_BETA
+    strategy = cfg.get("strategy", "STABLE")
+    p = {"strategy": strategy}
+    if strategy in ("ARANCIONE", "COMBO"):
+        p.update({"entry_z": float(cfg.get("entry_z", 2.0)),
+                  "horizon": int(cfg.get("horizon", 21)),
+                  "potential_alpha": POTENTIAL_ALPHA,
+                  "potential_beta": POTENTIAL_BETA})
+    if strategy in ("STABLE", "COMBO"):
+        p.update({"alpha": float(cfg.get("alpha", 200)),
+                  "entry_threshold": float(cfg.get("entry_threshold", 0.0)),
+                  "exit_threshold": float(cfg.get("exit_threshold", 0.0))})
+    if strategy == "STABLE":
+        p["mode"] = cfg.get("mode", "LONG")
+    return p
 
 
 # ============================================================
@@ -152,12 +179,16 @@ def download_all_prices(tickers, start_date, max_workers=8):
 #  SIGNAL COMPUTATION (motore unificato stable_strategy)
 # ============================================================
 
-def drop_partial_last_bar(px, today=None, now=None):
+def drop_partial_last_bar(px, today=None, now=None, ticker=None, utc_today=None):
     """
     Scarta l'ultima barra daily se è la barra di OGGI e siamo prima delle
     22:05 Europe/Rome (chiusura USA = 22:00): in quel caso la candela Yahoo
     è INCOMPLETA e un segnale calcolato su di essa può sparire entro la
     chiusura (repainting). I segnali devono usare solo barre complete.
+
+    Crypto (ticker che finisce in -USD): la barra giornaliera chiude a
+    mezzanotte UTC, quindi quella del giorno UTC in corso è incompleta a
+    qualunque ora — anche alle 22:30 di Roma.
     """
     if px is None or len(px) == 0:
         return px
@@ -172,6 +203,12 @@ def drop_partial_last_bar(px, today=None, now=None):
 
     last = px.index[-1]
     last_date = last.date() if hasattr(last, "date") else last
+
+    if ticker and ticker.upper().endswith("-USD"):
+        if utc_today is None:
+            utc_today = datetime.datetime.utcnow().date()
+        return px.iloc[:-1] if last_date >= utc_today else px
+
     cutoff = now.replace(hour=22, minute=5, second=0, microsecond=0)
     if last_date == today and now < cutoff:
         return px.iloc[:-1]
@@ -216,7 +253,10 @@ def analyze_ticker_signals(ticker, px, today, alpha=200, mode="LONG",
 
     onset_idx, z_pot = [], []
     if strategy in ("ARANCIONE", "COMBO"):
-        fr = kalman_frozen_series(px, alpha=alpha, beta=1.0, min_points=100, kin_lag=25)
+        # Il potenziale usa SEMPRE i parametri validati, non l'alpha del trend
+        from stable_strategy import POTENTIAL_ALPHA, POTENTIAL_BETA
+        fr = kalman_frozen_series(px, alpha=POTENTIAL_ALPHA, beta=POTENTIAL_BETA,
+                                  min_points=100, kin_lag=25)
         pot = ([float("nan")] * 100 + list(fr["pot_last"]))[:len(prices)]
         F20 = px.ewm(span=20, adjust=False).mean().values.tolist()
         onset_idx, z_pot = potential_discharge_onsets(prices, pot, F20, entry_z=entry_z)
@@ -261,7 +301,12 @@ def analyze_ticker_signals(ticker, px, today, alpha=200, mode="LONG",
         )
         signal_val = (z_pot[sig_i] if (is_panic and sig_i < len(z_pot))
                       else float(ev["slope_at_signal"]))
+        # distanza del prezzo sotto il fondamentale EMA20, in %: nel backtest
+        # è il criterio (debole ma migliore dello z) per ordinare i segnali
+        ema20 = float(px.ewm(span=20, adjust=False).mean().iloc[sig_i]) if sig_i < len(px) else 0.0
+        depth_pct = ((ema20 - sig_price) / ema20 * 100) if ema20 > 0 else 0.0
         entries.append({
+            "depth_pct": round(depth_pct, 2),
             "ticker": ticker,
             "price": sig_price,
             "current_price": current_price,
@@ -298,7 +343,7 @@ def compute_stable_signals(tickers, alpha=200, start_date=None, mode="LONG",
                             entry_threshold=0.0, exit_threshold=0.0, max_workers=8,
                             skip_partial_today=True,
                             strategy="STABLE", entry_z=2.0, horizon=21,
-                            price_sink=None):
+                            price_sink=None, as_of_date=None):
     """
     Compute signals for all tickers (strategia configurabile).
 
@@ -308,13 +353,19 @@ def compute_stable_signals(tickers, alpha=200, start_date=None, mode="LONG",
         ancora aperti (vedi drop_partial_last_bar).
     price_sink: dict opzionale — viene riempito con {ticker: (dates, closes)}
         delle barre COMPLETE usate per i segnali (serve al forward test).
+    as_of_date: "YYYY-MM-DD" — calcola i segnali come se oggi fosse quel
+        giorno, usando solo le barre fino a quella data (viaggio nel tempo).
     """
-    today = datetime.date.today()
+    real_today = datetime.date.today()
+    today = datetime.date.fromisoformat(as_of_date) if as_of_date else real_today
     today_str = today.strftime("%Y-%m-%d")
 
     if not start_date:
         lookback_days = 180 if strategy == "STABLE" else 730
-        start_date = (today - datetime.timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+        # per date passate recenti si riusa lo stesso scarico dello scan di
+        # oggi (stessa chiave di cache): cambiare giorno non riscarica tutto
+        anchor = real_today if (real_today - today).days <= 180 else today
+        start_date = (anchor - datetime.timedelta(days=lookback_days)).strftime("%Y-%m-%d")
 
     entries_today = []
     entries_recent = []
@@ -335,8 +386,10 @@ def compute_stable_signals(tickers, alpha=200, start_date=None, mode="LONG",
 
     def analyze_ticker(ticker, px):
         try:
-            if skip_partial_today:
-                px = drop_partial_last_bar(px, today=today)
+            if as_of_date:
+                px = px[px.index <= pd.Timestamp(as_of_date)]
+            elif skip_partial_today:
+                px = drop_partial_last_bar(px, today=today, ticker=ticker)
             res = analyze_ticker_signals(
                 ticker, px, today, alpha=alpha, mode=mode,
                 entry_threshold=entry_threshold, exit_threshold=exit_threshold,
@@ -402,6 +455,69 @@ def compute_stable_signals(tickers, alpha=200, start_date=None, mode="LONG",
             "strategy": strategy, "entry_z": entry_z, "horizon": horizon,
             "n_tickers": len(tickers), "n_downloaded": len(all_prices), "date": today_str,
         }
+    }
+
+
+def orange_daily_scan(tickers, as_of_date=None, entry_z=None, horizon=None, max_workers=8):
+    """
+    SCANSIONE GIORNALIERA sull'arancione (dashboard, POST /scan-daily-orange).
+
+    Sola lettura: non scrive il journal e non manda email. Ritorna
+      signals_new    segnali sull'ultima seduta chiusa di ciascun titolo:
+                     da eseguire alla prossima chiusura; ordinati per
+                     distanza del prezzo sotto il fondamentale
+      signals_recent segnali dei 5 giorni precedenti
+      active         posizioni che la regola terrebbe oggi
+      breadth_pct    % dei titoli scansionati con un segnale nuovo: dal
+                     backtest il vantaggio sta soprattutto nel GIORNO
+      forward        stato del forward test (solo in modalità "oggi")
+    """
+    from forward_test import EXPECTED, _expected_exit, load_journal, journal_stats
+
+    cfg = load_config()
+    entry_z = float(entry_z if entry_z is not None else cfg.get("entry_z", 2.0))
+    horizon = int(horizon if horizon is not None else cfg.get("horizon", 21))
+
+    res = compute_stable_signals(
+        tickers=list(tickers), strategy="ARANCIONE", entry_z=entry_z, horizon=horizon,
+        skip_partial_today=True, max_workers=max_workers, as_of_date=as_of_date,
+    )
+
+    def row(e):
+        return {
+            "ticker": e["ticker"], "signal_date": e["date"], "price": round(e["price"], 4),
+            "depth_pct": e.get("depth_pct", 0.0), "z": round(e.get("slope", 0.0), 2),
+            "days_ago": e["days_ago"], "current_price": round(e.get("current_price", 0.0), 4),
+            "change_since_pct": round(e.get("price_change_since", 0.0), 2),
+            "exit_estimate": _expected_exit(e["date"], horizon + 1),
+        }
+
+    every = res["entries_today"] + res["entries_recent"]
+    new = sorted((row(e) for e in every if e.get("pending_execution")),
+                 key=lambda r: r["depth_pct"], reverse=True)
+    recent = sorted((row(e) for e in every if not e.get("pending_execution")),
+                    key=lambda r: r["days_ago"])
+    n_scanned = res["params"].get("n_downloaded", 0)
+
+    forward = None
+    if not as_of_date:
+        try:
+            forward = journal_stats(load_journal())
+        except Exception as e:
+            print(f"⚠️ Stato forward test non leggibile: {e}")
+
+    return {
+        "date": res["params"]["date"],
+        "as_of": as_of_date,
+        "entry_z": entry_z, "horizon": horizon,
+        "n_requested": len(tickers), "n_scanned": n_scanned,
+        "failed": [e["ticker"] for e in res["errors"] if e.get("ticker")],
+        "breadth_pct": round(len(new) / n_scanned * 100, 2) if n_scanned else 0.0,
+        "signals_new": new,
+        "signals_recent": recent,
+        "active": sorted(res["active"], key=lambda p: p.get("days_left") or 0),
+        "expected": dict(EXPECTED),
+        "forward": forward,
     }
 
 
@@ -557,6 +673,22 @@ def build_stable_email(scan_result):
         body += f"<div class='stat-box'><div class='num'>{ft.get('avg_pnl_pct', 0):+.2f}%</div><div class='lbl'>Media/Trade</div></div>"
         body += f"<div class='stat-box'><div class='num'>{ft.get('win_rate', 0):.0f}%</div><div class='lbl'>Win Rate</div></div>"
         body += "</div>"
+        proto = ft.get("protocol", {})
+        verdict_txt = {
+            "IN_CORSO": "In corso — non ancora giudicabile",
+            "PROMUOVI": "PROMUOVI — criterio di promozione raggiunto",
+            "STOP": "STOP — media per trade non positiva",
+            "ESTENDI": "ESTENDI — risultato intermedio, si prosegue",
+            "NON_CONFERMATO": "NON CONFERMATO — edge non raggiunto",
+        }.get(ft.get("verdict"), ft.get("verdict", ""))
+        body += "<p style='font-size:12px; color:#555;'>"
+        body += f"<b>Protocollo:</b> {verdict_txt}. "
+        body += f"Chiusi {ft.get('closed', 0)}/{proto.get('min_closed', 30)}, "
+        body += f"settimane distinte {ft.get('n_clusters', 0)}/{proto.get('min_clusters', 3)}; "
+        body += f"soglia promozione media ≥ {proto.get('promote_avg_pct', 1.0):+.1f}%/trade."
+        if ft.get("protocol_violations"):
+            body += f" <span style='color:#c62828;'>⚠️ {ft['protocol_violations']} cambio/i di parametri a journal avviato.</span>"
+        body += "</p>"
 
     n_err = len(errors)
     if n_err > 0:
@@ -567,6 +699,198 @@ def build_stable_email(scan_result):
     body += "</div></body></html>"
 
     return subject, body
+
+
+# ============================================================
+#  EMAIL ARANCIONE — azioni del giorno + validazione del forward test
+# ============================================================
+
+MAX_POSITIONS = 10   # tetto di posizioni simultanee del protocollo di sizing
+
+VERDICT_LABEL = {
+    "IN_CORSO": ("In corso", "#555"),
+    "COERENTE": ("Coerente col backtest", "#2e7d32"),
+    "STOP": ("Stop", "#c62828"),
+    "ESTENDI": ("Da estendere", "#f57c00"),
+    "NON_CONFERMATO": ("Non confermato", "#c62828"),
+}
+
+
+def _pct(v, digits=2):
+    return "—" if v is None else f"{v:+.{digits}f}%"
+
+
+def build_orange_email(scan_result):
+    """Email giornaliera della strategia ARANCIONE.
+
+    Ordine: (1) cosa fare oggi, (2) posizioni del forward test, (3) i segnali
+    stanno funzionando? — confronto con titoli a caso lo stesso giorno e in
+    un giorno qualsiasi, accanto ai valori attesi dal backtest."""
+    p = scan_result["params"]
+    day = p["date"]
+    horizon = p.get("horizon", 21)
+    signals = sorted(scan_result.get("entries_today", []),
+                     key=lambda e: e.get("depth_pct", 0), reverse=True)
+    recent = scan_result.get("entries_recent", [])
+    ft = scan_result.get("forward_test")
+    det = scan_result.get("forward_detail") or {"open": [], "due_soon": [], "closed_last_run": [], "pending": []}
+    closed_now, due_soon, open_pos = det["closed_last_run"], det["due_soon"], det["open"]
+
+    n_sig = len(signals)
+    n_exit = len(closed_now) + len(due_soon)
+    n_scanned = max(1, p.get("n_downloaded", 0))
+    breadth = n_sig / n_scanned * 100
+    v_label, v_color = VERDICT_LABEL.get(ft["verdict"], (ft["verdict"], "#555")) if ft else ("forward test non attivo", "#555")
+
+    subject = (f"🟠 {day} · {n_sig} segnal{'e' if n_sig == 1 else 'i'} · {n_exit} uscit{'a' if n_exit == 1 else 'e'}"
+               + (f" · forward {ft['closed']} chiusi ({v_label.lower()})" if ft else ""))
+
+    css = """
+    <style>
+      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background:#f0f2f5; padding:16px; color:#1a1d29; }
+      .wrap { background:#fff; max-width:860px; margin:auto; padding:22px; border-radius:10px; }
+      h2 { font-size:20px; margin:0 0 4px; }
+      h3 { font-size:14px; text-transform:uppercase; letter-spacing:1px; margin:26px 0 8px; }
+      .sub { color:#666; font-size:13px; margin:0 0 14px; }
+      table { width:100%; border-collapse:collapse; font-size:13px; margin:6px 0 10px; }
+      th { background:#1a1d29; color:#fff; text-align:left; padding:8px 10px; font-size:11px; text-transform:uppercase; }
+      td { padding:8px 10px; border-bottom:1px solid #eee; }
+      .num { text-align:right; font-variant-numeric: tabular-nums; }
+      .pos { color:#2e7d32; font-weight:bold; } .neg { color:#c62828; font-weight:bold; }
+      .note { font-size:12px; color:#666; margin:4px 0 10px; line-height:1.5; }
+      .box { border:1px solid #e0e0e8; border-radius:8px; padding:12px 14px; margin:10px 0; background:#fafafe; }
+      .warn { border-color:#f57c00; background:#fff8ee; }
+    </style>"""
+
+    def cls(v):
+        return "pos" if (v or 0) >= 0 else "neg"
+
+    b = f"<html><head><meta charset='utf-8'>{css}</head><body><div class='wrap'>"
+    b += f"<h2>🟠 Arancione — {day}</h2>"
+    b += (f"<p class='sub'>{n_sig} nuovi segnali · {len(closed_now)} uscite eseguite · "
+          f"{len(due_soon)} in scadenza · {len(open_pos)} posizioni aperte</p>")
+
+    # ---------- 1. COSA FARE OGGI ----------
+    b += "<h3 style='color:#e65100;'>1 · Cosa fare oggi</h3>"
+    if not signals and not closed_now and not due_soon:
+        b += "<div class='box'>Nessuna azione oggi: nessun nuovo segnale e nessuna uscita in scadenza.</div>"
+
+    if signals:
+        b += (f"<p class='note'><b>Nuovi segnali ({n_sig}).</b> Ingresso alla prossima chiusura disponibile, "
+              f"uscita dopo {horizon} barre. Ordinati per distanza del prezzo sotto il fondamentale: nel backtest "
+              f"la metà più distante ha reso +4.8% contro +2.1% dell'altra.</p>")
+        b += ("<table><tr><th>Ticker</th><th class='num'>Prezzo al segnale</th><th class='num'>Sotto il fondamentale</th>"
+              "<th class='num'>z potenziale</th><th>Uscita indicativa</th></tr>")
+        from forward_test import _expected_exit
+        for i, e in enumerate(signals):
+            # ingresso domani (1 barra) + horizon barre
+            exit_est = _expected_exit(e["date"], horizon + 1)
+            beyond = " style='color:#999;'" if i >= MAX_POSITIONS else ""
+            b += (f"<tr{beyond}><td><b>{e['ticker']}</b></td><td class='num'>{e['price']:.2f}</td>"
+                  f"<td class='num'>{e.get('depth_pct', 0):.1f}%</td><td class='num'>{e.get('slope', 0):.1f}</td>"
+                  f"<td>~{exit_est}</td></tr>")
+        b += "</table>"
+        free = max(0, MAX_POSITIONS - len(open_pos))
+        if n_sig > free:
+            b += (f"<div class='box warn'><b>Più segnali che posti.</b> Con un tetto di {MAX_POSITIONS} posizioni "
+                  f"e {len(open_pos)} già aperte restano {free} posti: valgono le prime righe della tabella.</div>")
+        if breadth >= 2.0:
+            b += (f"<div class='box warn'><b>Giornata di panico diffuso:</b> ha dato segnale il {breadth:.1f}% "
+                  f"dei titoli scansionati. Nel backtest, dopo giornate così, anche l'indice (SPY) ha reso in media "
+                  f"+3.9% in 21 barre contro +1.1% di un giorno qualsiasi (26 casi): il vantaggio sta soprattutto "
+                  f"nel giorno, meno nel singolo titolo.</div>")
+
+    if closed_now:
+        b += "<p class='note'><b>Uscite eseguite all'ultimo scan.</b></p>"
+        b += ("<table><tr><th>Ticker</th><th>Ingresso</th><th>Uscita</th><th class='num'>P/L</th>"
+              "<th class='num'>contro SPY</th></tr>")
+        for t in closed_now:
+            b += (f"<tr><td><b>{t['ticker']}</b></td><td>{t['entry_date']} @ {t['entry_price']:.2f}</td>"
+                  f"<td>{t['exit_date']} @ {t['exit_price']:.2f}</td>"
+                  f"<td class='num {cls(t['pnl_pct'])}'>{_pct(t['pnl_pct'])}</td>"
+                  f"<td class='num'>{_pct(t.get('excess_pct'))}</td></tr>")
+        b += "</table>"
+
+    if due_soon:
+        b += "<p class='note'><b>In scadenza</b> (uscita alla chiusura indicata).</p>"
+        b += "<table><tr><th>Ticker</th><th class='num'>Barre rimaste</th><th>Uscita indicativa</th><th class='num'>P/L attuale</th></tr>"
+        for t in due_soon:
+            b += (f"<tr><td><b>{t['ticker']}</b></td><td class='num'>{t['bars_left']}</td><td>{t['expected_exit']}</td>"
+                  f"<td class='num {cls(t['current_pnl_pct'])}'>{_pct(t['current_pnl_pct'])}</td></tr>")
+        b += "</table>"
+
+    if recent:
+        names = ", ".join(f"{e['ticker']} ({e['days_ago']}g fa)" for e in sorted(recent, key=lambda e: e["days_ago"])[:15])
+        b += f"<p class='note'>Segnali dei giorni scorsi già registrati: {names}.</p>"
+
+    # ---------- 2. POSIZIONI ----------
+    b += "<h3 style='color:#6a1b9a;'>2 · Posizioni aperte del forward test</h3>"
+    if open_pos:
+        b += ("<table><tr><th>Ticker</th><th>Ingresso</th><th class='num'>Prezzo attuale</th><th class='num'>P/L</th>"
+              "<th class='num'>Barre</th><th>Uscita indicativa</th></tr>")
+        for t in open_pos:
+            b += (f"<tr><td><b>{t['ticker']}</b></td><td>{t['entry_date']} @ {t['entry_price']:.2f}</td>"
+                  f"<td class='num'>{t['current_price']:.2f}</td>"
+                  f"<td class='num {cls(t['current_pnl_pct'])}'>{_pct(t['current_pnl_pct'])}</td>"
+                  f"<td class='num'>{t['bars_held']}/{t['horizon']}</td><td>{t['expected_exit']}</td></tr>")
+        b += "</table>"
+        if len(open_pos) > MAX_POSITIONS:
+            b += (f"<p class='note'>Il forward test registra <b>tutti</b> i segnali a quota fissa, per misurarli senza "
+                  f"scelte: non applica il tetto di {MAX_POSITIONS} posizioni che useresti con capitale vero.</p>")
+    else:
+        b += "<p class='note'>Nessuna posizione aperta.</p>"
+
+    # ---------- 3. STA FUNZIONANDO? ----------
+    b += "<h3 style='color:#00695c;'>3 · I segnali stanno funzionando?</h3>"
+    if not ft:
+        b += "<p class='note'>Forward test non attivo: nessun confronto disponibile.</p>"
+    else:
+        ex = ft.get("expected", {})
+        proto = ft.get("protocol", {})
+        b += ("<p class='note'>In un mercato che sale quasi ogni acquisto guadagna: il P/L da solo non dice nulla. "
+              "Per questo, insieme a ogni segnale, il sistema registra con la stessa regola un titolo a caso lo "
+              "stesso giorno e un titolo a caso in un giorno qualsiasi. Conta la differenza tra le righe.</p>")
+        b += ("<table><tr><th>Cosa è stato comprato</th><th class='num'>Trade chiusi</th>"
+              "<th class='num'>Media per trade</th><th class='num'>Atteso dal backtest</th></tr>")
+        rows = [
+            ("Titoli del segnale", ft["closed"], ft["avg_pnl_pct"] if ft["closed"] else None, ex.get("signal")),
+            ("Titolo a caso, stesso giorno", ft["control_closed"], ft["control_avg_pnl_pct"], ex.get("control")),
+            ("Titolo a caso, giorno qualsiasi", ft["baseline_closed"], ft["baseline_avg_pnl_pct"], ex.get("baseline")),
+        ]
+        if ft.get("index_closed"):
+            rows.append(("Indice SPY nei giorni di panico", ft["index_closed"], ft["index_avg_pnl_pct"], None))
+        for name, n, avg, exp in rows:
+            exp_txt = f"{exp:+.1f}%" if exp is not None else "—"
+            b += (f"<tr><td>{name}</td><td class='num'>{n}</td>"
+                  f"<td class='num {cls(avg) if avg is not None else ''}'>{_pct(avg)}</td>"
+                  f"<td class='num'>{exp_txt}</td></tr>")
+        b += "</table>"
+        b += ("<p class='note'>"
+              f"<b>Segnali − giorno qualsiasi:</b> {_pct(ft.get('edge_vs_baseline'))} (atteso +2.2). "
+              f"<b>Di cui dal giorno scelto:</b> {_pct(ft.get('timing_edge'))} (atteso +1.5); "
+              f"<b>dal titolo scelto:</b> {_pct(ft.get('edge_vs_control'))} (atteso +0.7). "
+              f"Win rate {ft['win_rate']:.0f}% (atteso {ex.get('win_rate', 65)}%). "
+              f"Contro SPY sulle stesse date: {_pct(ft.get('avg_excess_pct'))}.</p>")
+        b += (f"<div class='box'><b style='color:{v_color};'>Semaforo: {v_label}</b> — {ft.get('verdict_reason', '')}.<br>"
+              f"Avanzamento: {ft['closed']}/{proto.get('min_closed', 30)} trade chiusi, "
+              f"{ft['n_clusters']}/{proto.get('min_clusters', 12)} settimane distinte. "
+              "Il semaforo dice solo se i risultati sono coerenti col backtest: ogni settimana con segnali vale "
+              "come una sola osservazione, e per una conferma statistica del vantaggio servirebbero anni.")
+        if ft.get("protocol_violations"):
+            b += (f"<br><span class='neg'>Attenzione: {ft['protocol_violations']} cambio/i di parametri a journal "
+                  "avviato, il campione non è più omogeneo.</span>")
+        b += "</div>"
+
+    # ---------- piede ----------
+    failed = len(scan_result.get("errors", []))
+    b += ("<p class='note' style='margin-top:22px; border-top:1px solid #eee; padding-top:10px;'>"
+          f"Titoli scansionati: {p.get('n_downloaded', 0)}/{p.get('n_tickers', 0)}"
+          + (f" ({failed} non scaricati)" if failed else "")
+          + f". Segnale: z del potenziale &gt; {p.get('entry_z', 2.0)} con prezzo sotto il fondamentale; "
+          f"uscita dopo {horizon} barre. Calcolato solo su barre giornaliere complete. "
+          "Paper trading: nessun ordine viene eseguito.</p>")
+    b += "</div></body></html>"
+    return subject, b
 
 
 # ============================================================
@@ -603,6 +927,12 @@ def run_stable_scan(send_email=True):
     horizon = int(cfg.get("horizon", 21))
     price_sink = {} if cfg.get("forward_test", True) else None
 
+    # il benchmark serve al forward test (confronto sulle stesse date)
+    if price_sink is not None and strategy == "ARANCIONE":
+        from forward_test import BENCHMARK
+        if BENCHMARK not in tickers:
+            tickers = list(tickers) + [BENCHMARK]
+
     result = compute_stable_signals(
         tickers=tickers,
         alpha=cfg.get("alpha", 200),
@@ -619,25 +949,39 @@ def run_stable_scan(send_email=True):
     )
 
     # --- FORWARD TEST: registra i segnali reali nel journal persistente ---
-    if price_sink is not None:
+    # Il journal chiude a orizzonte fisso: è la regola dell'ARANCIONE. Per
+    # STABLE/COMBO l'uscita dipende dallo slope, quindi un track record a
+    # orizzonte fisso sarebbe fuorviante: non viene registrato.
+    if price_sink is not None and strategy != "ARANCIONE":
+        print(f"🧪 Forward test non registrato: supportato solo per ARANCIONE (strategia attuale {strategy})")
+    elif price_sink is not None:
         try:
             from forward_test import (load_journal, save_journal,
-                                      update_journal, journal_stats)
+                                      update_journal, journal_stats, journal_detail)
             journal = load_journal()
+            # oggi + recenti (<5gg): se uno scan salta un giorno il segnale
+            # non va perso. L'ingresso resta la prima barra dopo il segnale,
+            # quindi registrarlo in ritardo non cambia il prezzo di carico.
             new_signals = [{
                 "ticker": e["ticker"], "signal_date": e["date"],
                 "direction": e.get("direction", "LONG"),
                 "strategy": strategy, "price": e.get("price"),
-            } for e in result["entries_today"]]
-            update_journal(journal, price_sink, new_signals, horizon=horizon)
+            } for e in result["entries_today"] + result["entries_recent"]]
+            update_journal(journal, price_sink, new_signals, horizon=horizon,
+                           params=strategy_params(cfg),
+                           universe=list(price_sink.keys()))
             save_journal(journal)
             result["forward_test"] = journal_stats(journal)
-            print(f"🧪 Forward test: {result['forward_test']}")
+            result["forward_detail"] = journal_detail(journal)
+            ft = result["forward_test"]
+            print(f"🧪 Forward test: {ft['closed']} chiusi, media {ft['avg_pnl_pct']}%, "
+                  f"semaforo {ft['verdict']} ({ft['verdict_reason']})")
         except Exception as e:
             print(f"⚠️ Forward test update fallito: {e}")
 
     if send_email:
-        subject, body = build_stable_email(result)
+        builder = build_orange_email if strategy == "ARANCIONE" else build_stable_email
+        subject, body = builder(result)
         notifier = NotificationManager()
         recipient = cfg.get("recipient", "")
         if recipient:

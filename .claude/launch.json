@@ -6,6 +6,18 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-c", "cd backend && venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000"],
       "port": 8000
+    },
+    {
+      "name": "backend-authtest",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd backend && API_KEY=chiave-locale-di-test FPR_STORAGE=local venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8011"],
+      "port": 8011
+    },
+    {
+      "name": "research-output",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd backend/research/output && ../../venv/bin/python -m http.server 8012 --bind 127.0.0.1"],
+      "port": 8012
     }
   ]
 }

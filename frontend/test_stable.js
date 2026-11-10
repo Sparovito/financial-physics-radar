@@ -1077,7 +1077,8 @@ async function loadForwardStatus() {
 async function resetForwardJournal() {
     if (!confirm('Archiviare il journal corrente e ripartire da zero?\n(Il file attuale viene rinominato, non cancellato)')) return;
     try {
-        const resp = await fetch(`${API_BASE}/forward-test/reset`, { method: 'POST' });
+        const resp = await apiFetch(`${API_BASE}/forward-test/reset`, { method: 'POST' });
+        if (!resp.ok) throw new Error(resp.status === 401 ? 'API key mancante o errata' : `HTTP ${resp.status}`);
         const data = await resp.json();
         setStatus(`🗑 Journal archiviato${data.archived ? ': ' + data.archived : ''}. Riparte col prossimo scan.`);
         loadForwardStatus();
@@ -1088,7 +1089,9 @@ async function resetForwardJournal() {
 
 function renderForward() {
     const stats = FWD_JOURNAL?.stats || {};
-    const trades = FWD_JOURNAL?.trades || [];
+    const allTrades = FWD_JOURNAL?.trades || [];
+    // i gruppi di confronto (controllo, base, indice) non sono posizioni: fuori dalla tabella
+    const trades = allTrades.filter(t => (t.group || 'signal') === 'signal');
     const info = document.getElementById('fwd-info');
     info.textContent = trades.length === 0
         ? 'Journal vuoto: si popola automaticamente a ogni scan email (22:30). Nessun dato retroattivo, solo segnali reali da oggi in poi.'
@@ -1105,6 +1108,50 @@ function renderForward() {
         <div class="card"><div class="label">Win Rate</div><div class="value">${stats.win_rate ?? 0}%</div></div>
         <div class="card"><div class="label">Aperti: P/L medio</div><div class="value ${c(stats.open_avg_pnl_pct || 0)}">${(stats.open_avg_pnl_pct ?? 0) >= 0 ? '+' : ''}${stats.open_avg_pnl_pct ?? 0}%</div></div>
     `;
+
+    // protocollo: regole fissate prima di avere dati. Il verdetto è un
+    // semaforo di coerenza col backtest, non una prova statistica.
+    const proto = stats.protocol || {};
+    const exp = stats.expected || {};
+    const verdicts = {
+        IN_CORSO: ['⏳ In corso', 'var(--text)'],
+        COERENTE: ['✅ Coerente col backtest', 'var(--green)'],
+        STOP: ['🛑 Stop', 'var(--red)'],
+        ESTENDI: ['➕ Da estendere', 'var(--orange)'],
+        NON_CONFERMATO: ['✖ Non confermato', 'var(--red)'],
+    };
+    const [vLabel, vColor] = verdicts[stats.verdict] || [stats.verdict || '-', 'var(--text)'];
+    const pct = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v + '%');
+    const fp = stats.frozen_params;
+    const fpTxt = fp ? Object.entries(fp).map(([k, v]) => `${k}=${v}`).join(', ') : 'non ancora congelati (primo scan)';
+    const viol = stats.protocol_violations
+        ? `<br><span style="color:var(--red);">⚠️ ${stats.protocol_violations} cambio/i di parametri a journal avviato: il campione non è più omogeneo.</span>`
+        : '';
+    const cmpRow = (label, n, avg, e) => `<tr>
+            <td>${label}</td><td style="text-align:right;">${n ?? 0}</td>
+            <td style="text-align:right;" class="${(avg ?? 0) >= 0 ? 'pos' : 'neg'}">${pct(avg)}</td>
+            <td style="text-align:right;">${e != null ? '+' + e + '%' : '—'}</td></tr>`;
+    document.getElementById('fwd-protocol').innerHTML = `
+        <b style="color:${vColor}; font-size:0.95rem;">${vLabel}</b> — ${stats.verdict_reason || ''}<br>
+        Avanzamento: <b>${stats.closed ?? 0}/${proto.min_closed ?? 30}</b> trade chiusi in
+        <b>${stats.n_clusters ?? 0}/${proto.min_clusters ?? 12}</b> settimane distinte.
+        È un semaforo di coerenza, non una prova: per confermare statisticamente il vantaggio servirebbero anni.
+        <table class="data-table" style="margin:10px 0; max-width:640px;">
+            <thead><tr><th>Cosa è stato comprato</th><th style="text-align:right;">Chiusi</th>
+            <th style="text-align:right;">Media/trade</th><th style="text-align:right;">Atteso (backtest)</th></tr></thead>
+            <tbody>
+            ${cmpRow('Titoli del segnale', stats.closed, stats.closed ? stats.avg_pnl_pct : null, exp.signal)}
+            ${cmpRow('Titolo a caso, stesso giorno', stats.control_closed, stats.control_avg_pnl_pct, exp.control)}
+            ${cmpRow('Titolo a caso, giorno qualsiasi', stats.baseline_closed, stats.baseline_avg_pnl_pct, exp.baseline)}
+            ${stats.index_closed ? cmpRow('Indice SPY nei giorni di panico', stats.index_closed, stats.index_avg_pnl_pct, null) : ''}
+            </tbody>
+        </table>
+        Segnali − giorno qualsiasi: <b>${pct(stats.edge_vs_baseline)}</b> (atteso +2.2) ·
+        dal giorno scelto ${pct(stats.timing_edge)} (atteso +1.5) ·
+        dal titolo scelto ${pct(stats.edge_vs_control)} (atteso +0.7) ·
+        contro SPY sulle stesse date ${pct(stats.avg_excess_pct)}.<br>
+        Scan registrati: ${stats.n_runs ?? 0}${stats.last_run ? ' (ultimo ' + stats.last_run + ')' : ''}.
+        Parametri congelati: ${fpTxt}.${viol}`;
 
     // tabella (più recenti in alto)
     const tbody = document.getElementById('fwd-body');
@@ -1162,7 +1209,7 @@ function renderForward() {
 function collectSimTrades(source) {
     if (source === 'journal') {
         return (FWD_JOURNAL?.trades || [])
-            .filter(t => t.status === 'closed' && t.pnl_pct != null)
+            .filter(t => (t.group || 'signal') === 'signal' && t.status === 'closed' && t.pnl_pct != null)
             .map(t => ({ entry_date: t.entry_date, exit_date: t.exit_date, pnl_pct: t.pnl_pct }));
     }
     // backtest corrente: tutti i trade chiusi dei ticker analizzati
@@ -1372,7 +1419,7 @@ async function saveAlertConfig() {
             horizon: parseInt(document.getElementById('alert-horizon')?.value) || 21,
         };
 
-        const resp = await fetch(`${API_BASE}/stable-alert/config`, {
+        const resp = await apiFetch(`${API_BASE}/stable-alert/config`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config),
@@ -1402,7 +1449,7 @@ async function triggerAlertNow() {
         // Single call: scans + sends email + returns results
         setStatus('🔬 Scansione STABLE + invio email in corso... (2-5 min per ~700 tickers)');
 
-        const testResp = await fetch(`${API_BASE}/stable-alert/trigger-with-result`, {
+        const testResp = await apiFetch(`${API_BASE}/stable-alert/trigger-with-result`, {
             method: 'POST',
         });
         if (!testResp.ok) throw new Error(`HTTP ${testResp.status}`);
