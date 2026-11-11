@@ -180,7 +180,35 @@ def main():
     blk_cut = v2_chart_block(d_all.iloc[:700], start_date=start, end_date=None)
     assert blk_cut["state"] == blk["state"][:700]
 
-    print("OK test_frozen_v2_rise — stati 0-4, V2 Risalita causale ed eseguita a t+1 | scanner: frozen2 %+.1f%% (espos. %.0f%%), frozen2r %+.1f%% (espos. %.0f%%)"
+    # --- 10. pannello DIREZIONE: blu (oracolo) e arancione con il segno, nella stessa scala ---
+    from stable_strategy import ORANGE_LAG_BARS, signed_energy
+    assert ORANGE_LAG_BARS == 9, "ritardo misurato dell'arancione sul blu (research/frozen_vs_energy.py)"
+    assert signed_energy([4.0, 9.0, float("nan"), 1.0], [-2.0, 3.0, 1.0, float("nan")], scale=2.0) == [-8.0, 18.0, None, None]
+    dr = blk["direction"]
+    assert dr["lag"] == ORANGE_LAG_BARS
+    assert len(dr["orange"]) == len(dr["oracle"]) == len(dts), "una barra per data del grafico"
+    assert 1.0 < dr["scale"] < 1.15, f"fattore di scala atteso ≈ 1.07, è {dr['scale']}"
+    assert dr["orange"][:100] == [None] * 100, "riscaldamento del filtro: nessun valore"
+    for i, stt in enumerate(blk["state"]):
+        if stt in (1, 2):
+            assert dr["orange"][i] < 0, "prezzo sotto il percorso → arancione negativo"
+        elif stt in (3, 4):
+            assert dr["orange"][i] > 0, "prezzo sopra il percorso → arancione positivo"
+    k = next(i for i in range(300, len(dts)) if p_in[i] > 1e-3)
+    assert abs(abs(dr["orange"][k]) - p_in[k] * dr["scale"]) < 1e-2 * max(1.0, p_in[k]), "|arancione| = potenziale × scala"
+    # l'arancione è causale (il passato non cambia); il blu no: è l'oracolo, viene ridisegnato
+    assert blk_cut["direction"]["orange"] == dr["orange"][:700]
+    assert blk_cut["direction"]["oracle"] != dr["oracle"][:700], "il blu deve cambiare quando arrivano nuovi dati"
+    # su una salita a ritmo costante le due curve coincidono (stessa scala) e sono positive
+    ramp = pd.Series([100 + 0.5 * i for i in range(600)], index=pd.date_range("2022-01-03", periods=600, freq="B"))
+    rb = v2_chart_block(ramp)["direction"]
+    assert rb["oracle"][300] > 0 and rb["orange"][300] > 0
+    assert abs(rb["oracle"][300] - rb["orange"][300]) / rb["oracle"][300] < 0.02, (rb["oracle"][300], rb["orange"][300])
+    fall = pd.Series([400 - 0.5 * i for i in range(600)], index=ramp.index)
+    fb = v2_chart_block(fall)["direction"]
+    assert fb["oracle"][300] < 0 and fb["orange"][300] < 0, "in discesa entrambe sotto lo zero"
+
+    print("OK test_frozen_v2_rise — stati 0-4, V2 Risalita causale ed eseguita a t+1, direzione blu/arancione | scanner: frozen2 %+.1f%% (espos. %.0f%%), frozen2r %+.1f%% (espos. %.0f%%)"
           % (r["strategies"]["frozen2"]["roi"], r["strategies"]["frozen2"]["expo"], s2r["roi"], s2r["expo"]))
 
 

@@ -162,6 +162,26 @@ def backtest_frozen_v2(dates, prices, pot_raw, displacement, entry_z=0.0,
                            start_date=start_date, end_date=end_date)
 
 
+# Ritardo, in barre, con cui il potenziale causale (arancione del Frozen) ripete
+# la cinetica dell'oracolo (blu dell'Energy): correlazione massima a 9 barre su
+# tutti i 611 titoli (research/frozen_vs_energy.py). Vale per α=200, β=1.
+ORANGE_LAG_BARS = 9
+
+
+def signed_energy(pot_raw, displacement, scale=1.0):
+    """Potenziale con il SEGNO dello scostamento d = F − x_f: positivo se il
+    prezzo recente è sopra il percorso (energia di una salita), negativo se è
+    sotto (energia di una discesa). None dove mancano i dati. Causale."""
+    out = []
+    for p, d in zip(pot_raw, displacement):
+        if p is None or d is None or p != p or d != d:
+            out.append(None)
+        else:
+            sign = 1.0 if d > 0 else (-1.0 if d < 0 else 0.0)
+            out.append(float(f"{sign * p * scale:.6g}"))
+    return out
+
+
 def _v2_series(pot_raw, displacement, entry_z, rise_bars, zwin, min_periods):
     """Per barra: energia sopra la media (bool), scostamento d (None se manca),
     energia in aumento rispetto a `rise_bars` barre prima (bool). Stesso

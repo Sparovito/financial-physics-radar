@@ -381,6 +381,13 @@ function renderCharts(data) {
         yaxis: 'y12'
     };
 
+    // --- PANNELLO DIREZIONE (sostituisce Kinetic Z) ---
+    // Blu = cinetica dell'oracolo con il segno della sua velocità (ridisegnata col futuro).
+    // Arancione = potenziale causale con il segno dello scostamento, già nella scala del blu e
+    // riportato indietro di `lag` barre: così le due curve si sovrappongono. Sopra lo zero = salita,
+    // sotto = discesa. L'ultimo punto dell'arancione è quello di OGGI, disegnato `lag` barre fa.
+    const dirTraces = getDirectionTraces(data);
+
     // --- FROZEN SUM TRACE (Cyan) ---
     const traceFrozenSum = {
         x: data.frozen?.dates || [],
@@ -658,8 +665,10 @@ function renderCharts(data) {
         yaxis9: { // KINETIC Z PANEL
             domain: domains.kineticz || defaultDomain,
             gridcolor: '#333333',
-            title: showKineticZ ? 'Kinetic Z' : '',
-            tickfont: { color: '#bf00ff' },
+            title: showKineticZ ? (dirTraces ? 'Direzione' : 'Kinetic Z') : '',
+            tickfont: { color: dirTraces ? '#00bfff' : '#bf00ff' },
+            zeroline: true,
+            zerolinecolor: '#888888',
             visible: showKineticZ
         },
         yaxis10: { // FROZEN SLOPE PANEL
@@ -765,9 +774,10 @@ function renderCharts(data) {
     if (traceV2Strat) traces.push(traceV2Strat);
     if (traceV2RiseStrat) traces.push(traceV2RiseStrat);
 
-    // Kinetic Z Trace
+    // Pannello Direzione (al posto di Kinetic Z; le vecchie curve solo se mancano i dati nuovi)
     if (showKineticZ) {
-        traces.push(traceKineticZ, traceFrozenSum);
+        if (dirTraces) traces.push(...dirTraces);
+        else traces.push(traceKineticZ, traceFrozenSum);
     }
 
     // Stable Kinetic Z (separate panel)
@@ -3078,7 +3088,66 @@ function getAnnotationShapes() {
     // Trade marker shapes
     const tradeShapes = getTradeMarkerShapes();
 
-    return [...getV2ZoneShapes(), ...manualShapes, ...tradeShapes];
+    return [...getV2ZoneShapes(), ...getDirectionBlindShapes(), ...manualShapes, ...tradeShapes];
+}
+
+// --- PANNELLO DIREZIONE: blu (oracolo) e arancione sovrapposti, con il segno ---
+function getDirectionTraces(data) {
+    const dir = data?.frozen_v2?.direction;
+    if (!dir || !dir.oracle || !dir.orange || !dir.orange.length) return null;
+    const lag = dir.lag ?? 9;
+    const n = data.dates.length;
+    const shifted = dir.orange.map((_, i) => (i + lag < n ? dir.orange[i + lag] : null));
+    return [
+        {
+            x: data.dates, y: dir.oracle,
+            name: 'Blu con il segno: cinetica dell\'oracolo (ridisegnata col futuro)',
+            type: 'scatter', mode: 'lines', fill: 'tozeroy',
+            line: { color: '#00bfff', width: 1.5 }, fillcolor: 'rgba(0, 191, 255, 0.22)',
+            hovertemplate: '%{x}<br>blu: %{y:.1f}<extra></extra>',
+            xaxis: 'x', yaxis: 'y9'
+        },
+        {
+            x: data.dates, y: shifted,
+            name: `Arancione con il segno, riportato indietro di ${lag} barre (in tempo reale)`,
+            type: 'scatter', mode: 'lines',
+            line: { color: '#ff6600', width: 2 },
+            hovertemplate: `%{x}<br>arancione (misurato ${lag} barre dopo): %{y:.1f}<extra></extra>`,
+            xaxis: 'x', yaxis: 'y9'
+        },
+        {
+            x: data.dates, y: dir.orange,
+            name: 'Arancione nel giorno in cui lo vedi (non spostato)',
+            type: 'scatter', mode: 'lines',
+            line: { color: '#ff6600', width: 1, dash: 'dot' },
+            visible: 'legendonly',
+            xaxis: 'x', yaxis: 'y9'
+        },
+        {
+            x: [null], y: [null],
+            name: `▫️ Ultime ${lag} barre: il blu non è ancora definito`,
+            type: 'scatter', mode: 'markers',
+            marker: { symbol: 'square', size: 12, color: 'rgba(255, 255, 255, 0.25)' },
+            hoverinfo: 'skip', xaxis: 'x', yaxis: 'y9'
+        }
+    ];
+}
+
+// le ultime `lag` barre del pannello Direzione: lì il blu è ancora piatto (verrà ridisegnato)
+// e l'arancione spostato non arriva
+function getDirectionBlindShapes() {
+    const data = window.LAST_ANALYSIS_DATA;
+    const dir = data?.frozen_v2?.direction;
+    const show = document.getElementById('show-kinetic-z')?.checked ?? false;
+    if (!show || !dir || !dir.orange || !data.dates || data.dates.length <= (dir.lag ?? 9)) return [];
+    const n = data.dates.length;
+    return [{
+        type: 'rect', xref: 'x', yref: 'y9 domain',
+        x0: data.dates[n - 1 - (dir.lag ?? 9)], x1: data.dates[n - 1], y0: 0, y1: 1,
+        fillcolor: 'rgba(255, 255, 255, 0.07)',
+        line: { color: 'rgba(255, 255, 255, 0.3)', width: 1, dash: 'dot' },
+        layer: 'below'
+    }];
 }
 
 // --- ZONE V2: stato dell'arancione (causale, non viene ridisegnato) ---

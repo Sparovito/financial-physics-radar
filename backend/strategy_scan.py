@@ -36,7 +36,7 @@ import pandas as pd
 from logic import (ActionPath, backtest_strategy, kalman_frozen_series, causal_lowpass)
 from stable_strategy import (backtest_stable, backtest_potential_discharge, backtest_combo,
                              backtest_frozen_v2, backtest_frozen_v2_rise, frozen_v2_states,
-                             POTENTIAL_ALPHA, POTENTIAL_BETA)
+                             signed_energy, ORANGE_LAG_BARS, POTENTIAL_ALPHA, POTENTIAL_BETA)
 
 WARMUP_DAYS = 560          # giorni di calendario scaricati prima dell'inizio periodo
 MIN_BARS = 160
@@ -244,19 +244,47 @@ def v2_inputs(px, frozen=None):
     return pot, disp
 
 
+def orange_scale(alpha=POTENTIAL_ALPHA, beta=POTENTIAL_BETA):
+    """Fattore che porta l'arancione (½β·d²) nella scala del blu (½α·v²).
+    Su un movimento a ritmo costante v il filtro resta indietro di
+    d = v·(1−K)/K (K = guadagno di Kalman a regime), quindi
+    blu / arancione = α·K² / (β·(1−K)²)  ≈ 1.07 per α=200, β=1."""
+    q, r = 1.0 / alpha, 1.0 / beta
+    p_pred = (q + math.sqrt(q * q + 4 * q * r)) / 2
+    k = p_pred / (p_pred + r)
+    return alpha * k * k / (beta * (1 - k) ** 2)
+
+
 def v2_chart_block(px, start_date=None, end_date=None):
-    """Quello che serve al grafico di /analyze: lo stato dell'arancione per
-    barra (0-4, vedi stable_strategy.frozen_v2_states) e i backtest di Frozen
-    V2 e V2 Risalita sulle stesse date del grafico. Tutto causale: troncando
-    la storia il passato non cambia."""
+    """Quello che serve al grafico di /analyze:
+    - state: lo stato dell'arancione per barra (0-4, vedi frozen_v2_states);
+    - v2, rise: i backtest di Frozen V2 e V2 Risalita sulle date del grafico;
+    - direction: le due energie CON IL SEGNO (sopra lo zero = salita, sotto =
+      discesa) nella stessa scala, per il pannello "Direzione":
+        orange  potenziale causale × segno dello scostamento (non ridisegnato)
+        oracle  cinetica del percorso di minima azione × segno della sua
+                velocità: è l'ORACOLO, usa il futuro e viene ridisegnato; serve
+                solo come confronto visivo
+        lag     barre di ritardo dell'arancione sul blu (9)
+    Stato, backtest e arancione sono causali: troncando la storia il passato
+    non cambia. Parametri del potenziale sempre quelli validati (α=200, β=1)."""
     dates = px.index.strftime("%Y-%m-%d").tolist()
     prices = [float(v) for v in px.values]
     pot, disp = v2_inputs(px)
     kw = dict(execution_lag=1, cost_pct=0.0, start_date=start_date, end_date=end_date)
+    scale = orange_scale()
+    mech = ActionPath(px, alpha=POTENTIAL_ALPHA, beta=POTENTIAL_BETA)
+    oracle = [float(f"{v:.6g}") for v in (np.sign(mech.dX.values) * mech.kin_density.values)]
     return {
         "state": frozen_v2_states(pot, disp),
         "v2": backtest_frozen_v2(dates, prices, pot, disp, **kw),
         "rise": backtest_frozen_v2_rise(dates, prices, pot, disp, **kw),
+        "direction": {
+            "orange": signed_energy(pot, disp, scale=scale),
+            "oracle": oracle,
+            "lag": ORANGE_LAG_BARS,
+            "scale": round(scale, 4),
+        },
     }
 
 

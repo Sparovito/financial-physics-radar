@@ -345,6 +345,15 @@ Formula: `EMA(prices, span=alpha/10)` → `diff()` → `EMA(14)`. Puramente back
     non l'alpha scelto a schermo. La curva viola "Kinetic Z (live)" e il blu/rosso
     dell'Energy sono invece ridisegnati col futuro: non si possono usare per
     decidere in tempo reale (`research/kinetic_trend.py`).
+-   **Pannello Direzione** (interruttore ⚛️, al posto di Kinetic Z; chiave
+    `frozen_v2.direction` di `/analyze`): blu = cinetica dell'oracolo col segno
+    (ridisegnata), arancione = potenziale causale col segno, in scala
+    (`strategy_scan.orange_scale`) e riportato indietro di 9 barre
+    (`stable_strategy.ORANGE_LAG_BARS`). Sopra lo zero salita, sotto discesa.
+    L'ultimo punto dell'arancione è quello di oggi, disegnato 9 barre fa: le
+    ultime 9 barre (fascia grigia) non sono ancora misurabili. Il segno
+    dell'arancione coincide con la direzione dell'oracolo nell'82% dei giorni,
+    ma quasi mai nelle 10 barre dopo una svolta (`research/frozen_vs_energy.py`).
 -   **Grafico `/analyze`, pannello P/L e riquadro risultati**: LIVE (oracolo),
     FROZEN, V2, V2 Risalita. SUM e STABLE sono stati tolti da lì su richiesta
     (restano nello scanner, nel selettore dei trade e in "Vedi Operazioni").
