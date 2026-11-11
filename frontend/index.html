@@ -496,6 +496,12 @@
                     ⏹️ STOP
                 </button>
 
+                <!-- Esporta il risultato corrente (tutte le metriche, tutte le strategie) -->
+                <button id="btn-export-scan" onclick="exportScanCsv()" title="Scarica il risultato dello scan in CSV: una riga per titolo con B&H e, per ogni strategia, ROI, alpha, win rate, trade, esposizione"
+                    style="background:#1a1d2a; color:#eba834; padding:10px 16px; border:1px solid #eba834; border-radius:6px; font-weight:bold; cursor:pointer; white-space:nowrap;">
+                    ⬇️ CSV
+                </button>
+
                 <!-- Status (inline on desktop) -->
                 <div style="flex:1; text-align:right; min-width:150px;">
                     <span id="scan-status" style="color:#eba834; font-weight:500;">📊 Pronto.</span>
@@ -529,7 +535,8 @@
                     <select id="scan-metric" onchange="applyScanFilters()"
                         style="background:#333; border:1px solid #444; color:#fff; padding:4px; border-radius:4px;">
                         <option value="roi">ROI %</option>
-                        <option value="alpha">Alpha (ROI − esposizione × B&amp;H)</option>
+                        <option value="timing">Timing % (contro gli stessi tempi a caso)</option>
+                        <option value="alpha">Alpha vecchio (ROI − esposizione × B&amp;H)</option>
                         <option value="win_rate">Win rate %</option>
                         <option value="expo">Esposizione %</option>
                         <option value="trades">N. trade chiusi</option>
@@ -544,7 +551,15 @@
                 <span style="color:#ddd;">bianco</span> = positivo ma sotto il B&amp;H,
                 <span style="color:#ff4444;">rosso</span> = negativo.
                 <i>Oracolo</i> conosce il futuro: è il soffitto teorico, non una strategia.
+                <b style="color:#ccc;">Timing</b> = quanto la strategia ha reso in più rispetto a restare investiti per lo
+                stesso tempo in momenti qualsiasi: sopra zero i tempi di ingresso e uscita hanno aggiunto valore, sotto zero l'hanno tolto.
+                L'<i>Alpha vecchio</i> resta per confronto, ma sui titoli saliti molto è troppo severo.
                 Clic sulle intestazioni per ordinare; passa il mouse su una cella per il dettaglio.
+            </div>
+
+            <!-- Significatività sul portafoglio di tutti i titoli (riempita da renderScanSignificance) -->
+            <div id="scan-significance"
+                style="display:none; padding:10px 15px; background:#14161c; border-bottom:1px solid #333; color:#bbb; font-size:0.82rem;">
             </div>
 
             <!-- RESULTS TABLE -->
@@ -561,6 +576,7 @@
                             <th class="scan-sort" data-sort="bh" style="padding:12px; cursor:pointer; text-align:right; color:#fff;" title="Compra-e-tieni nello stesso periodo: il termine di paragone">B&amp;H %</th>
                             <th class="scan-sort" data-sort="live" style="padding:12px; cursor:pointer; text-align:right; color:#6a8f7a; font-style:italic;" title="LIVE usa lo smoother bidirezionale: conosce il futuro. Soffitto teorico, non eseguibile.">Oracolo</th>
                             <th class="scan-sort" data-sort="frozen" style="padding:12px; cursor:pointer; text-align:right; color:#ff9900;">Frozen</th>
+                            <th class="scan-sort" data-sort="frozen2" style="padding:12px; cursor:pointer; text-align:right; color:#ffd166;" title="Frozen con direzione: energia sopra la media E prezzo recente sotto il percorso filtrato. Solo long. Candidata, non ancora validata in avanti.">Frozen V2</th>
                             <th class="scan-sort" data-sort="sum" style="padding:12px; cursor:pointer; text-align:right; color:#ff6666;">SUM</th>
                             <th class="scan-sort" data-sort="stable" style="padding:12px; cursor:pointer; text-align:right; color:#aa44ff;">Stable</th>
                             <th class="scan-sort" data-sort="orange" style="padding:12px; cursor:pointer; text-align:right; color:#ffb347;" title="Scarico del potenziale: poche operazioni, esposizione bassa. Confrontala con Alpha, non con il ROI.">Arancione</th>
@@ -605,6 +621,7 @@
                             <option value="ARANCIONE">🟠 Arancione</option>
                             <option value="STABLE">🟣 Stable</option>
                             <option value="FROZEN">❄️ Frozen</option>
+                            <option value="FROZEN_V2">🧭 Frozen V2</option>
                             <option value="SUM">🔴 SUM</option>
                             <option value="LIVE">🔮 Oracolo (usa il futuro)</option>
                         </select>
@@ -869,7 +886,7 @@
     </div>
     <script src="tickers.js?v=6"></script>
     <script src="api_auth.js?v=1"></script>
-    <script src="app.js?v=26"></script>
+    <script src="app.js?v=28"></script>
 </body>
 
 </html>

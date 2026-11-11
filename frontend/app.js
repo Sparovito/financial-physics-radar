@@ -2173,10 +2173,13 @@ function closeScannerModal() {
 //  Stato in memoria (SCAN_ROWS) e UNA funzione di resa: filtri,
 //  ordinamento, riga delle medie e spunte restano coerenti.
 // ============================================================
-const SCAN_STRATS = ['live', 'frozen', 'sum', 'stable', 'orange', 'combo'];
+const SCAN_STRATS = ['live', 'frozen', 'frozen2', 'sum', 'stable', 'orange', 'combo'];
+const SCAN_LABELS = { live: 'Oracolo', frozen: 'Frozen', frozen2: 'Frozen V2', sum: 'SUM', stable: 'Stable', orange: 'Arancione', combo: 'Combo' };
+const SCAN_COLORS = { live: '#6a8f7a', frozen: '#ff9900', frozen2: '#ffd166', sum: '#ff6666', stable: '#aa44ff', orange: '#ffb347', combo: '#00e5ff' };
 const SCAN_BATCH_SIZE = 20;
 let SCAN_ROWS = [];                 // [{ticker, bh, trend, strategies:{...}}]
 let SCAN_ERRORS = {};               // {ticker: motivo}
+let SCAN_WEEKLY = {};               // {strategia: {lunedì: [somma eccesso tra i titoli, n titoli]}}
 let SCAN_UNCHECKED = new Set();     // titoli esclusi dal simulatore
 let SCAN_SORT = { key: 'ticker', dir: 1 };
 
@@ -2191,7 +2194,7 @@ function scanMetric() {
 function scanFmt(v, metric) {
     if (v == null || !Number.isFinite(v)) return '—';
     if (metric === 'trades') return String(v);
-    const sign = (metric === 'roi' || metric === 'alpha') && v > 0 ? '+' : '';
+    const sign = (metric === 'roi' || metric === 'alpha' || metric === 'timing') && v > 0 ? '+' : '';
     return sign + v.toFixed(1) + '%';
 }
 
@@ -2199,12 +2202,12 @@ function scanFmt(v, metric) {
 function scanColor(v, metric, bh) {
     if (v == null) return '#666';
     if (metric === 'roi') return v < 0 ? '#ff4444' : (v > bh ? '#00ff88' : '#ddd');
-    if (metric === 'alpha') return v > 0 ? '#00ff88' : (v < 0 ? '#ff4444' : '#ddd');
+    if (metric === 'alpha' || metric === 'timing') return v > 0 ? '#00ff88' : (v < 0 ? '#ff4444' : '#ddd');
     return '#ccc';
 }
 
 function scanCellTitle(st, bh) {
-    return `ROI ${scanFmt(st.roi, 'roi')} · B&H ${scanFmt(bh, 'roi')} · alpha ${scanFmt(st.alpha, 'alpha')}` +
+    return `ROI ${scanFmt(st.roi, 'roi')} · B&H ${scanFmt(bh, 'roi')} · timing ${scanFmt(st.timing, 'timing')} · alpha vecchio ${scanFmt(st.alpha, 'alpha')}` +
         ` · win rate ${st.win_rate}% su ${st.trades} trade chiusi · esposizione ${st.expo}%`;
 }
 
@@ -2233,9 +2236,10 @@ async function startBulkScan() {
     // Reset stato e interfaccia
     SCAN_ROWS = [];
     SCAN_ERRORS = {};
+    SCAN_WEEKLY = {};
     SCAN_UNCHECKED = new Set();
     SCAN_STOP_SIGNAL = false;
-    window.SCAN_TRADES = { LIVE: [], FROZEN: [], SUM: [], STABLE: [], ARANCIONE: [], COMBO: [] };
+    window.SCAN_TRADES = { LIVE: [], FROZEN: [], FROZEN_V2: [], SUM: [], STABLE: [], ARANCIONE: [], COMBO: [] };
     window.ALL_SCAN_TRADES_LIVE = window.SCAN_TRADES.LIVE;
     window.ALL_SCAN_TRADES_FROZEN = window.SCAN_TRADES.FROZEN;
     window.ALL_SCAN_TRADES = window.SCAN_TRADES.COMBO;
@@ -2253,7 +2257,7 @@ async function startBulkScan() {
     // il selettore "x1/x4/x6" diventa il numero di richieste a batch in parallelo (max 3:
     // ogni batch scarica già più titoli insieme lato server)
     const concurrency = Math.max(1, Math.min(3, parseInt(document.getElementById('scan-parallel').value) || 2));
-    const tradeKey = { live: 'LIVE', frozen: 'FROZEN', sum: 'SUM', stable: 'STABLE', orange: 'ARANCIONE', combo: 'COMBO' };
+    const tradeKey = { live: 'LIVE', frozen: 'FROZEN', frozen2: 'FROZEN_V2', sum: 'SUM', stable: 'STABLE', orange: 'ARANCIONE', combo: 'COMBO' };
 
     const batches = [];
     for (let i = 0; i < tickersToScan.length; i += SCAN_BATCH_SIZE) {
@@ -2277,6 +2281,7 @@ async function startBulkScan() {
                     (r.trades?.[name] || []).forEach(t => window.SCAN_TRADES[tradeKey[name]].push({ ...t, ticker }));
                 }
             }
+            scanMergeWeekly(data.weekly);
             Object.assign(SCAN_ERRORS, data.errors || {});
         } catch (e) {
             console.error('Scanner batch fallito:', batch, e);
@@ -2362,15 +2367,26 @@ function renderScanTable() {
     // --- riga di sintesi: media e, in ROI, quota di titoli che batte il compra-e-tieni ---
     if (rows.length > 0) {
         const mean = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
+        const median = (arr) => { const v = [...arr].sort((a, b) => a - b); const m = v.length >> 1; return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2; };
         const avgBh = mean(rows.map(r => r.bh));
         const cells = SCAN_STRATS.map(name => {
             const have = rows.filter(r => r.strategies[name]);
             if (have.length === 0) return '<td style="padding:12px; text-align:right;">—</td>';
-            const avg = mean(have.map(r => r.strategies[name][metric]));
+            const vals = have.map(r => r.strategies[name][metric]).filter(v => v != null && Number.isFinite(v));
+            if (vals.length === 0) return '<td style="padding:12px; text-align:right;">—</td>';
+            const avg = mean(vals);
             const beat = have.filter(r => r.strategies[name].roi > r.bh).length / have.length * 100;
-            const sub = metric === 'roi'
-                ? `<div style="font-size:0.72em; font-weight:normal; color:#aaa;" title="Quota di titoli in cui la strategia ha reso più del compra-e-tieni">batte B&H ${beat.toFixed(0)}%</div>`
-                : '';
+            // la media è trascinata da pochi titoli estremi: la mediana dice cosa è successo al titolo "tipico"
+            let sub = '';
+            if (metric === 'roi' || metric === 'alpha' || metric === 'timing') {
+                sub = `<div style="font-size:0.72em; font-weight:normal; color:#aaa;" title="Mediana: metà dei titoli ha fatto meglio, metà peggio">mediana ${scanFmt(median(vals), metric)}</div>`;
+            }
+            if (metric === 'roi') {
+                sub += `<div style="font-size:0.72em; font-weight:normal; color:#aaa;" title="Quota di titoli in cui la strategia ha reso più del compra-e-tieni">batte B&H ${beat.toFixed(0)}%</div>`;
+            } else if (metric === 'timing') {
+                const pos = vals.filter(v => v > 0).length / vals.length * 100;
+                sub += `<div style="font-size:0.72em; font-weight:normal; color:#aaa;" title="Quota di titoli con timing positivo (50% = tempi a caso)">positivo ${pos.toFixed(0)}%</div>`;
+            }
             const dim = name === 'live' ? ' opacity:0.55; font-style:italic;' : '';
             return `<td style="padding:12px; text-align:right; color:${scanColor(avg, metric, avgBh)};${dim}">${scanFmt(avg, metric)}${sub}</td>`;
         }).join('');
@@ -2384,15 +2400,150 @@ function renderScanTable() {
             </td>
         </tr>`;
     } else if (SCAN_ROWS.length > 0) {
-        html = '<tr><td colspan="11" style="padding:15px; color:#888; text-align:center;">Nessun risultato con questo filtro</td></tr>';
+        html = '<tr><td colspan="12" style="padding:15px; color:#888; text-align:center;">Nessun risultato con questo filtro</td></tr>';
     }
     tbody.innerHTML = html;
+    renderScanSignificance();
 
     // freccia sull'intestazione ordinata
     document.querySelectorAll('.scan-sort').forEach(th => {
         const base = th.dataset.label || (th.dataset.label = th.textContent.trim());
         th.textContent = base + (th.dataset.sort === SCAN_SORT.key ? (SCAN_SORT.dir > 0 ? ' ▲' : ' ▼') : '');
     });
+}
+
+// --- Significatività sul portafoglio di tutti i titoli ---
+// Ogni batch restituisce, per strategia e per settimana, la somma tra i titoli
+// dell'eccesso di rendimento (strategia − stessi tempi a caso) e il numero di titoli.
+// Sommando i batch e dividendo si ottiene l'eccesso settimanale del portafoglio a
+// pesi uguali: il t va fatto su queste settimane, perché i titoli si muovono insieme
+// e contarli come prove indipendenti gonfierebbe la significatività.
+function scanMergeWeekly(weekly) {
+    for (const [name, weeks] of Object.entries(weekly || {})) {
+        const dst = SCAN_WEEKLY[name] || (SCAN_WEEKLY[name] = {});
+        for (const [k, v] of Object.entries(weeks)) {
+            const cell = dst[k] || (dst[k] = [0, 0]);
+            cell[0] += v[0];
+            cell[1] += v[1];
+        }
+    }
+}
+
+function scanTStat(x) {
+    if (x.length < 3) return null;
+    const m = x.reduce((a, b) => a + b, 0) / x.length;
+    const sd = Math.sqrt(x.reduce((a, b) => a + (b - m) * (b - m), 0) / (x.length - 1));
+    return sd > 0 ? m / (sd / Math.sqrt(x.length)) : null;
+}
+
+function scanWeeklyStats(weeks) {
+    const keys = Object.keys(weeks || {}).sort();
+    const x = keys.map(k => weeks[k][0] / weeks[k][1]);
+    if (x.length === 0) return null;
+    const half = x.length >> 1;
+    let acc = 0;
+    return {
+        weeks: keys,
+        cum: x.map(v => (acc += v) * 100),
+        perYear: x.reduce((a, b) => a + b, 0) / x.length * 52 * 100,
+        t: scanTStat(x), t1: scanTStat(x.slice(0, half)), t2: scanTStat(x.slice(half)),
+    };
+}
+
+function renderScanSignificance() {
+    const box = document.getElementById('scan-significance');
+    if (!box) return;
+    const stats = {};
+    SCAN_STRATS.forEach(name => { const s = scanWeeklyStats(SCAN_WEEKLY[name]); if (s) stats[name] = s; });
+    if (Object.keys(stats).length === 0) { box.style.display = 'none'; return; }
+    const wasOpen = box.querySelector('details')?.open;
+    const tfmt = (t) => t == null ? '—' : (t > 0 ? '+' : '') + t.toFixed(1);
+    const tcol = (t) => t == null ? '#888' : (t >= 2 ? '#00ff88' : (t <= -2 ? '#ff4444' : '#ddd'));
+    const cell = 'padding:3px 10px; text-align:right;';
+    const rows = SCAN_STRATS.filter(n => stats[n]).map(name => {
+        const s = stats[name];
+        const dim = name === 'live' ? ' opacity:0.55; font-style:italic;' : '';
+        return `<tr style="${dim}"><td style="padding:3px 10px; color:${SCAN_COLORS[name]};">${SCAN_LABELS[name]}</td>
+            <td style="${cell} color:${s.perYear > 0 ? '#00ff88' : '#ff4444'};">${(s.perYear > 0 ? '+' : '') + s.perYear.toFixed(1)}%</td>
+            <td style="${cell} color:${tcol(s.t)}; font-weight:bold;">${tfmt(s.t)}</td>
+            <td style="${cell} color:${tcol(s.t1)};">${tfmt(s.t1)}</td>
+            <td style="${cell} color:${tcol(s.t2)};">${tfmt(s.t2)}</td></tr>`;
+    }).join('');
+    const nWeeks = Math.max(...Object.values(stats).map(s => s.weeks.length));
+    box.style.display = 'block';
+    box.innerHTML = `<details ${wasOpen ? 'open' : ''}>
+        <summary style="cursor:pointer; color:#eba834; font-weight:bold;">📐 I tempi delle strategie aggiungono valore? (tutti i titoli insieme, ${nWeeks} settimane)</summary>
+        <div style="display:flex; gap:20px; flex-wrap:wrap; margin-top:8px; align-items:flex-start;">
+            <table style="border-collapse:collapse; font-size:0.85rem;">
+                <thead><tr style="color:#888;">
+                    <th style="padding:3px 10px; text-align:left;">Strategia</th>
+                    <th style="${cell}" title="Rendimento annuo in più rispetto agli stessi tempi scelti a caso, sul portafoglio di tutti i titoli a pesi uguali">Timing / anno</th>
+                    <th style="${cell}" title="Quanto il risultato è distinguibile dal caso. Sopra +2: difficilmente casuale. Tra −2 e +2: non distinguibile dal caso.">t</th>
+                    <th style="${cell}" title="Lo stesso t, solo sulla prima metà del periodo">t 1ª metà</th>
+                    <th style="${cell}" title="Lo stesso t, solo sulla seconda metà del periodo">t 2ª metà</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+            <div id="scan-significance-chart" style="flex:1; min-width:320px; height:230px;"></div>
+        </div>
+        <div style="margin-top:6px; color:#888; line-height:1.5;">
+            Come leggerla: <b>t</b> tra −2 e +2 = i tempi della strategia non si distinguono dal caso; conta che il segno sia lo stesso nelle due metà.
+            Nel grafico, una linea che sale = i tempi aggiungono valore con continuità; piatta o che scende = no. Senza costi.
+        </div>
+    </details>`;
+    const details = box.querySelector('details');
+    const draw = () => {
+        const el = document.getElementById('scan-significance-chart');
+        if (!el || typeof Plotly === 'undefined' || !details.open) return;
+        const traces = SCAN_STRATS.filter(n => stats[n] && n !== 'live').map(name => ({
+            x: stats[name].weeks, y: stats[name].cum, name: SCAN_LABELS[name], mode: 'lines',
+            line: { color: SCAN_COLORS[name], width: 1.6 },
+        }));
+        Plotly.react(el, traces, {
+            paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#aaa', size: 10 },
+            margin: { l: 40, r: 10, t: 22, b: 30 }, showlegend: true, legend: { orientation: 'h', y: 1.18 },
+            title: { text: 'Timing cumulato del portafoglio (%)', font: { size: 11 }, x: 0.01, y: 0.99 },
+            xaxis: { gridcolor: '#222' }, yaxis: { gridcolor: '#222', zerolinecolor: '#555', ticksuffix: '%' },
+        }, { displayModeBar: false, responsive: true });
+    };
+    details.addEventListener('toggle', draw);
+    draw();
+}
+
+// --- Esportazione CSV: una riga per titolo, tutte le metriche di tutte le strategie ---
+function scanRowsToCsv(rows) {
+    const metrics = ['roi', 'timing', 'alpha', 'win_rate', 'trades', 'expo'];
+    const head = ['ticker', 'trend', 'bh_pct'];
+    SCAN_STRATS.forEach(s => metrics.forEach(m => head.push(`${s}_${m}`)));
+    const lines = [head.join(',')];
+    rows.forEach(r => {
+        const cells = [r.ticker, r.trend, r.bh];
+        SCAN_STRATS.forEach(s => metrics.forEach(m => {
+            const v = r.strategies[s]?.[m];
+            cells.push(v == null ? '' : v);
+        }));
+        lines.push(cells.map(c => /[",\n]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : c).join(','));
+    });
+    return lines.join('\n');
+}
+
+function exportScanCsv() {
+    if (SCAN_ROWS.length === 0) {
+        alert('Esegui prima una scansione: non c\'è ancora nulla da esportare.');
+        return;
+    }
+    // esporta ciò che si vede: filtro trend e ordinamento correnti
+    const csv = scanRowsToCsv(scanVisibleRows());
+    const start = document.getElementById('scanner-start').value || '2023-01-01';
+    const end = document.getElementById('scanner-end').value || new Date().toISOString().slice(0, 10);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `scanner_strategie_${start}_${end}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
 }
 
 function scanToggleTicker(cb) {

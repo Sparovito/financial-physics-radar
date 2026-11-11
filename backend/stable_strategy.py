@@ -114,6 +114,54 @@ def backtest_potential_discharge(dates, prices, pot_raw, F_vals,
     return res
 
 
+def frozen_v2_positions(pot_raw, displacement, entry_z=0.0, zwin=252, min_periods=40):
+    """
+    FROZEN V2 — il Frozen con una DIREZIONE.
+
+    Il Frozen storico entra quando lo z-score del potenziale supera la media,
+    ma il potenziale è ½β·d²: un quadrato, senza segno. V2 usa anche il segno
+    dello scostamento d = F − x_f (EMA20 meno il suo filtro di Kalman causale):
+
+        posizione = 1  se  z(potenziale) > entry_z  E  d < 0
+
+    cioè energia sopra la media con il prezzo recente SOTTO il percorso
+    filtrato. Perché questo verso e solo long (research/frozen_v2.py, 611
+    titoli, 2021→11/2026, due periodi separati): seguire il segno di d
+    (long sopra, short sotto) perde in entrambi i periodi; il lato "sotto"
+    rende più della media del titolo in tutte le zone di energia e in tutti
+    gli anni; nessuna variante con lo short guadagna.
+
+    Tutto causale. Returns: positions list[0/1].
+    """
+    import pandas as pd
+
+    s = pd.Series(pot_raw, dtype=float)
+    mean = s.rolling(zwin, min_periods=min_periods).mean()
+    std = s.rolling(zwin, min_periods=min_periods).std()
+    z = ((s - mean) / (std + 1e-9)).fillna(0).values
+    out = []
+    for t in range(len(z)):
+        d = displacement[t] if t < len(displacement) else None
+        out.append(1 if (d is not None and d == d and d < 0 and z[t] > entry_z) else 0)
+    return out
+
+
+def backtest_frozen_v2(dates, prices, pot_raw, displacement, entry_z=0.0,
+                       execution_lag=1, cost_pct=0.0, initial_capital=1000.0,
+                       start_date=None, end_date=None, zwin=252, min_periods=40):
+    """Backtest di Frozen V2 col motore unificato (stessa tecnica dell'arancione:
+    posizione desiderata → pseudo-slope, quindi esecuzione t+1, costi e stats
+    sono quelli di backtest_stable)."""
+    positions = frozen_v2_positions(pot_raw, displacement, entry_z=entry_z,
+                                    zwin=zwin, min_periods=min_periods)
+    pseudo_slope = [p - 0.5 for p in positions]
+    return backtest_stable(dates, prices, pseudo_slope, mode="LONG",
+                           entry_th=0.4, exit_th=0.0,
+                           execution_lag=execution_lag, cost_pct=cost_pct,
+                           initial_capital=initial_capital,
+                           start_date=start_date, end_date=end_date)
+
+
 def combo_positions(slopes, entry_th, exit_th, discharge_pos):
     """
     Posizione desiderata della strategia COMBO:

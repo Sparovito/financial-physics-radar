@@ -318,8 +318,21 @@ Formula: `EMA(prices, span=alpha/10)` → `diff()` → `EMA(14)`. Puramente back
     Non usarlo per scegliere titoli. Vedi `research/scanner_persistence.py`.
 -   **Scanner Strategie (Massivo)**: `POST /scan-strategies` → `strategy_scan.scan_one`
     (non più una `/analyze` per titolo). Colonne: B&H, Oracolo (LIVE), Frozen, SUM,
-    Stable, Arancione, Combo; metrica selezionabile (ROI, alpha, win rate,
-    esposizione, trade). È una fotografia del passato, senza costi.
+    Frozen V2, Stable, Arancione, Combo; metrica selezionabile (ROI, timing,
+    alpha vecchio, win rate, esposizione, trade). È una fotografia del passato,
+    senza costi.
+    -   **Timing** (`strategy_scan.timing_excess`) è la misura da guardare:
+        eccesso sui rendimenti log giornalieri rispetto agli stessi tempi scelti
+        a caso (zero in media se i tempi non contengono informazione). L'alpha
+        lineare storico resta solo per confronto: è distorto verso il basso sui
+        titoli saliti molto.
+    -   Riquadro "I tempi aggiungono valore?": timing/anno del portafoglio a
+        pesi uguali e t calcolato sulle SETTIMANE (non sui titoli, che si
+        muovono insieme), intero periodo e due metà.
+    -   **Frozen V2** (`stable_strategy.frozen_v2_positions`): long se
+        z(potenziale)>0 e EMA20 sotto il suo filtro. Candidata: presente solo
+        nello scanner, non nella email né nel journal. Lo short è stato provato
+        e scartato (`research/frozen_v2.py`).
 -   **Scansione giornaliera (dashboard)**: `POST /scan-daily-orange` →
     `stable_scanner.orange_daily_scan`, sola lettura. Sostituisce nella UI
     `/scan-daily` (Frozen/SUM), che resta solo per compatibilità.

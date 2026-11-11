@@ -1468,7 +1468,7 @@ def scan_strategies(req: StrategyScanRequest):
     I titoli non scaricabili o con storia insufficiente tornano in `errors`.
     """
     from datetime import date, timedelta
-    from strategy_scan import scan_one, fetch_prices_cached, WARMUP_DAYS
+    from strategy_scan import scan_one, fetch_prices_cached, aggregate_weekly, WARMUP_DAYS
 
     start = req.start_date or "2023-01-01"
     warm_start = (date.fromisoformat(start) - timedelta(days=WARMUP_DAYS)).strftime("%Y-%m-%d")
@@ -1485,7 +1485,8 @@ def scan_strategies(req: StrategyScanRequest):
                                        alpha=req.alpha, beta=req.beta)
         except Exception as e:
             errors[ticker] = str(e)
-    return {"status": "ok", "results": results, "errors": errors,
+    weekly = aggregate_weekly(results)     # toglie 'weekly' dai singoli titoli (risposta leggera)
+    return {"status": "ok", "results": results, "errors": errors, "weekly": weekly,
             "count_ok": len(results), "count_err": len(errors)}
 
 @app.post("/scan-daily-orange")
