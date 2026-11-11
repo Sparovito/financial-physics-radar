@@ -385,6 +385,13 @@ Formula: `EMA(prices, span=alpha/10)` → `diff()` → `EMA(14)`. Puramente back
         stata aggiunta a posteriori (il "primo tocco" falliva nel 2008):
         candidata, non validata fuori campione. L'indicatore "quota V2 ≥ 30%"
         NON regge fuori dal 2021-26.
+-   **Simulatore di Portafoglio (scanner), sezione "Con un budget"**
+    (`app.js::runBudgetSimulation`, calcolo in `stable_engine.simulateSizing`):
+    capitale iniziale diviso in N parti uguali, guadagni reinvestiti, anno per
+    anno, confronto col compra-e-tieni degli stessi titoli. Le operazioni
+    ancora aperte non sono contate; il ribasso massimo è misurato solo alla
+    chiusura delle operazioni (sottostima quello vero). Con "Sistema" tutti i
+    titoli entrano ed escono insieme: N automatico = titoli selezionati.
 -   **Live in tempo reale** (`stable_strategy.live_realtime_positions`, chiave
     `live_rt_strategy`): la regola dell'oracolo sulla stima di oggi, con
     uscita solo quando gira la direzione (filtro a soglia, senza ritardo).

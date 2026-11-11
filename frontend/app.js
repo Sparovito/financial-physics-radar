@@ -2711,6 +2711,123 @@ function closeSimulatorModal() {
     document.getElementById('simulator-modal').style.display = 'none';
 }
 
+// --- SIMULATORE "CON UN BUDGET" ---
+// Parte da un capitale iniziale; ogni operazione usa una quota uguale del capitale del momento
+// (capitale ÷ posizioni massime) e i guadagni si reinvestono. Il calcolo è quello di
+// stable_engine.simulateSizing (schema "compound"), già verificato dai test.
+// Per "Sistema" tutti i titoli entrano ed escono negli stessi giorni: in automatico il capitale
+// si divide tra tutti i titoli selezionati.
+function budgetYears(curve, budget, startDate, endDate) {
+    const y0 = parseInt(startDate.slice(0, 4)), y1 = parseInt(endDate.slice(0, 4));
+    const out = [];
+    let prev = budget, k = 0, eq = budget;
+    for (let y = y0; y <= y1; y++) {
+        const limit = `${y}-12-31`;
+        while (k < curve.length && curve[k].date <= limit) { eq = curve[k].equity; k++; }
+        out.push({ year: y, equity: eq, ret: (eq / prev - 1) * 100 });
+        prev = eq;
+    }
+    return out;
+}
+
+function budgetInvestedShare(curve, startDate, endDate) {
+    // quota media del capitale investita nel tempo (posizioni al costo)
+    const day = d => new Date(d).getTime() / 864e5;
+    const t0 = day(startDate), t1 = day(endDate);
+    if (!(t1 > t0)) return 0;
+    let acc = 0;
+    for (let i = 0; i < curve.length; i++) {
+        const a = Math.max(day(curve[i].date), t0);
+        const b = Math.min(i + 1 < curve.length ? day(curve[i + 1].date) : t1, t1);
+        if (b > a && curve[i].equity > 0) acc += (b - a) * (curve[i].invested / curve[i].equity);
+    }
+    return acc / (t1 - t0) * 100;
+}
+
+function runBudgetSimulation(trades, tickers, mode) {
+    const cards = document.getElementById('sim-budget-cards');
+    if (!cards) return;
+    const note = document.getElementById('sim-budget-note');
+    const yearsDiv = document.getElementById('sim-budget-years');
+    const chartDiv = document.getElementById('chart-sim-budget');
+    const closed = (trades || []).filter(t => t.entry_date && t.exit_date && t.exit_date !== 'OPEN' && t.pnl_pct != null);
+    if (typeof simulateSizing !== 'function' || closed.length === 0) {
+        cards.innerHTML = '<span style="color:#888;">Nessuna operazione chiusa da simulare.</span>';
+        if (note) note.textContent = '';
+        if (yearsDiv) yearsDiv.innerHTML = '';
+        if (chartDiv && window.Plotly) Plotly.purge(chartDiv);
+        return;
+    }
+    const budget = Math.max(parseFloat(document.getElementById('sim-budget').value) || 10000, 1);
+    const asked = parseInt(document.getElementById('sim-max-pos').value);
+    const auto = mode === 'SYSTEM' ? Math.max(tickers.length, 1) : Math.min(10, Math.max(tickers.length, 1));
+    const maxPos = asked > 0 ? asked : auto;
+    const sim = simulateSizing(closed, { scheme: 'compound', capital: budget, stakePct: 100 / maxPos, cap: maxPos });
+
+    const today = new Date().toISOString().split('T')[0];
+    const startDate = document.getElementById('scanner-start').value || closed.reduce((m, t) => t.entry_date < m ? t.entry_date : m, today);
+    const endDate = document.getElementById('scanner-end').value || today;
+    const years = Math.max((new Date(endDate) - new Date(startDate)) / (365.25 * 864e5), 0.05);
+    const annual = (Math.pow(Math.max(sim.finalCapital, 0) / budget, 1 / years) - 1) * 100;
+    const invested = budgetInvestedShare(sim.curve, startDate, endDate);
+    const openNow = (trades || []).length - closed.length;
+
+    // confronto: gli stessi titoli comprati in parti uguali all'inizio e tenuti
+    const rows = SCAN_ROWS.filter(r => tickers.includes(r.ticker) && Number.isFinite(r.bh));
+    const bh = rows.length ? rows.reduce((a, r) => a + r.bh, 0) / rows.length : null;
+    const bhAnnual = bh == null ? null : (Math.pow(Math.max(1 + bh / 100, 0), 1 / years) - 1) * 100;
+
+    const eur = v => '€ ' + v.toLocaleString('it-IT', { maximumFractionDigits: 0 });
+    const pct = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+    const col = v => v >= 0 ? '#00ff88' : '#ff4444';
+    const card = (label, value, color, sub) => `
+        <div style="flex:1; min-width:140px; background:#222; padding:12px; border-radius:6px; text-align:center;">
+            <div style="color:#888; font-size:0.78rem;">${label}</div>
+            <div style="font-size:1.15rem; font-weight:bold; color:${color};">${value}</div>
+            ${sub ? `<div style="color:#888; font-size:0.72rem;">${sub}</div>` : ''}
+        </div>`;
+    cards.innerHTML =
+        card('Capitale finale', eur(sim.finalCapital), col(sim.returnPct), `da ${eur(budget)}`) +
+        card('Rendimento totale', pct(sim.returnPct), col(sim.returnPct), `${years.toFixed(1)} anni`) +
+        card('Rendimento annuo', pct(annual), col(annual)) +
+        card('Ribasso massimo', '-' + sim.maxDD.toFixed(1) + '%', '#eba834', 'a operazioni chiuse') +
+        card('Tempo investito', invested.toFixed(0) + '%', '#fff', `${sim.nTrades - sim.skipped} operazioni, ${sim.skipped} saltate`) +
+        (bh == null ? '' : card('Compra e tieni, stessi titoli', pct(bh), col(bh), `${eur(budget * (1 + bh / 100))} · ${pct(bhAnnual)} l'anno`));
+
+    if (note) {
+        note.innerHTML = `Simulazione sul passato, senza costi né tasse. Il capitale si divide in <b>${maxPos}</b> parti uguali` +
+            `${asked > 0 ? '' : ' (automatico)'}: ogni operazione ne usa una, i guadagni si reinvestono, il resto sta fermo in liquidità. ` +
+            `Operazioni chiuse: ${closed.length}` + (openNow > 0 ? `; ancora aperte e non contate: ${openNow}` : '') + '.' +
+            (mode === 'SYSTEM' ? ' Con Sistema tutti i titoli entrano ed escono negli stessi giorni.' : '') +
+            (mode === 'LIVE' ? ' <span style="color:#ff6666;">Oracolo: usa il futuro, non è eseguibile.</span>' : '');
+    }
+
+    const yrs = budgetYears(sim.curve, budget, startDate, endDate);
+    if (yearsDiv) {
+        yearsDiv.innerHTML = `<table style="border-collapse:collapse; font-size:0.85rem; color:#ccc;">
+            <tr><td style="padding:4px 12px 4px 0; color:#888;">Anno</td>${yrs.map(y => `<td style="padding:4px 12px; text-align:right;">${y.year}</td>`).join('')}</tr>
+            <tr><td style="padding:4px 12px 4px 0; color:#888;">Rendimento</td>${yrs.map(y => `<td style="padding:4px 12px; text-align:right; color:${col(y.ret)}; font-weight:bold;">${pct(y.ret)}</td>`).join('')}</tr>
+            <tr><td style="padding:4px 12px 4px 0; color:#888;">Capitale a fine anno</td>${yrs.map(y => `<td style="padding:4px 12px; text-align:right;">${eur(y.equity)}</td>`).join('')}</tr>
+        </table>`;
+    }
+
+    if (chartDiv && window.Plotly) {
+        const xs = [startDate, ...sim.curve.map(c => c.date), endDate];
+        const eq = [budget, ...sim.curve.map(c => c.equity), sim.finalCapital];
+        const inv = [0, ...sim.curve.map(c => c.invested), 0];
+        Plotly.newPlot(chartDiv, [
+            { x: xs, y: inv, name: 'Investito', type: 'scatter', mode: 'lines', line: { shape: 'hv', color: 'rgba(235,168,52,0.9)', width: 1 }, fill: 'tozeroy', fillcolor: 'rgba(235,168,52,0.18)' },
+            { x: xs, y: eq, name: 'Capitale', type: 'scatter', mode: 'lines', line: { shape: 'hv', color: '#2dd4bf', width: 2.5 } },
+            { x: [startDate, endDate], y: [budget, budget], name: 'Budget iniziale', type: 'scatter', mode: 'lines', line: { color: '#888', width: 1, dash: 'dot' } }
+        ], {
+            title: { text: 'Capitale nel tempo (a operazioni chiuse)', font: { color: '#ccc', size: 13 } },
+            paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#aaa' },
+            margin: { l: 60, r: 20, t: 35, b: 35 }, xaxis: { gridcolor: '#2a2d3a' }, yaxis: { gridcolor: '#2a2d3a', tickprefix: '€ ' },
+            legend: { orientation: 'h', y: -0.15 }, showlegend: true
+        }, { displayModeBar: false, responsive: true });
+    }
+}
+
 function runPortfolioSimulation() {
     const capitalPerTrade = parseFloat(document.getElementById('sim-capital').value) || 100;
     const mode = document.getElementById('sim-mode').value; // LIVE or FROZEN
@@ -2737,6 +2854,9 @@ function runPortfolioSimulation() {
     if (document.getElementById('sim-total-trades')) {
         document.getElementById('sim-total-trades').innerText = trades.length;
     }
+
+    // Sezione "Con un budget" (capitale iniziale, guadagni reinvestiti)
+    runBudgetSimulation(trades, checkedTickers, mode);
 
     if (!trades || trades.length === 0) return;
 
