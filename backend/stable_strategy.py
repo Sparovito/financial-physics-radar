@@ -184,18 +184,19 @@ def signed_energy(pot_raw, displacement, scale=1.0):
 
 def direction_positions(displacement):
     """
-    DIREZIONE — dentro finché l'arancione col segno è sopra lo zero, cioè
-    finché lo scostamento d = F − x_f è positivo (prezzo recente sopra il
-    percorso). È il segnale che nel pannello "Direzione" compare come
-    attraversamento dello zero; lì la curva è disegnata 9 barre indietro, ma
-    il cambio di segno si conosce solo nel giorno vero, 9-10 barre dopo la
-    svolta dell'oracolo.
+    DIREZIONE — dentro finché la curva col segno è sopra lo zero.
 
-    Misura (611 titoli, 2021→11/2026, senza costi): ROI mediano +18% contro
-    +77% del compra-e-tieni, 38% di operazioni vinte, timing −2.6 / −3.2
-    %/anno. Gli stessi segnali presi 9 barre prima (non eseguibile)
-    darebbero timing +36 / +34 %/anno: il valore sta tutto in quelle 9 barre.
-    Serve a VEDERE dove arrivano davvero i segnali, non come strategia.
+    La curva è la stima di oggi del blu (strategy_scan.oracle_nowcast): il
+    segnale che nel pannello "Direzione" compare come attraversamento dello
+    zero, nel giorno stesso in cui si conosce. La funzione vale per qualsiasi
+    serie col segno (es. lo scostamento d = F − x_f).
+
+    Misura (611 titoli, 2021→11/2026, senza costi) con la stima di oggi: ROI
+    mediano +19% contro +77% del compra-e-tieni, 38% di operazioni vinte,
+    timing −1.7 / −3.6 %/anno; riconosce la svolta dell'oracolo in 5 barre e
+    cambia segno 15 volte l'anno (l'oracolo 3.7). Con lo scostamento d:
+    +18%, −2.6 / −3.2, 10 barre, 6.7 volte. Serve a VEDERE dove arrivano i
+    segnali, non come strategia.
     """
     return [1 if (d is not None and d == d and d > 0) else 0 for d in displacement]
 

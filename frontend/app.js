@@ -383,9 +383,8 @@ function renderCharts(data) {
 
     // --- PANNELLO DIREZIONE (sostituisce Kinetic Z) ---
     // Blu = cinetica dell'oracolo con il segno della sua velocità (ridisegnata col futuro).
-    // Arancione = potenziale causale con il segno dello scostamento, già nella scala del blu e
-    // riportato indietro di `lag` barre: così le due curve si sovrappongono. Sopra lo zero = salita,
-    // sotto = discesa. L'ultimo punto dell'arancione è quello di OGGI, disegnato `lag` barre fa.
+    // Arancione = stima di oggi del blu, causale e NON spostata nel tempo.
+    // Sopra lo zero = salita, sotto = discesa.
     const dirTraces = getDirectionTraces(data);
 
     // --- FROZEN SUM TRACE (Cyan) ---
@@ -903,7 +902,7 @@ function renderCharts(data) {
         if (dirStats) {
             html += `
                 <div style="color: #4da6ff;">
-                    <strong title="Compra quando l'arancione col segno diventa positivo e vende quando diventa negativo, nel giorno in cui il cambio di segno si conosce davvero (9-10 barre dopo la svolta). Serve a vedere dove arrivano i segnali: in media rende meno del compra-e-tieni.">🧭 Direzione:</strong>
+                    <strong title="Compra quando la stima di oggi del blu (arancione del pannello Direzione) diventa positiva e vende quando diventa negativa. Riconosce una svolta in circa 5 barre ma gira spesso a vuoto: in media rende meno del compra-e-tieni. Serve a vedere dove arrivano i segnali.">🧭 Direzione:</strong>
                     Trades: ${dirStats.total_trades} |
                     Win: ${dirStats.win_rate}% |
                     Return: ${dirStats.total_return}%
@@ -3119,109 +3118,79 @@ function getAnnotationShapes() {
     // Trade marker shapes
     const tradeShapes = getTradeMarkerShapes();
 
-    return [...getV2ZoneShapes(), ...getV2PeakShapes(), ...getDirectionBlindShapes(), ...manualShapes, ...tradeShapes];
+    return [...getV2ZoneShapes(), ...getV2PeakShapes(), ...manualShapes, ...tradeShapes];
 }
 
 // --- PANNELLO DIREZIONE: blu (oracolo) e arancione sovrapposti, con il segno ---
+// L'arancione qui è la STIMA DI OGGI del blu (frozen_v2.direction.nowcast): calcolata ogni giorno
+// con i soli dati di quel giorno, non spostata nel tempo e mai ridisegnata. Dove non combacia col
+// blu, la differenza è la parte che dipende dai prezzi futuri.
 function getDirectionTraces(data) {
-    const dir = data?.frozen_v2?.direction;
-    if (!dir || !dir.oracle || !dir.orange || !dir.orange.length) return null;
-    const lag = dir.lag ?? 9;
-    const n = data.dates.length;
-    const shifted = dir.orange.map((_, i) => (i + lag < n ? dir.orange[i + lag] : null));
-    return [
+    const full = data?.frozen_v2?.direction;
+    if (!full || !full.oracle) return null;
+    // scala di velocità (senza quadrato) quando disponibile: i crolli non schiacciano il resto
+    const dir = full.velocity ? { ...full, ...full.velocity } : full;
+    const now = (dir.nowcast && dir.nowcast.length) ? dir.nowcast : dir.orange;
+    if (!now || !now.length) return null;
+    const traces = [
         {
             x: data.dates, y: dir.oracle,
-            name: 'Blu con il segno: cinetica dell\'oracolo (ridisegnata col futuro)',
+            name: 'Blu: velocità del percorso dell\'oracolo (ridisegnata col futuro)',
             type: 'scatter', mode: 'lines', fill: 'tozeroy',
             line: { color: '#00bfff', width: 1.5 }, fillcolor: 'rgba(0, 191, 255, 0.22)',
-            hovertemplate: '%{x}<br>blu: %{y:.1f}<extra></extra>',
+            hovertemplate: '%{x}<br>blu: %{y:.2f} per barra<extra></extra>',
             xaxis: 'x', yaxis: 'y9'
         },
         {
-            x: data.dates, y: shifted,
-            name: `Arancione con il segno, riportato indietro di ${lag} barre (in tempo reale)`,
+            x: data.dates, y: now,
+            name: 'Arancione: stima di oggi del blu (in tempo reale, non spostata)',
             type: 'scatter', mode: 'lines',
             line: { color: '#ff6600', width: 2 },
-            hovertemplate: `%{x}<br>arancione (misurato ${lag} barre dopo): %{y:.1f}<extra></extra>`,
+            hovertemplate: '%{x}<br>stima di oggi: %{y:.2f} per barra<extra></extra>',
             xaxis: 'x', yaxis: 'y9'
-        },
-        {
+        }
+    ];
+    if (dir.nowcast && dir.orange) {
+        traces.push({
             x: data.dates, y: dir.orange,
-            name: 'Arancione nel giorno in cui lo vedi (non spostato)',
+            name: `Arancione vecchio (scostamento dal filtro: ripete il blu ${dir.lag ?? 9} barre dopo)`,
             type: 'scatter', mode: 'lines',
-            line: { color: '#ff6600', width: 1, dash: 'dot' },
+            line: { color: '#ffb347', width: 1, dash: 'dot' },
             visible: 'legendonly',
             xaxis: 'x', yaxis: 'y9'
-        },
-        {
-            x: [null], y: [null],
-            name: `▫️ Ultime ${lag} barre: il blu non è ancora definito`,
-            type: 'scatter', mode: 'markers',
-            marker: { symbol: 'square', size: 12, color: 'rgba(255, 255, 255, 0.25)' },
-            hoverinfo: 'skip', xaxis: 'x', yaxis: 'y9'
-        },
-        ...getDirectionSignalTraces(data, dir, lag)
-    ];
+        });
+    }
+    return [...traces, ...getDirectionSignalTraces(data, now)];
 }
 
-// Cambi di segno dell'arancione nel giorno in cui si conoscono DAVVERO. Nel pannello la curva
-// arancione è disegnata `lag` barre indietro: il suo passaggio per lo zero si vede a sinistra,
-// ma il segnale arriva al triangolo. Il tratto bianco è l'attesa tra le due cose.
-function getDirectionSignalTraces(data, dir, lag) {
-    const buyX = [], sellX = [], waitX = [], waitY = [];
+// Cambi di segno della stima di oggi: ▲ compra, ▼ vendi, nel giorno in cui si conoscono.
+function getDirectionSignalTraces(data, series) {
+    const buyX = [], sellX = [];
     let prev = null;
-    for (let i = 0; i < dir.orange.length; i++) {
-        const v = dir.orange[i];
+    for (let i = 0; i < series.length; i++) {
+        const v = series[i];
         if (v == null || v === 0) continue;
         const sg = v > 0 ? 1 : -1;
-        if (prev !== null && sg !== prev) {
-            (sg > 0 ? buyX : sellX).push(data.dates[i]);
-            waitX.push(data.dates[Math.max(0, i - lag)], data.dates[i], null);
-            waitY.push(0, 0, null);
-        }
+        if (prev !== null && sg !== prev) (sg > 0 ? buyX : sellX).push(data.dates[i]);
         prev = sg;
     }
-    const marker = (symbol, color) => ({ symbol, size: 13, color, line: { color: '#ffffff', width: 1.2 } });
+    const marker = (symbol, color) => ({ symbol, size: 11, color, line: { color: '#ffffff', width: 1 } });
     return [
         {
-            x: waitX, y: waitY,
-            name: `Attesa di ${lag} barre: dalla svolta disegnata a quando la sai`,
-            type: 'scatter', mode: 'lines', line: { color: 'rgba(255, 255, 255, 0.6)', width: 4 },
-            hoverinfo: 'skip', connectgaps: false, xaxis: 'x', yaxis: 'y9'
-        },
-        {
             x: buyX, y: buyX.map(() => 0),
-            name: '▲ Compra: l\'arancione diventa positivo (giorno in cui lo sai)',
+            name: '▲ Compra: la stima di oggi diventa positiva',
             type: 'scatter', mode: 'markers', marker: marker('triangle-up', '#00ff88'),
-            hovertemplate: '%{x}<br>l\'arancione diventa positivo: lo sai oggi<extra></extra>',
+            hovertemplate: '%{x}<br>la stima di oggi diventa positiva<extra></extra>',
             xaxis: 'x', yaxis: 'y9'
         },
         {
             x: sellX, y: sellX.map(() => 0),
-            name: '▼ Vendi: l\'arancione diventa negativo (giorno in cui lo sai)',
+            name: '▼ Vendi: la stima di oggi diventa negativa',
             type: 'scatter', mode: 'markers', marker: marker('triangle-down', '#ff2d55'),
-            hovertemplate: '%{x}<br>l\'arancione diventa negativo: lo sai oggi<extra></extra>',
+            hovertemplate: '%{x}<br>la stima di oggi diventa negativa<extra></extra>',
             xaxis: 'x', yaxis: 'y9'
         }
     ];
-}
-
-// le ultime `lag` barre del pannello Direzione: lì il blu è ancora piatto (verrà ridisegnato)
-// e l'arancione spostato non arriva
-function getDirectionBlindShapes() {
-    const data = window.LAST_ANALYSIS_DATA;
-    const dir = data?.frozen_v2?.direction;
-    const show = document.getElementById('show-kinetic-z')?.checked ?? false;
-    if (!show || !dir || !dir.orange || !data.dates || data.dates.length <= (dir.lag ?? 9)) return [];
-    const n = data.dates.length;
-    return [{
-        type: 'rect', xref: 'x', yref: 'y9 domain',
-        x0: data.dates[n - 1 - (dir.lag ?? 9)], x1: data.dates[n - 1], y0: 0, y1: 1,
-        fillcolor: 'rgba(255, 255, 255, 0.07)',
-        line: { color: 'rgba(255, 255, 255, 0.3)', width: 1, dash: 'dot' },
-        layer: 'below'
-    }];
 }
 
 // --- ZONE V2: stato dell'arancione (causale, non viene ridisegnato) ---

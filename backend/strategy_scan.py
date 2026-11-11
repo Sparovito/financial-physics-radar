@@ -256,38 +256,128 @@ def orange_scale(alpha=POTENTIAL_ALPHA, beta=POTENTIAL_BETA):
     return alpha * k * k / (beta * (1 - k) ** 2)
 
 
+NOWCAST_HORIZON = 60     # barre di F prevista: oltre, il peso sul punto di oggi è trascurabile
+
+
+def _steady_gain(alpha=POTENTIAL_ALPHA, beta=POTENTIAL_BETA):
+    """Guadagno di Kalman a regime del modello a livello locale."""
+    q, r = 1.0 / alpha, 1.0 / beta
+    p_pred = (q + math.sqrt(q * q + 4 * q * r)) / 2
+    return p_pred / (p_pred + r)
+
+
+def oracle_nowcast(px, frozen=None, horizon=NOWCAST_HORIZON, span=20):
+    """
+    STIMA DI OGGI della velocità dell'oracolo (nowcast), una per barra.
+
+    Il blu è la velocità del percorso di minima azione calcolato su passato e
+    futuro di F = EMA20. Il futuro di F non è tutto ignoto: una media insegue
+    il prezzo, quindi (se le variazioni future del prezzo sono imprevedibili)
+
+        F attesa tra k barre = prezzo_oggi − (1−a)^k · (prezzo_oggi − F_oggi)
+
+    Si prolunga F con questa previsione per `horizon` barre, si prosegue il
+    filtro di Kalman sulla serie prolungata e si torna indietro (ricorsione
+    RTS) fino a ieri: la differenza tra oggi e ieri è la velocità stimata.
+
+    Causale: usa solo dati fino alla barra stessa, non viene ridisegnata e
+    non è spostata nel tempo. È il massimo ottenibile: nello stesso giorno
+    somiglia al blu 0.87 (l'arancione 0.82) e nessuna combinazione lineare di
+    21 grandezze passate fa meglio (research/nowcast.py). Riconosce una svolta
+    in 5 barre invece di 10, ma cambia segno 15 volte l'anno invece di 6.7.
+
+    Returns: list[float] in unità di prezzo per barra; NaN nel riscaldamento.
+    """
+    fo = frozen if frozen is not None else kalman_frozen_series(
+        px, alpha=POTENTIAL_ALPHA, beta=POTENTIAL_BETA, min_points=100, kin_lag=25)
+    n = len(px)
+    p = px.values.astype(float)
+    F = px.ewm(span=span, adjust=False).mean().values.astype(float)
+    xf = np.array(([float("nan")] * 100 + list(fo["ma_price"]))[:n], dtype=float)
+    a = 2.0 / (span + 1)
+    K = _steady_gain()
+    C = 1.0 - K
+    gap = p - F
+    X = np.empty((horizon + 1, n))
+    X[0] = xf
+    x = xf.copy()
+    for k in range(1, horizon + 1):
+        x = x + K * ((p - (1 - a) ** k * gap) - x)
+        X[k] = x
+    sm = X[horizon]
+    for k in range(horizon - 1, -1, -1):
+        sm = X[k] + C * (sm - X[k])
+    prev = np.r_[float("nan"), xf[:-1]] if n else xf
+    return (sm - (prev + C * (sm - prev))).tolist()
+
+
+_NOWCAST_SCALE = {}
+
+
+def nowcast_scale():
+    """Su un movimento a ritmo costante la stima di oggi vede circa il 71% della
+    velocità vera (la previsione assume che il prezzo si fermi): questo fattore
+    porta la sua energia nella scala del blu."""
+    if "v" not in _NOWCAST_SCALE:
+        ramp = pd.Series([100 + 0.5 * i for i in range(500)],
+                         index=pd.date_range("2020-01-01", periods=500, freq="B"))
+        ratio = oracle_nowcast(ramp)[400] / 0.5
+        _NOWCAST_SCALE["v"] = 1.0 / (ratio * ratio)
+    return _NOWCAST_SCALE["v"]
+
+
 def v2_chart_block(px, start_date=None, end_date=None):
     """Quello che serve al grafico di /analyze:
     - state: lo stato dell'arancione per barra (0-4, vedi frozen_v2_states);
     - v2, rise: i backtest di Frozen V2 e V2 Risalita sulle date del grafico;
-    - dir: il backtest della regola Direzione (dentro finché l'arancione col
-      segno è sopra lo zero), in tempo reale;
-    - direction: le due energie CON IL SEGNO (sopra lo zero = salita, sotto =
-      discesa) nella stessa scala, per il pannello "Direzione":
-        orange  potenziale causale × segno dello scostamento (non ridisegnato)
-        oracle  cinetica del percorso di minima azione × segno della sua
-                velocità: è l'ORACOLO, usa il futuro e viene ridisegnato; serve
-                solo come confronto visivo
-        lag     barre di ritardo dell'arancione sul blu (9)
-    Stato, backtest e arancione sono causali: troncando la storia il passato
-    non cambia. Parametri del potenziale sempre quelli validati (α=200, β=1)."""
+    - dir: il backtest della regola Direzione (dentro finché la stima di oggi
+      del blu è sopra lo zero), in tempo reale;
+    - direction: le energie CON IL SEGNO (sopra lo zero = salita, sotto =
+      discesa) nella scala del blu, per il pannello "Direzione":
+        oracle   cinetica del percorso di minima azione × segno della sua
+                 velocità: è l'ORACOLO, usa il futuro e viene ridisegnato
+        nowcast  la stima di oggi del blu (oracle_nowcast): causale, non
+                 spostata nel tempo, non ridisegnata
+        orange   il potenziale causale × segno dello scostamento (la vecchia
+                 curva: ripete il blu con `lag` = 9 barre di ritardo)
+        velocity le stesse tre curve senza il quadrato (velocità del percorso,
+                 unità di prezzo per barra): è la scala disegnata dal pannello
+    Tutto tranne `oracle` è causale: troncando la storia il passato non
+    cambia. Parametri del potenziale sempre quelli validati (α=200, β=1)."""
     dates = px.index.strftime("%Y-%m-%d").tolist()
     prices = [float(v) for v in px.values]
-    pot, disp = v2_inputs(px)
+    fo = kalman_frozen_series(px, alpha=POTENTIAL_ALPHA, beta=POTENTIAL_BETA, min_points=100, kin_lag=25)
+    pot, disp = v2_inputs(px, frozen=fo)
     kw = dict(execution_lag=1, cost_pct=0.0, start_date=start_date, end_date=end_date)
     scale = orange_scale()
     mech = ActionPath(px, alpha=POTENTIAL_ALPHA, beta=POTENTIAL_BETA)
     oracle = [float(f"{v:.6g}") for v in (np.sign(mech.dX.values) * mech.kin_density.values)]
+    v_now = oracle_nowcast(px, frozen=fo)
+    now_scale = nowcast_scale()
+    nowcast = [None if v != v else float(f"{(1.0 if v > 0 else -1.0 if v < 0 else 0.0) * 0.5 * POTENTIAL_ALPHA * v * v * now_scale:.6g}")
+               for v in v_now]
+    # le stesse tre curve in scala di velocità (unità di prezzo per barra), senza il quadrato:
+    # su un movimento a ritmo costante valgono tutte quanto la velocità vera
+    k_gain = _steady_gain()
+    v_ratio, d_ratio = math.sqrt(now_scale), k_gain / (1.0 - k_gain)
+    velocity = {
+        "oracle": [float(f"{v:.6g}") for v in mech.dX.values],
+        "nowcast": [None if v != v else float(f"{v * v_ratio:.6g}") for v in v_now],
+        "orange": [None if (d is None or d != d) else float(f"{d * d_ratio:.6g}") for d in disp],
+    }
     return {
         "state": frozen_v2_states(pot, disp),
         "v2": backtest_frozen_v2(dates, prices, pot, disp, **kw),
         "rise": backtest_frozen_v2_rise(dates, prices, pot, disp, **kw),
-        "dir": backtest_direction(dates, prices, disp, **kw),
+        "dir": backtest_direction(dates, prices, v_now, **kw),
         "direction": {
-            "orange": signed_energy(pot, disp, scale=scale),
             "oracle": oracle,
+            "nowcast": nowcast,
+            "orange": signed_energy(pot, disp, scale=scale),
             "lag": ORANGE_LAG_BARS,
             "scale": round(scale, 4),
+            "nowcast_scale": round(now_scale, 4),
+            "velocity": velocity,
         },
     }
 

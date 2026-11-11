@@ -208,6 +208,33 @@ def main():
     fb = v2_chart_block(fall)["direction"]
     assert fb["oracle"][300] < 0 and fb["orange"][300] < 0, "in discesa entrambe sotto lo zero"
 
+    # --- 10b. STIMA DI OGGI del blu (nowcast): sovrapposta senza spostamento, causale ---
+    from strategy_scan import oracle_nowcast
+    now = dr["nowcast"]
+    assert len(now) == len(dts) and now[:100] == [None] * 100
+    assert blk_cut["direction"]["nowcast"] == now[:700], "la stima di oggi non viene mai ridisegnata"
+    assert abs(rb["nowcast"][300] - rb["oracle"][300]) / rb["oracle"][300] < 0.03, (rb["nowcast"][300], rb["oracle"][300])
+    assert fb["nowcast"][300] < 0, "in discesa la stima è sotto lo zero"
+    o_arr = np.array(dr["oracle"][300:], dtype=float)
+    n_arr = np.array(now[300:], dtype=float)
+    a_arr = np.array(dr["orange"][300:], dtype=float)
+    c_now, c_old = np.corrcoef(n_arr, o_arr)[0, 1], np.corrcoef(a_arr, o_arr)[0, 1]
+    assert c_now > c_old, f"nello stesso giorno la stima di oggi deve somigliare al blu più dell'arancione ({c_now:.2f} vs {c_old:.2f})"
+    v_now = oracle_nowcast(d_all)
+    assert len(v_now) == len(dts) and all(math.isnan(v) for v in v_now[:100]) and math.isfinite(v_now[300])
+    assert all((v > 0) == (x > 0) for v, x in zip(v_now[300:], now[300:]) if x != 0), "stesso segno di velocità ed energia"
+
+    # --- 10c. le stesse curve in scala di VELOCITÀ (senza quadrato): è quello che disegna il pannello ---
+    vel = dr["velocity"]
+    assert set(vel) == {"oracle", "nowcast", "orange"} and all(len(vel[k]) == len(dts) for k in vel)
+    assert blk_cut["direction"]["velocity"]["nowcast"] == vel["nowcast"][:700]
+    assert blk_cut["direction"]["velocity"]["orange"] == vel["orange"][:700]
+    rv = rb["velocity"]
+    for k in ("oracle", "nowcast", "orange"):
+        assert abs(rv[k][300] - 0.5) < 0.015, f"su una salita di 0.5 a barra {k} deve valere 0.5, vale {rv[k][300]}"
+        assert abs(fb["velocity"][k][300] + 0.5) < 0.015, f"su una discesa {k} deve valere −0.5"
+    assert all((a > 0) == (b > 0) for a, b in zip(vel["nowcast"][300:], now[300:]) if b != 0), "stesso segno di velocità ed energia"
+
     # --- 11. strategia DIREZIONE: dentro finché l'arancione è sopra lo zero (in tempo reale) ---
     from stable_strategy import direction_positions, backtest_direction
     dd = [float("nan")] * 5 + [-1.0] * 5 + [2.0] * 10 + [0.0] + [-3.0] * 9 + [1.0] * 10

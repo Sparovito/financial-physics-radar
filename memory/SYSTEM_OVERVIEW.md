@@ -346,20 +346,23 @@ Formula: `EMA(prices, span=alpha/10)` → `diff()` → `EMA(14)`. Puramente back
     dell'Energy sono invece ridisegnati col futuro: non si possono usare per
     decidere in tempo reale (`research/kinetic_trend.py`).
 -   **Pannello Direzione** (interruttore ⚛️, al posto di Kinetic Z; chiave
-    `frozen_v2.direction` di `/analyze`): blu = cinetica dell'oracolo col segno
-    (ridisegnata), arancione = potenziale causale col segno, in scala
-    (`strategy_scan.orange_scale`) e riportato indietro di 9 barre
-    (`stable_strategy.ORANGE_LAG_BARS`). Sopra lo zero salita, sotto discesa.
-    L'ultimo punto dell'arancione è quello di oggi, disegnato 9 barre fa: le
-    ultime 9 barre (fascia grigia) non sono ancora misurabili. Il segno
-    dell'arancione coincide con la direzione dell'oracolo nell'82% dei giorni,
-    ma quasi mai nelle 10 barre dopo una svolta (`research/frozen_vs_energy.py`).
-    ATTENZIONE: nel pannello la curva arancione attraversa lo zero 9 barre
-    PRIMA del giorno in cui lo si viene a sapere. I triangoli ▲/▼ sulla linea
-    dello zero segnano il giorno vero; il tratto bianco è l'attesa. Comprare e
-    vendere sui triangoli è la strategia "Direzione"
+    `frozen_v2.direction` di `/analyze`), in scala di velocità (unità di
+    prezzo per barra, senza quadrato): sopra lo zero salita, sotto discesa.
+    -   blu = velocità del percorso dell'oracolo (ridisegnata col futuro);
+    -   arancione = STIMA DI OGGI del blu (`strategy_scan.oracle_nowcast`):
+        prolunga F = EMA20 con la previsione "la media va verso il prezzo di
+        oggi", ricalcola il percorso e legge la velocità nel punto di oggi.
+        Causale, NON spostata nel tempo, mai ridisegnata. Nello stesso giorno
+        somiglia al blu 0.87 ed è il massimo ottenibile dai dati passati
+        (`research/nowcast.py`); riconosce una svolta in 5 barre, ma cambia
+        segno 15 volte l'anno (l'oracolo 3.7);
+    -   in legenda (spenta) la vecchia curva: scostamento dal filtro, che
+        ripete il blu 9 barre dopo (`stable_strategy.ORANGE_LAG_BARS`).
+    I triangoli ▲/▼ sulla linea dello zero sono i cambi di segno della stima
+    di oggi; comprare e vendere lì è la strategia "Direzione"
     (`stable_strategy.direction_positions`): rende meno del compra-e-tieni
-    (timing −2.6 / −3.2 %/anno); sulle barre disegnate renderebbe +36 %/anno.
+    (timing −1.7 / −3.6 %/anno). Dove l'arancione non combacia col blu, la
+    differenza è la parte che dipende dai prezzi futuri.
 -   **Grafico `/analyze`, pannello P/L e riquadro risultati**: LIVE (oracolo),
     FROZEN, V2, V2 Risalita, Direzione. SUM e STABLE sono stati tolti da lì su richiesta
     (restano nello scanner, nel selettore dei trade e in "Vedi Operazioni").
