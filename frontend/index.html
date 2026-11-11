@@ -250,6 +250,7 @@
                     <select id="trade-strategy-select" onchange="toggleTradeMarkers()" title="Strategia da visualizzare"
                         style="background:#1a1d2a; color:#fff; border:1px solid #444; border-radius:4px; padding:2px; font-size:0.7rem; width:55px;">
                         <option value="LIVE" style="color:#00ff88;">Live</option>
+                        <option value="LIVE_RT" style="color:#00ff88;">Live RT</option>
                         <option value="FROZEN" style="color:#ff9900;">Frozen</option>
                         <option value="SUM" style="color:#ff4444;">Sum</option>
                         <option value="STABLE" style="color:#aa44ff;">Stable</option>
@@ -448,6 +449,10 @@
                     <button id="btn-trades-sys" onclick="switchTradesView('SYSTEM')"
                         style="background: transparent; color: #888; padding: 6px 15px; border:none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.85em;">
                         Sistema
+                    </button>
+                    <button id="btn-trades-lrt" onclick="switchTradesView('LIVE_RT')"
+                        style="background: transparent; color: #888; padding: 6px 15px; border:none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.85em;">
+                        Live RT
                     </button>
                     <button id="btn-verify-integrity" onclick="verifyTradeIntegrity()"
                         style="background: #6366f1; color: #fff; padding: 6px 12px; border:none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.85em; margin-left: 10px;">
@@ -913,7 +918,7 @@
     </div>
     <script src="tickers.js?v=6"></script>
     <script src="api_auth.js?v=1"></script>
-    <script src="app.js?v=33"></script>
+    <script src="app.js?v=34"></script>
 </body>
 
 </html>

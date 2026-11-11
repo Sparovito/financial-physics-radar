@@ -36,7 +36,7 @@ import pandas as pd
 from logic import (ActionPath, backtest_strategy, kalman_frozen_series, causal_lowpass)
 from stable_strategy import (backtest_stable, backtest_potential_discharge, backtest_combo,
                              backtest_frozen_v2, backtest_frozen_v2_rise, frozen_v2_states,
-                             signed_energy, backtest_direction, ORANGE_LAG_BARS,
+                             signed_energy, backtest_direction, backtest_live_realtime, ORANGE_LAG_BARS,
                              POTENTIAL_ALPHA, POTENTIAL_BETA)
 
 WARMUP_DAYS = 560          # giorni di calendario scaricati prima dell'inizio periodo
@@ -341,6 +341,8 @@ def v2_chart_block(px, start_date=None, end_date=None):
     - v2, rise: i backtest di Frozen V2 e V2 Risalita sulle date del grafico;
     - dir: il backtest della regola Direzione (dentro finché la stima di oggi
       del blu è sopra lo zero), in tempo reale;
+    - live_rt: la regola dell'oracolo sulla stima di oggi, con uscita solo
+      quando gira la direzione (stable_strategy.live_realtime_positions);
     - direction: le energie CON IL SEGNO (sopra lo zero = salita, sotto =
       discesa) nella scala del blu, per il pannello "Direzione":
         oracle   cinetica del percorso di minima azione × segno della sua
@@ -379,6 +381,7 @@ def v2_chart_block(px, start_date=None, end_date=None):
         "v2": backtest_frozen_v2(dates, prices, pot, disp, **kw),
         "rise": backtest_frozen_v2_rise(dates, prices, pot, disp, **kw),
         "dir": backtest_direction(dates, prices, v_now, **kw),
+        "live_rt": backtest_live_realtime(dates, prices, v_now, **kw),
         "direction": {
             "oracle": oracle,
             "nowcast": nowcast,

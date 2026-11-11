@@ -251,6 +251,32 @@ def main():
     full_tr = [(x["entry_date"], x["exit_date"]) for x in blk["dir"]["trades"]]
     assert closed and all(c in full_tr for c in closed), "le operazioni passate non cambiano quando arrivano nuovi dati"
 
+    # --- 12. LIVE IN TEMPO REALE: la regola dell'oracolo sul freeze, uscita solo quando gira la direzione ---
+    from stable_strategy import live_realtime_positions, backtest_live_realtime
+    rng = np.random.default_rng(3)
+    vel = list(rng.normal(0, 0.02, 300))                 # un anno di velocità piccole e casuali
+    vel += [0.5, 0.6, 0.7, 0.8, 0.9]                     # 300-304: il moto accelera verso l'alto → cinetica sopra la media
+    vel += [0.3, 0.2, 0.1, 0.05, 0.02]                   # 305-309: rallenta (la cinetica crolla) ma la direzione resta su
+    vel += [-0.1, -0.2]                                  # 310-311: la direzione gira
+    vel += list(rng.normal(0, 0.02, 40))
+    lp = live_realtime_positions(vel)
+    assert len(lp) == len(vel) and set(lp) <= {0, 1}
+    assert lp[299] == 0 and lp[300] == 1, "entra quando la cinetica supera la propria media con verso in su"
+    assert lp[300:310] == [1] * 10, "la pausa (cinetica in calo, direzione ancora su) NON fa uscire"
+    assert lp[310] == 0 and lp[311] == 0, "esce quando la direzione gira"
+    assert live_realtime_positions(vel[:306]) == lp[:306], "causale: il passato non cambia"
+    assert live_realtime_positions([float("nan")] * 50) == [0] * 50
+    down = list(rng.normal(0, 0.02, 300)) + [-0.5, -0.6, -0.7, -0.8]
+    assert sum(live_realtime_positions(down)[300:]) == 0, "cinetica alta ma verso in giù: niente long"
+    dts4 = _dates(len(vel))
+    prs4 = [100.0 + 0.2 * i for i in range(len(vel))]
+    rl = backtest_live_realtime(dts4, prs4, vel)
+    assert rl["trades"][-1]["entry_date"] == dts4[301] and rl["trades"][-1]["exit_date"] == dts4[311]
+    assert "live_rt" in blk and len(blk["live_rt"]["trade_pnl_curve"]) == len(dts)
+    c_rt = [(x["entry_date"], x["exit_date"]) for x in blk_cut["live_rt"]["trades"] if x["exit_date"] != "OPEN"]
+    f_rt = [(x["entry_date"], x["exit_date"]) for x in blk["live_rt"]["trades"]]
+    assert all(c in f_rt for c in c_rt), "le operazioni passate non cambiano quando arrivano nuovi dati"
+
     print("OK test_frozen_v2_rise — stati 0-4, V2 Risalita causale ed eseguita a t+1, direzione blu/arancione | scanner: frozen2 %+.1f%% (espos. %.0f%%), frozen2r %+.1f%% (espos. %.0f%%)"
           % (r["strategies"]["frozen2"]["roi"], r["strategies"]["frozen2"]["expo"], s2r["roi"], s2r["expo"]))
 

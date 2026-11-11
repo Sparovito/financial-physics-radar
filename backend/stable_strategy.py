@@ -212,6 +212,63 @@ def backtest_direction(dates, prices, displacement, execution_lag=1, cost_pct=0.
                            start_date=start_date, end_date=end_date)
 
 
+def live_realtime_positions(velocity, alpha=POTENTIAL_ALPHA, zwin=252, min_periods=20):
+    """
+    LIVE IN TEMPO REALE — la regola dell'oracolo applicata al freeze.
+
+    L'oracolo (strategia LIVE) entra quando la cinetica del suo percorso supera
+    la propria media a un anno e la pendenza è in su; esce quando la cinetica
+    torna sotto la media. Qui la stessa regola usa la STIMA DI OGGI della
+    velocità (strategy_scan.oracle_nowcast), causale:
+
+        ingresso  z(½·α·v²) passa sopra 0  E  z(v) > 0
+        uscita    solo quando la direzione gira: v ≤ 0
+
+    L'uscita "quando gira la direzione" è un filtro a soglia: non liscia la
+    curva, quindi non aggiunge ritardo. Con l'uscita dell'oracolo (cinetica
+    sotto la media) ogni pausa della salita chiudeva l'operazione: 2.3
+    operazioni per ogni operazione dell'oracolo; così è 1.0, con durata
+    mediana 32 barre contro 34 e il 57% di ingressi veri contro il 36%
+    (research/filter_no_lag.py, 610 titoli).
+
+    Il risultato però non migliora: ROI mediano +4% contro +71% del
+    compra-e-tieni, timing −4.6 / −2.0 %/anno; gli ingressi veri rendono
+    +4.9% in media (l'oracolo +18.6% sulle stesse salite), i falsi −2.5%.
+    Serve a VEDERE la versione eseguibile dell'oracolo, non come strategia.
+    Solo long. Returns: positions list[0/1].
+    """
+    import pandas as pd
+
+    v = pd.Series(velocity, dtype=float).fillna(0.0)
+    kin = 0.5 * alpha * v * v
+
+    def z(s):
+        return ((s - s.rolling(zwin, min_periods=min_periods).mean())
+                / (s.rolling(zwin, min_periods=min_periods).std() + 1e-6)).fillna(0).values
+
+    zk, zs, vv = z(kin), z(v), v.values
+    out, inp = [], False
+    for t in range(len(vv)):
+        if inp:
+            if vv[t] <= 0:
+                inp = False
+        if not inp and t > 0 and zk[t] > 0 and zk[t - 1] <= 0 and zs[t] > 0:
+            inp = True
+        out.append(1 if inp else 0)
+    return out
+
+
+def backtest_live_realtime(dates, prices, velocity, execution_lag=1, cost_pct=0.0,
+                           initial_capital=1000.0, start_date=None, end_date=None):
+    """Backtest di Live in tempo reale col motore unificato (esecuzione t+1)."""
+    pseudo_slope = [p - 0.5 for p in live_realtime_positions(velocity)]
+    return backtest_stable(dates, prices, pseudo_slope, mode="LONG",
+                           entry_th=0.4, exit_th=0.0,
+                           execution_lag=execution_lag, cost_pct=cost_pct,
+                           initial_capital=initial_capital,
+                           start_date=start_date, end_date=end_date)
+
+
 def _v2_series(pot_raw, displacement, entry_z, rise_bars, zwin, min_periods):
     """Per barra: energia sopra la media (bool), scostamento d (None se manca),
     energia in aumento rispetto a `rise_bars` barre prima (bool). Stesso

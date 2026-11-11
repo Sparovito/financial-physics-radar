@@ -385,8 +385,15 @@ Formula: `EMA(prices, span=alpha/10)` → `diff()` → `EMA(14)`. Puramente back
         stata aggiunta a posteriori (il "primo tocco" falliva nel 2008):
         candidata, non validata fuori campione. L'indicatore "quota V2 ≥ 30%"
         NON regge fuori dal 2021-26.
+-   **Live in tempo reale** (`stable_strategy.live_realtime_positions`, chiave
+    `live_rt_strategy`): la regola dell'oracolo sulla stima di oggi, con
+    uscita solo quando gira la direzione (filtro a soglia, senza ritardo).
+    Operazioni lunghe quanto quelle dell'oracolo (1.0 per ogni operazione
+    dell'oracolo, 32 barre contro 34), ma entra ~6 barre dopo e 4 ingressi su
+    10 sono falsi: timing −4.6 / −2.0 %/anno (`research/filter_no_lag.py`).
+    È il confronto visivo eseguibile della curva LIVE.
 -   **Grafico `/analyze`, pannello P/L e riquadro risultati**: LIVE (oracolo),
-    FROZEN, V2, V2 Risalita, Direzione, Sistema. SUM e STABLE sono stati tolti da lì su richiesta
+    FROZEN, V2, V2 Risalita, Direzione, Live in tempo reale, Sistema. SUM e STABLE sono stati tolti da lì su richiesta
     (restano nello scanner, nel selettore dei trade e in "Vedi Operazioni").
 -   **Scansione giornaliera (dashboard)**: `POST /scan-daily-orange` →
     `stable_scanner.orange_daily_scan`, sola lettura. Sostituisce nella UI

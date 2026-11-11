@@ -475,6 +475,8 @@ function renderCharts(data) {
     let dirStats = null;
     let traceSysStrat = null;
     let sysStats = null;
+    let traceLiveRtStrat = null;
+    let liveRtStats = null;
 
     if (showBacktest) {
         // 1. Live Strategy (Green)
@@ -550,6 +552,22 @@ function renderCharts(data) {
             };
             dirStats = data.frozen_dir_strategy.stats;
         }
+        // 5b. Live in tempo reale (verde tratteggiato): la regola dell'oracolo sul freeze,
+        // con uscita solo quando gira la direzione. È la controparte eseguibile della curva LIVE.
+        if (data.live_rt_strategy && data.live_rt_strategy.trade_pnl_curve) {
+            traceLiveRtStrat = {
+                x: data.dates,
+                y: data.live_rt_strategy.trade_pnl_curve,
+                name: `🧭 Live in tempo reale (Avg: ${data.live_rt_strategy.stats.avg_trade_pct}%)`,
+                type: 'scatter',
+                mode: 'lines',
+                line: { color: '#00ff88', width: 2, dash: 'dash' },
+                xaxis: 'x',
+                yaxis: 'y5'
+            };
+            liveRtStats = data.live_rt_strategy.stats;
+        }
+
         // 6. Sistema (verde acqua): dentro solo quando lo squilibrio collettivo ha cominciato a rientrare
         if (data.system_strategy && data.system_strategy.trade_pnl_curve) {
             traceSysStrat = {
@@ -805,6 +823,7 @@ function renderCharts(data) {
     if (traceV2Strat) traces.push(traceV2Strat);
     if (traceV2RiseStrat) traces.push(traceV2RiseStrat);
     if (traceDirStrat) traces.push(traceDirStrat);
+    if (traceLiveRtStrat) traces.push(traceLiveRtStrat);
     if (traceSysStrat) traces.push(traceSysStrat);
 
     // Pannello Direzione (al posto di Kinetic Z; le vecchie curve solo se mancano i dati nuovi)
@@ -926,6 +945,16 @@ function renderCharts(data) {
                 </div>`;
         }
 
+        if (liveRtStats) {
+            html += `
+                <div style="color: #00ff88; opacity: 0.85;">
+                    <strong title="La regola dell'oracolo applicata al freeze (stima di oggi): entra quando la cinetica supera la propria media con direzione in su, esce solo quando gira la direzione. Operazioni lunghe come quelle dell'oracolo, ma eseguibili: entra circa 6 barre dopo e 4 ingressi su 10 sono falsi. Serve per confronto con LIVE.">🧭 Live in tempo reale:</strong>
+                    Trades: ${liveRtStats.total_trades} |
+                    Win: ${liveRtStats.win_rate}% |
+                    Return: ${liveRtStats.total_return}%
+                </div>`;
+        }
+
         if (sysStats) {
             html += `
                 <div style="color: #2dd4bf; margin-top: 4px; border-top: 1px dashed #333; padding-top: 4px;">
@@ -957,6 +986,7 @@ function renderCharts(data) {
     window.TRADES_V2R = (data.frozen_v2_rise_strategy && data.frozen_v2_rise_strategy.trades) ? data.frozen_v2_rise_strategy.trades : [];
     window.TRADES_DIR = (data.frozen_dir_strategy && data.frozen_dir_strategy.trades) ? data.frozen_dir_strategy.trades : [];
     window.TRADES_SYS = (data.system_strategy && data.system_strategy.trades) ? data.system_strategy.trades : [];
+    window.TRADES_LRT = (data.live_rt_strategy && data.live_rt_strategy.trades) ? data.live_rt_strategy.trades : [];
 
     if (window.TRADES_LIVE.length > 0 || window.TRADES_FROZEN.length > 0 || window.TRADES_SUM.length > 0 || window.TRADES_STABLE.length > 0) {
         const btnTrades = document.getElementById('btn-view-trades');
@@ -994,7 +1024,8 @@ function switchTradesView(mode) {
         { btn: document.getElementById('btn-trades-v2'), mode: 'FROZEN_V2', color: '#ffd166', textColor: '#000' },
         { btn: document.getElementById('btn-trades-v2r'), mode: 'FROZEN_V2R', color: '#ff7ab8', textColor: '#000' },
         { btn: document.getElementById('btn-trades-dir'), mode: 'FROZEN_DIR', color: '#4da6ff', textColor: '#000' },
-        { btn: document.getElementById('btn-trades-sys'), mode: 'SYSTEM', color: '#2dd4bf', textColor: '#000' }
+        { btn: document.getElementById('btn-trades-sys'), mode: 'SYSTEM', color: '#2dd4bf', textColor: '#000' },
+        { btn: document.getElementById('btn-trades-lrt'), mode: 'LIVE_RT', color: '#00ff88', textColor: '#000' }
     ];
 
     buttons.forEach(item => {
@@ -1026,7 +1057,7 @@ function openTradesModal() {
 }
 
 // Global storage for ORIGINAL trades (baseline - saved once, never overwritten)
-window.ORIGINAL_TRADES = window.ORIGINAL_TRADES || { LIVE: null, FROZEN: null, SUM: null, STABLE: null, FROZEN_V2: null, FROZEN_V2R: null, FROZEN_DIR: null, SYSTEM: null };
+window.ORIGINAL_TRADES = window.ORIGINAL_TRADES || { LIVE: null, FROZEN: null, SUM: null, STABLE: null, FROZEN_V2: null, FROZEN_V2R: null, FROZEN_DIR: null, SYSTEM: null, LIVE_RT: null };
 
 function renderTradesList() {
     const listDiv = document.getElementById('trades-list');
@@ -1048,6 +1079,8 @@ function renderTradesList() {
         trades = window.TRADES_DIR;
     } else if (viewMode === 'SYSTEM') {
         trades = window.TRADES_SYS;
+    } else if (viewMode === 'LIVE_RT') {
+        trades = window.TRADES_LRT;
     } else {
         trades = [];
     }
@@ -1230,7 +1263,7 @@ async function verifyTradeIntegrity() {
 
     const ticker = tickerEl.value.toUpperCase();
     const strategy = window.CURRENT_TRADES_VIEW || 'FROZEN';
-    if (strategy === 'FROZEN_V2' || strategy === 'FROZEN_V2R' || strategy === 'FROZEN_DIR' || strategy === 'SYSTEM') {
+    if (strategy === 'FROZEN_V2' || strategy === 'FROZEN_V2R' || strategy === 'FROZEN_DIR' || strategy === 'SYSTEM' || strategy === 'LIVE_RT') {
         // V2 e V2 Risalita usano solo serie causali (filtro di Kalman in avanti): il passato
         // non viene mai ridisegnato, quindi non c'è niente da verificare (lo garantiscono i test).
         alert('La verifica serve alle strategie che possono essere ridisegnate. V2, V2 Risalita e Direzione usano solo dati passati: le operazioni non cambiano quando arrivano nuovi prezzi.');
@@ -3490,6 +3523,8 @@ function getTradeMarkerShapes() {
         trades = cachedData.frozen_dir_strategy?.trades || [];
     } else if (strategy === 'SYSTEM') {
         trades = cachedData.system_strategy?.trades || [];
+    } else if (strategy === 'LIVE_RT') {
+        trades = cachedData.live_rt_strategy?.trades || [];
     }
 
     const shapes = [];
