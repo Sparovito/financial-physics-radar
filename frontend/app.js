@@ -459,12 +459,12 @@ function renderCharts(data) {
     const showBacktest = document.getElementById('show-backtest')?.checked ?? false;
     let traceBacktest = null;
     let traceFrozenStrat = null;
-    let traceFrozenSumStrat = null;
-    let traceStableStrat = null;
+    let traceV2Strat = null;
+    let traceV2RiseStrat = null;
     let backtestStats = null;
     let frozenStats = null;
-    let frozenSumStats = null;
-    let stableStats = null;
+    let v2Stats = null;
+    let v2RiseStats = null;
 
     if (showBacktest) {
         // 1. Live Strategy (Green)
@@ -497,34 +497,37 @@ function renderCharts(data) {
             frozenStats = data.frozen_strategy.stats;
         }
 
-        // 3. Frozen Sum Strategy (Yellow/Gold)
-        if (data.frozen_sum_strategy && data.frozen_sum_strategy.trade_pnl_curve) {
-            traceFrozenSumStrat = {
+        // 3. Frozen V2 (oro): energia alta + prezzo sotto il percorso
+        if (data.frozen_v2_strategy && data.frozen_v2_strategy.trade_pnl_curve) {
+            traceV2Strat = {
                 x: data.dates,
-                y: data.frozen_sum_strategy.trade_pnl_curve,
-                name: `📊 SUM Strat (Avg: ${data.frozen_sum_strategy.stats.avg_trade}%)`,
-                type: 'scatter',
-                line: { color: '#ffcc00', width: 2, dash: 'solid' }, // Gold
-                xaxis: 'x',
-                yaxis: 'y5'
-            };
-            frozenSumStats = data.frozen_sum_strategy.stats;
-        }
-
-        // 5. Stable Strategy (Purple)
-        if (data.stable_strategy && data.stable_strategy.trade_pnl_curve) {
-            traceStableStrat = {
-                x: data.dates,
-                y: data.stable_strategy.trade_pnl_curve,
-                name: `🟣 STABLE Strat (Avg: ${data.stable_strategy.stats.avg_trade_pct}%)`,
+                y: data.frozen_v2_strategy.trade_pnl_curve,
+                name: `🧭 V2 (Avg: ${data.frozen_v2_strategy.stats.avg_trade_pct}%)`,
                 type: 'scatter',
                 mode: 'lines',
-                line: { color: '#aa44ff', width: 2.5 }, // Purple
+                line: { color: '#ffd166', width: 2 },
                 xaxis: 'x',
                 yaxis: 'y5'
             };
-            stableStats = data.stable_strategy.stats;
+            v2Stats = data.frozen_v2_strategy.stats;
         }
+
+        // 4. V2 Risalita (rosa): entra con la V2, tiene la risalita, esce al massimo dell'arancione
+        if (data.frozen_v2_rise_strategy && data.frozen_v2_rise_strategy.trade_pnl_curve) {
+            traceV2RiseStrat = {
+                x: data.dates,
+                y: data.frozen_v2_rise_strategy.trade_pnl_curve,
+                name: `🧭 V2 Risalita (Avg: ${data.frozen_v2_rise_strategy.stats.avg_trade_pct}%)`,
+                type: 'scatter',
+                mode: 'lines',
+                line: { color: '#ff7ab8', width: 2.5 },
+                xaxis: 'x',
+                yaxis: 'y5'
+            };
+            v2RiseStats = data.frozen_v2_rise_strategy.stats;
+        }
+        // SUM e STABLE non si disegnano più qui (richiesta utente 11/2026): restano
+        // nello Scanner Strategie, nel selettore dei trade e in "Vedi Operazioni".
     }
 
     // --- DETECT MOBILE ---
@@ -748,6 +751,9 @@ function renderCharts(data) {
         traces.push(traceFrozenKin, traceFrozenPot);
     }
 
+    // Zone V2: ▼ sul massimo dell'arancione e voci di legenda (le fasce sono shapes)
+    traces.push(...getV2ZoneTraces(data, showFrozen, showPrice));
+
     // Indicators group
     if (showIndicators) {
         traces.push(traceSlope, traceZ, traceZRoc);
@@ -756,8 +762,8 @@ function renderCharts(data) {
     // Backtest / Strategy traces
     if (traceBacktest) traces.push(traceBacktest);
     if (traceFrozenStrat) traces.push(traceFrozenStrat);
-    if (traceFrozenSumStrat) traces.push(traceFrozenSumStrat);
-    if (traceStableStrat) traces.push(traceStableStrat);
+    if (traceV2Strat) traces.push(traceV2Strat);
+    if (traceV2RiseStrat) traces.push(traceV2RiseStrat);
 
     // Kinetic Z Trace
     if (showKineticZ) {
@@ -847,24 +853,23 @@ function renderCharts(data) {
                 </div>`;
         }
 
-        if (frozenSumStats) {
+        if (v2Stats) {
             html += `
-                <div style="color: #ff4444;">
-                    <strong>🔴 SUM Strat:</strong> 
-                    Trades: ${frozenSumStats.total_trades} | 
-                    Win: ${frozenSumStats.win_rate}% | 
-                    Return: ${frozenSumStats.total_return}%
+                <div style="color: #ffd166; margin-top: 4px; border-top: 1px dashed #333; padding-top: 4px;">
+                    <strong title="Dentro quando l'energia è sopra la media e il prezzo è sotto il percorso. Candidata, non validata in avanti.">🧭 V2:</strong>
+                    Trades: ${v2Stats.total_trades} |
+                    Win: ${v2Stats.win_rate}% |
+                    Return: ${v2Stats.total_return}%
                 </div>`;
         }
 
-        if (data.stable_strategy?.stats) {
-            const stStats = data.stable_strategy.stats;
+        if (v2RiseStats) {
             html += `
-                <div style="color: #aa44ff; margin-top: 4px; border-top: 1px dashed #333; padding-top: 4px;">
-                    <strong>🟣 STABLE Strat:</strong>
-                    Trades: ${stStats.total_trades} |
-                    Win: ${stStats.win_rate}% |
-                    Return: ${stStats.total_return}%
+                <div style="color: #ff7ab8;">
+                    <strong title="Entra come la V2, tiene la risalita ed esce al massimo dell'arancione sopra il percorso (o se il prezzo torna sotto). Senza stop. Candidata, non validata in avanti.">🧭 V2 Risalita:</strong>
+                    Trades: ${v2RiseStats.total_trades} |
+                    Win: ${v2RiseStats.win_rate}% |
+                    Return: ${v2RiseStats.total_return}%
                 </div>`;
         }
 
@@ -876,6 +881,8 @@ function renderCharts(data) {
     window.TRADES_FROZEN = (data.frozen_strategy && data.frozen_strategy.trades) ? data.frozen_strategy.trades : [];
     window.TRADES_SUM = (data.frozen_sum_strategy && data.frozen_sum_strategy.trades) ? data.frozen_sum_strategy.trades : [];
     window.TRADES_STABLE = (data.stable_strategy && data.stable_strategy.trades) ? data.stable_strategy.trades : [];
+    window.TRADES_V2 = (data.frozen_v2_strategy && data.frozen_v2_strategy.trades) ? data.frozen_v2_strategy.trades : [];
+    window.TRADES_V2R = (data.frozen_v2_rise_strategy && data.frozen_v2_rise_strategy.trades) ? data.frozen_v2_rise_strategy.trades : [];
 
     if (window.TRADES_LIVE.length > 0 || window.TRADES_FROZEN.length > 0 || window.TRADES_SUM.length > 0 || window.TRADES_STABLE.length > 0) {
         const btnTrades = document.getElementById('btn-view-trades');
@@ -909,7 +916,9 @@ function switchTradesView(mode) {
         { btn: btnLive, mode: 'LIVE', color: '#00ff88', textColor: '#000' },
         { btn: btnFrozen, mode: 'FROZEN', color: '#ff9900', textColor: '#000' },
         { btn: btnSum, mode: 'SUM', color: '#ff4444', textColor: '#fff' },
-        { btn: btnStable, mode: 'STABLE', color: '#aa44ff', textColor: '#fff' }
+        { btn: btnStable, mode: 'STABLE', color: '#aa44ff', textColor: '#fff' },
+        { btn: document.getElementById('btn-trades-v2'), mode: 'FROZEN_V2', color: '#ffd166', textColor: '#000' },
+        { btn: document.getElementById('btn-trades-v2r'), mode: 'FROZEN_V2R', color: '#ff7ab8', textColor: '#000' }
     ];
 
     buttons.forEach(item => {
@@ -941,7 +950,7 @@ function openTradesModal() {
 }
 
 // Global storage for ORIGINAL trades (baseline - saved once, never overwritten)
-window.ORIGINAL_TRADES = window.ORIGINAL_TRADES || { LIVE: null, FROZEN: null, SUM: null, STABLE: null };
+window.ORIGINAL_TRADES = window.ORIGINAL_TRADES || { LIVE: null, FROZEN: null, SUM: null, STABLE: null, FROZEN_V2: null, FROZEN_V2R: null };
 
 function renderTradesList() {
     const listDiv = document.getElementById('trades-list');
@@ -955,6 +964,10 @@ function renderTradesList() {
         trades = window.TRADES_SUM;
     } else if (viewMode === 'STABLE') {
         trades = window.TRADES_STABLE;
+    } else if (viewMode === 'FROZEN_V2') {
+        trades = window.TRADES_V2;
+    } else if (viewMode === 'FROZEN_V2R') {
+        trades = window.TRADES_V2R;
     } else {
         trades = [];
     }
@@ -1137,6 +1150,12 @@ async function verifyTradeIntegrity() {
 
     const ticker = tickerEl.value.toUpperCase();
     const strategy = window.CURRENT_TRADES_VIEW || 'FROZEN';
+    if (strategy === 'FROZEN_V2' || strategy === 'FROZEN_V2R') {
+        // V2 e V2 Risalita usano solo serie causali (filtro di Kalman in avanti): il passato
+        // non viene mai ridisegnato, quindi non c'è niente da verificare (lo garantiscono i test).
+        alert('La verifica serve alle strategie che possono essere ridisegnate. V2 e V2 Risalita usano solo dati passati: le operazioni non cambiano quando arrivano nuovi prezzi.');
+        return;
+    }
     const alpha = parseFloat(alphaEl ? alphaEl.value : 200);
     const beta = parseFloat(betaEl ? betaEl.value : 1.0);
 
@@ -2173,9 +2192,9 @@ function closeScannerModal() {
 //  Stato in memoria (SCAN_ROWS) e UNA funzione di resa: filtri,
 //  ordinamento, riga delle medie e spunte restano coerenti.
 // ============================================================
-const SCAN_STRATS = ['live', 'frozen', 'frozen2', 'sum', 'stable', 'orange', 'combo'];
-const SCAN_LABELS = { live: 'Oracolo', frozen: 'Frozen', frozen2: 'Frozen V2', sum: 'SUM', stable: 'Stable', orange: 'Arancione', combo: 'Combo' };
-const SCAN_COLORS = { live: '#6a8f7a', frozen: '#ff9900', frozen2: '#ffd166', sum: '#ff6666', stable: '#aa44ff', orange: '#ffb347', combo: '#00e5ff' };
+const SCAN_STRATS = ['live', 'frozen', 'frozen2', 'frozen2r', 'sum', 'stable', 'orange', 'combo'];
+const SCAN_LABELS = { live: 'Oracolo', frozen: 'Frozen', frozen2: 'Frozen V2', frozen2r: 'V2 Risalita', sum: 'SUM', stable: 'Stable', orange: 'Arancione', combo: 'Combo' };
+const SCAN_COLORS = { live: '#6a8f7a', frozen: '#ff9900', frozen2: '#ffd166', frozen2r: '#ff7ab8', sum: '#ff6666', stable: '#aa44ff', orange: '#ffb347', combo: '#00e5ff' };
 const SCAN_BATCH_SIZE = 20;
 let SCAN_ROWS = [];                 // [{ticker, bh, trend, strategies:{...}}]
 let SCAN_ERRORS = {};               // {ticker: motivo}
@@ -2239,7 +2258,7 @@ async function startBulkScan() {
     SCAN_WEEKLY = {};
     SCAN_UNCHECKED = new Set();
     SCAN_STOP_SIGNAL = false;
-    window.SCAN_TRADES = { LIVE: [], FROZEN: [], FROZEN_V2: [], SUM: [], STABLE: [], ARANCIONE: [], COMBO: [] };
+    window.SCAN_TRADES = { LIVE: [], FROZEN: [], FROZEN_V2: [], FROZEN_V2R: [], SUM: [], STABLE: [], ARANCIONE: [], COMBO: [] };
     window.ALL_SCAN_TRADES_LIVE = window.SCAN_TRADES.LIVE;
     window.ALL_SCAN_TRADES_FROZEN = window.SCAN_TRADES.FROZEN;
     window.ALL_SCAN_TRADES = window.SCAN_TRADES.COMBO;
@@ -2257,7 +2276,7 @@ async function startBulkScan() {
     // il selettore "x1/x4/x6" diventa il numero di richieste a batch in parallelo (max 3:
     // ogni batch scarica già più titoli insieme lato server)
     const concurrency = Math.max(1, Math.min(3, parseInt(document.getElementById('scan-parallel').value) || 2));
-    const tradeKey = { live: 'LIVE', frozen: 'FROZEN', frozen2: 'FROZEN_V2', sum: 'SUM', stable: 'STABLE', orange: 'ARANCIONE', combo: 'COMBO' };
+    const tradeKey = { live: 'LIVE', frozen: 'FROZEN', frozen2: 'FROZEN_V2', frozen2r: 'FROZEN_V2R', sum: 'SUM', stable: 'STABLE', orange: 'ARANCIONE', combo: 'COMBO' };
 
     const batches = [];
     for (let i = 0; i < tickersToScan.length; i += SCAN_BATCH_SIZE) {
@@ -2400,7 +2419,7 @@ function renderScanTable() {
             </td>
         </tr>`;
     } else if (SCAN_ROWS.length > 0) {
-        html = '<tr><td colspan="12" style="padding:15px; color:#888; text-align:center;">Nessun risultato con questo filtro</td></tr>';
+        html = '<tr><td colspan="13" style="padding:15px; color:#888; text-align:center;">Nessun risultato con questo filtro</td></tr>';
     }
     tbody.innerHTML = html;
     renderScanSignificance();
@@ -2835,7 +2854,7 @@ function applyScanFilters() {
 
 // --- CHART VISIBILITY TOGGLE LISTENERS ---
 // Re-render chart when toggles change (uses cached data)
-['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag', 'show-backtest', 'show-volume', 'show-kinetic-z', 'show-stable-slope', 'show-stable-kinz'].forEach(id => {
+['show-price', 'show-energy', 'show-frozen', 'show-indicators', 'show-zigzag', 'show-backtest', 'show-volume', 'show-kinetic-z', 'show-stable-slope', 'show-stable-kinz', 'show-v2-zones'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
         el.addEventListener('change', (e) => {
@@ -3059,7 +3078,101 @@ function getAnnotationShapes() {
     // Trade marker shapes
     const tradeShapes = getTradeMarkerShapes();
 
-    return [...manualShapes, ...tradeShapes];
+    return [...getV2ZoneShapes(), ...manualShapes, ...tradeShapes];
+}
+
+// --- ZONE V2: stato dell'arancione (causale, non viene ridisegnato) ---
+// data.frozen_v2.state ha un valore per barra, allineato a data.dates:
+//   1 = prezzo sotto il percorso, energia alta, in carica   → fascia verde piena
+//   2 = prezzo sotto il percorso, energia alta, in scarica  → fascia verde chiara
+//   3 = sopra il percorso, energia alta, in carica          → niente
+//   4 = sopra il percorso, energia alta, in scarica         → ▼ sul primo giorno (massimo arancione)
+const V2_ZONE_FILL = { 1: 'rgba(0, 255, 136, 0.22)', 2: 'rgba(0, 255, 136, 0.09)' };
+
+function v2ZonesVisible() {
+    return document.getElementById('show-v2-zones')?.checked ?? true;
+}
+
+// tratti consecutivi con lo stesso stato: [{state, from, to}] (indici di barra, estremi inclusi)
+function v2StateRuns(states) {
+    const runs = [];
+    let from = 0;
+    for (let i = 1; i <= states.length; i++) {
+        if (i === states.length || states[i] !== states[from]) {
+            runs.push({ state: states[from], from, to: i - 1 });
+            from = i;
+        }
+    }
+    return runs;
+}
+
+function getV2ZoneShapes() {
+    const data = window.LAST_ANALYSIS_DATA;
+    const states = data?.frozen_v2?.state;
+    if (!v2ZonesVisible() || !states || !states.length || !data.dates) return [];
+    const last = data.dates.length - 1;
+    return v2StateRuns(states)
+        .filter(r => V2_ZONE_FILL[r.state])
+        .map(r => ({
+            type: 'rect',
+            xref: 'x',
+            yref: 'paper',
+            x0: data.dates[r.from],
+            x1: data.dates[Math.min(r.to + 1, last)],
+            y0: 0,
+            y1: 1,
+            fillcolor: V2_ZONE_FILL[r.state],
+            line: { width: 0 },
+            layer: 'below'
+        }));
+}
+
+function getV2ZoneTraces(data, showFrozen, showPrice) {
+    const states = data?.frozen_v2?.state;
+    if (!v2ZonesVisible() || !states || !states.length) return [];
+    const traces = [];
+
+    // ▼ massimo dell'arancione con il prezzo sopra il percorso: un solo segno per episodio
+    // (tratto continuo di stati 3-4), sul primo giorno in cui l'energia comincia a scendere.
+    // È lo stesso evento che fa uscire la V2 Risalita.
+    if (showFrozen && data.frozen?.dates?.length) {
+        const potByDate = {};
+        data.frozen.dates.forEach((d, i) => { potByDate[d] = data.frozen.z_potential[i]; });
+        const xs = [], ys = [];
+        let marked = false;
+        for (let i = 0; i < states.length; i++) {
+            if (states[i] !== 3 && states[i] !== 4) { marked = false; continue; }
+            if (states[i] === 4 && !marked && potByDate[data.dates[i]] !== undefined) {
+                xs.push(data.dates[i]);
+                ys.push(potByDate[data.dates[i]]);
+                marked = true;
+            }
+        }
+        if (xs.length) {
+            traces.push({
+                x: xs, y: ys,
+                name: '▼ Massimo arancione (prezzo sopra il percorso)',
+                type: 'scatter', mode: 'markers',
+                marker: { symbol: 'triangle-down', size: 9, color: '#ff4466', line: { color: '#1a1d2a', width: 1 } },
+                hovertemplate: '%{x}<br>massimo dell\'arancione: la salita è matura<extra></extra>',
+                xaxis: 'x', yaxis: 'y6'
+            });
+        }
+    }
+
+    // voci di legenda per le fasce (le fasce vere sono shapes del layout)
+    const yref = showPrice ? 'y' : (showFrozen ? 'y6' : null);
+    if (yref) {
+        [[1, '🟩 Zona V2 in carica (sotto il percorso, energia in aumento)'],
+         [2, '▫️ Zona V2 in scarica (sotto il percorso, energia in calo)']].forEach(([st, label]) => {
+            traces.push({
+                x: [null], y: [null], name: label, type: 'scatter', mode: 'markers',
+                marker: { symbol: 'square', size: 12, color: V2_ZONE_FILL[st].replace(/[\d.]+\)$/, st === 1 ? '0.8)' : '0.35)') },
+                hoverinfo: 'skip', xaxis: 'x', yaxis: yref
+            });
+        });
+    }
+    return traces;
 }
 
 // Get Scatter Trace for open portfolio positions (Dots)
@@ -3167,6 +3280,10 @@ function getTradeMarkerShapes() {
         trades = cachedData.frozen_sum_strategy?.trades || [];
     } else if (strategy === 'STABLE') {
         trades = cachedData.stable_strategy?.trades || [];
+    } else if (strategy === 'FROZEN_V2') {
+        trades = cachedData.frozen_v2_strategy?.trades || [];
+    } else if (strategy === 'FROZEN_V2R') {
+        trades = cachedData.frozen_v2_rise_strategy?.trades || [];
     }
 
     const shapes = [];

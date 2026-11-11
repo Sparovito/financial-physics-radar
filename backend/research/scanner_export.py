@@ -20,9 +20,9 @@ import pickle
 
 START = sys.argv[1] if len(sys.argv) > 1 else "2023-01-01"
 END = sys.argv[2] if len(sys.argv) > 2 else None
-STRATS = ["live", "frozen", "sum", "stable", "orange", "combo", "frozen2"]
+STRATS = ["live", "frozen", "sum", "stable", "orange", "combo", "frozen2", "frozen2r"]
 LABEL = {"live": "Oracolo", "frozen": "Frozen", "sum": "SUM", "stable": "Stable",
-         "orange": "Arancione", "combo": "Combo", "frozen2": "Frozen V2"}
+         "orange": "Arancione", "combo": "Combo", "frozen2": "Frozen V2", "frozen2r": "V2 Risalita"}
 
 
 def spearman(a, b):
@@ -119,7 +119,7 @@ def main():
 
     # ---------- peso dei titoli estremi ----------
     print("\n--- Quanto pesa una manciata di titoli sulla media del ROI ---")
-    for s in ("live", "stable", "combo", "frozen2"):
+    for s in ("live", "stable", "combo", "frozen2", "frozen2r"):
         roi = sorted(((r["strategies"][s]["roi"], t) for t, r in full.items()), reverse=True)
         tot = sum(v for v, _ in roi)
         top = roi[:10]

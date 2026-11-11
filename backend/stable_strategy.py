@@ -162,6 +162,115 @@ def backtest_frozen_v2(dates, prices, pot_raw, displacement, entry_z=0.0,
                            start_date=start_date, end_date=end_date)
 
 
+def _v2_series(pot_raw, displacement, entry_z, rise_bars, zwin, min_periods):
+    """Per barra: energia sopra la media (bool), scostamento d (None se manca),
+    energia in aumento rispetto a `rise_bars` barre prima (bool). Stesso
+    z-score di frozen_v2_positions."""
+    import pandas as pd
+
+    s = pd.Series(pot_raw, dtype=float)
+    mean = s.rolling(zwin, min_periods=min_periods).mean()
+    std = s.rolling(zwin, min_periods=min_periods).std()
+    z = ((s - mean) / (std + 1e-9)).fillna(0).values
+    vals = s.values
+    high, disp, rising = [], [], []
+    for t in range(len(z)):
+        d = displacement[t] if t < len(displacement) else None
+        disp.append(d if (d is not None and d == d) else None)
+        high.append(bool(z[t] > entry_z))
+        prev = vals[t - rise_bars] if t >= rise_bars else float("nan")
+        rising.append(bool(vals[t] == vals[t] and prev == prev and vals[t] > prev))
+    return high, disp, rising
+
+
+def frozen_v2_states(pot_raw, displacement, entry_z=0.0, rise_bars=3, zwin=252, min_periods=40):
+    """
+    STATO DELL'ARANCIONE per barra (causale: il passato non viene ridisegnato).
+
+    Il potenziale Frozen è la cinetica dell'oracolo vista circa 9 barre dopo
+    (research/frozen_vs_energy.py). Il suo segno e la sua fase dicono dove siamo:
+
+        0  energia nella media, o dati mancanti
+        1  prezzo SOTTO il percorso, energia alta, in carica  (energia in aumento)
+        2  prezzo SOTTO il percorso, energia alta, in scarica
+        3  prezzo SOPRA il percorso, energia alta, in carica
+        4  prezzo SOPRA il percorso, energia alta, in scarica (massimo arancione passato)
+
+    "Sotto/sopra" è il segno di d = F − x_f; "energia alta" è z(potenziale) >
+    entry_z; "in carica" = potenziale maggiore di quello di `rise_bars` barre
+    prima. Gli stati 1 e 2 insieme sono la Frozen V2. Solo lo stato 1 ha un
+    vantaggio misurato (+0,16 / +0,09 % al giorno sulla media del titolo nei
+    due periodi); 3 e 4 sono leggermente negativi.
+    """
+    high, disp, rising = _v2_series(pot_raw, displacement, entry_z, rise_bars, zwin, min_periods)
+    out = []
+    for h, d, r in zip(high, disp, rising):
+        if not h or d is None or d == 0:
+            out.append(0)
+        elif d < 0:
+            out.append(1 if r else 2)
+        else:
+            out.append(3 if r else 4)
+    return out
+
+
+def frozen_v2_rise_positions(pot_raw, displacement, entry_z=0.0, rise_bars=3, zwin=252, min_periods=40):
+    """
+    V2 RISALITA — entra con la V2 e tiene la risalita.
+
+    La V2 esce quando l'energia rientra, cioè mentre il prezzo si riavvicina
+    al percorso: della risalita che segue i minimi prende circa il 10%.
+    Questa variante (research/v2_bottoms.py):
+
+        ingresso  come la V2: energia alta E prezzo sotto il percorso
+        resta     finché il prezzo è sotto il percorso, e poi mentre sale sopra
+        uscita    - sopra il percorso, energia alta che comincia a scendere
+                    (massimo dell'arancione: la salita è matura), oppure
+                  - il prezzo, dopo essere salito sopra il percorso, torna sotto
+
+    Dopo l'uscita serve una nuova V2 per rientrare. Solo long. Non ha uno
+    stop: se il prezzo resta sotto il percorso continua a tenere.
+    Misura (611 titoli, 2021→11/2026): prende il 55-70% della risalita dopo i
+    minimi con V2, esposizione 34%, timing +2,1 / +2,5 %/anno (t 0,8 / 1,5):
+    CANDIDATA, non validata in avanti.
+
+    Tutto causale. Returns: positions list[0/1].
+    """
+    high, disp, rising = _v2_series(pot_raw, displacement, entry_z, rise_bars, zwin, min_periods)
+    out = []
+    inp, above = False, False
+    for h, d, r in zip(high, disp, rising):
+        if d is None:
+            inp = False
+            out.append(0)
+            continue
+        if not inp:
+            if h and d < 0:
+                inp, above = True, False
+        else:
+            if d > 0:
+                above = True
+            if above and (d < 0 or (d > 0 and h and not r)):
+                inp = False
+        out.append(1 if inp else 0)
+    return out
+
+
+def backtest_frozen_v2_rise(dates, prices, pot_raw, displacement, entry_z=0.0, rise_bars=3,
+                            execution_lag=1, cost_pct=0.0, initial_capital=1000.0,
+                            start_date=None, end_date=None, zwin=252, min_periods=40):
+    """Backtest di V2 Risalita col motore unificato (posizione desiderata →
+    pseudo-slope: esecuzione t+1, costi e stats sono quelli di backtest_stable)."""
+    positions = frozen_v2_rise_positions(pot_raw, displacement, entry_z=entry_z, rise_bars=rise_bars,
+                                         zwin=zwin, min_periods=min_periods)
+    pseudo_slope = [p - 0.5 for p in positions]
+    return backtest_stable(dates, prices, pseudo_slope, mode="LONG",
+                           entry_th=0.4, exit_th=0.0,
+                           execution_lag=execution_lag, cost_pct=cost_pct,
+                           initial_capital=initial_capital,
+                           start_date=start_date, end_date=end_date)
+
+
 def combo_positions(slopes, entry_th, exit_th, discharge_pos):
     """
     Posizione desiderata della strategia COMBO:

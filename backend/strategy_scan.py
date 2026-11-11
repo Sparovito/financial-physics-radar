@@ -35,7 +35,8 @@ import pandas as pd
 
 from logic import (ActionPath, backtest_strategy, kalman_frozen_series, causal_lowpass)
 from stable_strategy import (backtest_stable, backtest_potential_discharge, backtest_combo,
-                             backtest_frozen_v2, POTENTIAL_ALPHA, POTENTIAL_BETA)
+                             backtest_frozen_v2, backtest_frozen_v2_rise, frozen_v2_states,
+                             POTENTIAL_ALPHA, POTENTIAL_BETA)
 
 WARMUP_DAYS = 560          # giorni di calendario scaricati prima dell'inizio periodo
 MIN_BARS = 160
@@ -217,10 +218,45 @@ def scan_one(px, start_date, end_date=None, alpha=200.0, beta=1.0, entry_z=2.0, 
     res = backtest_frozen_v2(dates, prices, pot, disp, execution_lag=1, cost_pct=0.0, **kw)
     put("frozen2", res, expo=res["stats"]["exposure_pct"])
 
+    # --- V2 RISALITA: entra con la V2, tiene la risalita, esce al massimo dell'arancione ---
+    res = backtest_frozen_v2_rise(dates, prices, pot, disp, execution_lag=1, cost_pct=0.0, **kw)
+    put("frozen2r", res, expo=res["stats"]["exposure_pct"])
+
     return {
         "bh": round(bh, 2), "trend": trend, "n_bars": hi - lo + 1,
         "first_date": dates[lo], "last_date": dates[hi], "last_price": round(prices[hi], 4),
         "strategies": out, "trades": trades_out, "weekly": weekly_out,
+    }
+
+
+def v2_inputs(px, frozen=None):
+    """Le due serie causali su cui lavorano Frozen V2, V2 Risalita e gli stati
+    dell'arancione, coi parametri validati del potenziale (non quelli scelti
+    a schermo): potenziale ½β·d² e scostamento d = EMA20 − filtro di Kalman.
+    Allineate ai prezzi; le prime 100 barre sono NaN (riscaldamento del filtro)."""
+    fo = frozen if frozen is not None else kalman_frozen_series(
+        px, alpha=POTENTIAL_ALPHA, beta=POTENTIAL_BETA, min_points=100, kin_lag=25)
+    n = len(px)
+    pot = ([float("nan")] * 100 + list(fo["pot_last"]))[:n]
+    F20 = px.ewm(span=20, adjust=False).mean().values.tolist()
+    xf = ([float("nan")] * 100 + list(fo["ma_price"]))[:n]
+    disp = [f - x for f, x in zip(F20, xf)]
+    return pot, disp
+
+
+def v2_chart_block(px, start_date=None, end_date=None):
+    """Quello che serve al grafico di /analyze: lo stato dell'arancione per
+    barra (0-4, vedi stable_strategy.frozen_v2_states) e i backtest di Frozen
+    V2 e V2 Risalita sulle stesse date del grafico. Tutto causale: troncando
+    la storia il passato non cambia."""
+    dates = px.index.strftime("%Y-%m-%d").tolist()
+    prices = [float(v) for v in px.values]
+    pot, disp = v2_inputs(px)
+    kw = dict(execution_lag=1, cost_pct=0.0, start_date=start_date, end_date=end_date)
+    return {
+        "state": frozen_v2_states(pot, disp),
+        "v2": backtest_frozen_v2(dates, prices, pot, disp, **kw),
+        "rise": backtest_frozen_v2_rise(dates, prices, pot, disp, **kw),
     }
 
 

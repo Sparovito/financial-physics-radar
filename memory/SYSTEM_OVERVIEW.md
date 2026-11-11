@@ -317,8 +317,8 @@ Formula: `EMA(prices, span=alpha/10)` → `diff()` → `EMA(14)`. Puramente back
     FROZEN/SUM/STABLE; i "migliori" dello scanner fanno peggio della media).
     Non usarlo per scegliere titoli. Vedi `research/scanner_persistence.py`.
 -   **Scanner Strategie (Massivo)**: `POST /scan-strategies` → `strategy_scan.scan_one`
-    (non più una `/analyze` per titolo). Colonne: B&H, Oracolo (LIVE), Frozen, SUM,
-    Frozen V2, Stable, Arancione, Combo; metrica selezionabile (ROI, timing,
+    (non più una `/analyze` per titolo). Colonne: B&H, Oracolo (LIVE), Frozen,
+    Frozen V2, V2 Risalita, SUM, Stable, Arancione, Combo; metrica selezionabile (ROI, timing,
     alpha vecchio, win rate, esposizione, trade). È una fotografia del passato,
     senza costi.
     -   **Timing** (`strategy_scan.timing_excess`) è la misura da guardare:
@@ -331,8 +331,23 @@ Formula: `EMA(prices, span=alpha/10)` → `diff()` → `EMA(14)`. Puramente back
         muovono insieme), intero periodo e due metà.
     -   **Frozen V2** (`stable_strategy.frozen_v2_positions`): long se
         z(potenziale)>0 e EMA20 sotto il suo filtro. Candidata: presente solo
-        nello scanner, non nella email né nel journal. Lo short è stato provato
-        e scartato (`research/frozen_v2.py`).
+        nello scanner e nel grafico, non nella email né nel journal. Lo short
+        è stato provato e scartato (`research/frozen_v2.py`).
+    -   **V2 Risalita** (`stable_strategy.frozen_v2_rise_positions`): entra come
+        la V2, tiene la risalita, esce al massimo dell'arancione sopra il
+        percorso o se il prezzo torna sotto dopo esserci salito sopra. Senza
+        stop. Candidata (timing +1.4%/anno, t 0.8): non validata in avanti.
+-   **Stato dell'arancione nel grafico** (`stable_strategy.frozen_v2_states`,
+    `strategy_scan.v2_chart_block`, chiave `frozen_v2.state` di `/analyze`):
+    0-4 per barra, causale (non viene ridisegnato). Fasce verdi = prezzo sotto
+    il percorso con energia alta (piene se l'energia aumenta), ▼ = massimo
+    dell'arancione sopra il percorso. Usa sempre α=200, β=1 (come lo scanner),
+    non l'alpha scelto a schermo. La curva viola "Kinetic Z (live)" e il blu/rosso
+    dell'Energy sono invece ridisegnati col futuro: non si possono usare per
+    decidere in tempo reale (`research/kinetic_trend.py`).
+-   **Grafico `/analyze`, pannello P/L e riquadro risultati**: LIVE (oracolo),
+    FROZEN, V2, V2 Risalita. SUM e STABLE sono stati tolti da lì su richiesta
+    (restano nello scanner, nel selettore dei trade e in "Vedi Operazioni").
 -   **Scansione giornaliera (dashboard)**: `POST /scan-daily-orange` →
     `stable_scanner.orange_daily_scan`, sola lettura. Sostituisce nella UI
     `/scan-daily` (Frozen/SUM), che resta solo per compatibilità.

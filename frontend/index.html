@@ -203,6 +203,10 @@
                         <!-- UNIQUE ID NOW -->
                         <span class="toggle-icon" data-active="true" style="font-size: 1.1rem; opacity: 1;">💰</span>
                     </label>
+                    <label title="🧭 Zone V2 — fasce verdi: prezzo sotto il percorso con energia alta (verde pieno = energia ancora in aumento, verde chiaro = in calo). ▼ rosso sull'arancione: massimo dell'energia con il prezzo sopra il percorso." style="cursor: pointer;">
+                        <input type="checkbox" id="show-v2-zones" checked style="display: none;">
+                        <span class="toggle-icon" data-active="true" style="font-size: 1.1rem; opacity: 1;">🧭</span>
+                    </label>
 
                     <!-- SEPARATOR -->
                     <div style="width: 30px; height: 1px; background: #444; margin: 4px 0;"></div>
@@ -249,7 +253,8 @@
                         <option value="FROZEN" style="color:#ff9900;">Frozen</option>
                         <option value="SUM" style="color:#ff4444;">Sum</option>
                         <option value="STABLE" style="color:#aa44ff;">Stable</option>
-                    </select>
+                        <option value="FROZEN_V2" style="color:#ffd166;">V2</option>
+                        <option value="FROZEN_V2R" style="color:#ff7ab8;">V2 Risalita</option>
                     </select>
 
                     <!-- SEPARATOR -->
@@ -426,6 +431,14 @@
                         style="background: transparent; color: #888; padding: 6px 15px; border:none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.85em;">
                         STABLE (Purple)
                     </button>
+                    <button id="btn-trades-v2" onclick="switchTradesView('FROZEN_V2')"
+                        style="background: transparent; color: #888; padding: 6px 15px; border:none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.85em;">
+                        V2
+                    </button>
+                    <button id="btn-trades-v2r" onclick="switchTradesView('FROZEN_V2R')"
+                        style="background: transparent; color: #888; padding: 6px 15px; border:none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.85em;">
+                        V2 Risalita
+                    </button>
                     <button id="btn-verify-integrity" onclick="verifyTradeIntegrity()"
                         style="background: #6366f1; color: #fff; padding: 6px 12px; border:none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.85em; margin-left: 10px;">
                         🔍 Verifica
@@ -577,6 +590,7 @@
                             <th class="scan-sort" data-sort="live" style="padding:12px; cursor:pointer; text-align:right; color:#6a8f7a; font-style:italic;" title="LIVE usa lo smoother bidirezionale: conosce il futuro. Soffitto teorico, non eseguibile.">Oracolo</th>
                             <th class="scan-sort" data-sort="frozen" style="padding:12px; cursor:pointer; text-align:right; color:#ff9900;">Frozen</th>
                             <th class="scan-sort" data-sort="frozen2" style="padding:12px; cursor:pointer; text-align:right; color:#ffd166;" title="Frozen con direzione: energia sopra la media E prezzo recente sotto il percorso filtrato. Solo long. Candidata, non ancora validata in avanti.">Frozen V2</th>
+                            <th class="scan-sort" data-sort="frozen2r" style="padding:12px; cursor:pointer; text-align:right; color:#ff7ab8;" title="V2 Risalita: entra come la V2 (energia alta, prezzo sotto il percorso), tiene la risalita ed esce al massimo dell'arancione sopra il percorso, o se il prezzo torna sotto. Solo long, senza stop. Candidata, non validata in avanti.">V2 Risalita</th>
                             <th class="scan-sort" data-sort="sum" style="padding:12px; cursor:pointer; text-align:right; color:#ff6666;">SUM</th>
                             <th class="scan-sort" data-sort="stable" style="padding:12px; cursor:pointer; text-align:right; color:#aa44ff;">Stable</th>
                             <th class="scan-sort" data-sort="orange" style="padding:12px; cursor:pointer; text-align:right; color:#ffb347;" title="Scarico del potenziale: poche operazioni, esposizione bassa. Confrontala con Alpha, non con il ROI.">Arancione</th>
@@ -622,6 +636,7 @@
                             <option value="STABLE">🟣 Stable</option>
                             <option value="FROZEN">❄️ Frozen</option>
                             <option value="FROZEN_V2">🧭 Frozen V2</option>
+                            <option value="FROZEN_V2R">🧭 V2 Risalita</option>
                             <option value="SUM">🔴 SUM</option>
                             <option value="LIVE">🔮 Oracolo (usa il futuro)</option>
                         </select>
@@ -886,7 +901,7 @@
     </div>
     <script src="tickers.js?v=6"></script>
     <script src="api_auth.js?v=1"></script>
-    <script src="app.js?v=28"></script>
+    <script src="app.js?v=29"></script>
 </body>
 
 </html>

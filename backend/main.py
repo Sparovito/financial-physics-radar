@@ -713,6 +713,16 @@ def analyze_stock(req: AnalysisRequest):
             end_date=req.end_date,
         )
 
+        # --- STRATEGIE 6-7: FROZEN V2 e V2 RISALITA + stato dell'arancione ---
+        # Potenziale coi parametri validati (non l'alpha scelto a schermo): gli
+        # stessi numeri dello Scanner Strategie. Causale: il passato non cambia.
+        frozen_v2_block = {"state": [], "v2": None, "rise": None}
+        try:
+            from strategy_scan import v2_chart_block
+            frozen_v2_block = v2_chart_block(px, start_date=req.start_date, end_date=req.end_date)
+        except Exception as e:
+            print(f"⚠️ Frozen V2 non calcolata: {e}")
+
         # Dati Futuri (Proiezione)
         # Nota: future_idx potrebbe contenere timestamp o interi, convertiamo
         try:
@@ -771,6 +781,9 @@ def analyze_stock(req: AnalysisRequest):
             "frozen_strategy": backtest_result_frozen,    # Strategia Frozen Pot
             "frozen_sum_strategy": backtest_result_frozen_sum,  # [NEW] Frozen Sum
             "stable_strategy": backtest_result_stable,            # [NEW] Stable Indicators
+            "frozen_v2_strategy": frozen_v2_block["v2"],          # Frozen V2 (energia alta + prezzo sotto il percorso)
+            "frozen_v2_rise_strategy": frozen_v2_block["rise"],   # V2 Risalita (tiene la risalita, esce al massimo arancione)
+            "frozen_v2": {"state": frozen_v2_block["state"]},     # stato dell'arancione per barra (0-4), allineato a "dates"
             "forecast": {
                 "dates": dates_future,
                 "scenarios": future_scenarios # Renaming clear to avoiding confusion
