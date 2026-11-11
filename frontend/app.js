@@ -472,6 +472,8 @@ function renderCharts(data) {
     let frozenStats = null;
     let v2Stats = null;
     let v2RiseStats = null;
+    let traceDirStrat = null;
+    let dirStats = null;
 
     if (showBacktest) {
         // 1. Live Strategy (Green)
@@ -532,6 +534,20 @@ function renderCharts(data) {
                 yaxis: 'y5'
             };
             v2RiseStats = data.frozen_v2_rise_strategy.stats;
+        }
+        // 5. Direzione (azzurro): dentro finché l'arancione col segno è sopra lo zero, in tempo reale
+        if (data.frozen_dir_strategy && data.frozen_dir_strategy.trade_pnl_curve) {
+            traceDirStrat = {
+                x: data.dates,
+                y: data.frozen_dir_strategy.trade_pnl_curve,
+                name: `🧭 Direzione (Avg: ${data.frozen_dir_strategy.stats.avg_trade_pct}%)`,
+                type: 'scatter',
+                mode: 'lines',
+                line: { color: '#4da6ff', width: 2, dash: 'dot' },
+                xaxis: 'x',
+                yaxis: 'y5'
+            };
+            dirStats = data.frozen_dir_strategy.stats;
         }
         // SUM e STABLE non si disegnano più qui (richiesta utente 11/2026): restano
         // nello Scanner Strategie, nel selettore dei trade e in "Vedi Operazioni".
@@ -773,6 +789,7 @@ function renderCharts(data) {
     if (traceFrozenStrat) traces.push(traceFrozenStrat);
     if (traceV2Strat) traces.push(traceV2Strat);
     if (traceV2RiseStrat) traces.push(traceV2RiseStrat);
+    if (traceDirStrat) traces.push(traceDirStrat);
 
     // Pannello Direzione (al posto di Kinetic Z; le vecchie curve solo se mancano i dati nuovi)
     if (showKineticZ) {
@@ -883,6 +900,16 @@ function renderCharts(data) {
                 </div>`;
         }
 
+        if (dirStats) {
+            html += `
+                <div style="color: #4da6ff;">
+                    <strong title="Compra quando l'arancione col segno diventa positivo e vende quando diventa negativo, nel giorno in cui il cambio di segno si conosce davvero (9-10 barre dopo la svolta). Serve a vedere dove arrivano i segnali: in media rende meno del compra-e-tieni.">🧭 Direzione:</strong>
+                    Trades: ${dirStats.total_trades} |
+                    Win: ${dirStats.win_rate}% |
+                    Return: ${dirStats.total_return}%
+                </div>`;
+        }
+
         statsDiv.innerHTML = html || 'No Stats Available';
     }
 
@@ -893,6 +920,7 @@ function renderCharts(data) {
     window.TRADES_STABLE = (data.stable_strategy && data.stable_strategy.trades) ? data.stable_strategy.trades : [];
     window.TRADES_V2 = (data.frozen_v2_strategy && data.frozen_v2_strategy.trades) ? data.frozen_v2_strategy.trades : [];
     window.TRADES_V2R = (data.frozen_v2_rise_strategy && data.frozen_v2_rise_strategy.trades) ? data.frozen_v2_rise_strategy.trades : [];
+    window.TRADES_DIR = (data.frozen_dir_strategy && data.frozen_dir_strategy.trades) ? data.frozen_dir_strategy.trades : [];
 
     if (window.TRADES_LIVE.length > 0 || window.TRADES_FROZEN.length > 0 || window.TRADES_SUM.length > 0 || window.TRADES_STABLE.length > 0) {
         const btnTrades = document.getElementById('btn-view-trades');
@@ -928,7 +956,8 @@ function switchTradesView(mode) {
         { btn: btnSum, mode: 'SUM', color: '#ff4444', textColor: '#fff' },
         { btn: btnStable, mode: 'STABLE', color: '#aa44ff', textColor: '#fff' },
         { btn: document.getElementById('btn-trades-v2'), mode: 'FROZEN_V2', color: '#ffd166', textColor: '#000' },
-        { btn: document.getElementById('btn-trades-v2r'), mode: 'FROZEN_V2R', color: '#ff7ab8', textColor: '#000' }
+        { btn: document.getElementById('btn-trades-v2r'), mode: 'FROZEN_V2R', color: '#ff7ab8', textColor: '#000' },
+        { btn: document.getElementById('btn-trades-dir'), mode: 'FROZEN_DIR', color: '#4da6ff', textColor: '#000' }
     ];
 
     buttons.forEach(item => {
@@ -960,7 +989,7 @@ function openTradesModal() {
 }
 
 // Global storage for ORIGINAL trades (baseline - saved once, never overwritten)
-window.ORIGINAL_TRADES = window.ORIGINAL_TRADES || { LIVE: null, FROZEN: null, SUM: null, STABLE: null, FROZEN_V2: null, FROZEN_V2R: null };
+window.ORIGINAL_TRADES = window.ORIGINAL_TRADES || { LIVE: null, FROZEN: null, SUM: null, STABLE: null, FROZEN_V2: null, FROZEN_V2R: null, FROZEN_DIR: null };
 
 function renderTradesList() {
     const listDiv = document.getElementById('trades-list');
@@ -978,6 +1007,8 @@ function renderTradesList() {
         trades = window.TRADES_V2;
     } else if (viewMode === 'FROZEN_V2R') {
         trades = window.TRADES_V2R;
+    } else if (viewMode === 'FROZEN_DIR') {
+        trades = window.TRADES_DIR;
     } else {
         trades = [];
     }
@@ -1160,10 +1191,10 @@ async function verifyTradeIntegrity() {
 
     const ticker = tickerEl.value.toUpperCase();
     const strategy = window.CURRENT_TRADES_VIEW || 'FROZEN';
-    if (strategy === 'FROZEN_V2' || strategy === 'FROZEN_V2R') {
+    if (strategy === 'FROZEN_V2' || strategy === 'FROZEN_V2R' || strategy === 'FROZEN_DIR') {
         // V2 e V2 Risalita usano solo serie causali (filtro di Kalman in avanti): il passato
         // non viene mai ridisegnato, quindi non c'è niente da verificare (lo garantiscono i test).
-        alert('La verifica serve alle strategie che possono essere ridisegnate. V2 e V2 Risalita usano solo dati passati: le operazioni non cambiano quando arrivano nuovi prezzi.');
+        alert('La verifica serve alle strategie che possono essere ridisegnate. V2, V2 Risalita e Direzione usano solo dati passati: le operazioni non cambiano quando arrivano nuovi prezzi.');
         return;
     }
     const alpha = parseFloat(alphaEl ? alphaEl.value : 200);
@@ -3088,7 +3119,7 @@ function getAnnotationShapes() {
     // Trade marker shapes
     const tradeShapes = getTradeMarkerShapes();
 
-    return [...getV2ZoneShapes(), ...getDirectionBlindShapes(), ...manualShapes, ...tradeShapes];
+    return [...getV2ZoneShapes(), ...getV2PeakShapes(), ...getDirectionBlindShapes(), ...manualShapes, ...tradeShapes];
 }
 
 // --- PANNELLO DIREZIONE: blu (oracolo) e arancione sovrapposti, con il segno ---
@@ -3129,6 +3160,49 @@ function getDirectionTraces(data) {
             type: 'scatter', mode: 'markers',
             marker: { symbol: 'square', size: 12, color: 'rgba(255, 255, 255, 0.25)' },
             hoverinfo: 'skip', xaxis: 'x', yaxis: 'y9'
+        },
+        ...getDirectionSignalTraces(data, dir, lag)
+    ];
+}
+
+// Cambi di segno dell'arancione nel giorno in cui si conoscono DAVVERO. Nel pannello la curva
+// arancione è disegnata `lag` barre indietro: il suo passaggio per lo zero si vede a sinistra,
+// ma il segnale arriva al triangolo. Il tratto bianco è l'attesa tra le due cose.
+function getDirectionSignalTraces(data, dir, lag) {
+    const buyX = [], sellX = [], waitX = [], waitY = [];
+    let prev = null;
+    for (let i = 0; i < dir.orange.length; i++) {
+        const v = dir.orange[i];
+        if (v == null || v === 0) continue;
+        const sg = v > 0 ? 1 : -1;
+        if (prev !== null && sg !== prev) {
+            (sg > 0 ? buyX : sellX).push(data.dates[i]);
+            waitX.push(data.dates[Math.max(0, i - lag)], data.dates[i], null);
+            waitY.push(0, 0, null);
+        }
+        prev = sg;
+    }
+    const marker = (symbol, color) => ({ symbol, size: 13, color, line: { color: '#ffffff', width: 1.2 } });
+    return [
+        {
+            x: waitX, y: waitY,
+            name: `Attesa di ${lag} barre: dalla svolta disegnata a quando la sai`,
+            type: 'scatter', mode: 'lines', line: { color: 'rgba(255, 255, 255, 0.6)', width: 4 },
+            hoverinfo: 'skip', connectgaps: false, xaxis: 'x', yaxis: 'y9'
+        },
+        {
+            x: buyX, y: buyX.map(() => 0),
+            name: '▲ Compra: l\'arancione diventa positivo (giorno in cui lo sai)',
+            type: 'scatter', mode: 'markers', marker: marker('triangle-up', '#00ff88'),
+            hovertemplate: '%{x}<br>l\'arancione diventa positivo: lo sai oggi<extra></extra>',
+            xaxis: 'x', yaxis: 'y9'
+        },
+        {
+            x: sellX, y: sellX.map(() => 0),
+            name: '▼ Vendi: l\'arancione diventa negativo (giorno in cui lo sai)',
+            type: 'scatter', mode: 'markers', marker: marker('triangle-down', '#ff2d55'),
+            hovertemplate: '%{x}<br>l\'arancione diventa negativo: lo sai oggi<extra></extra>',
+            xaxis: 'x', yaxis: 'y9'
         }
     ];
 }
@@ -3196,37 +3270,63 @@ function getV2ZoneShapes() {
         }));
 }
 
+// Picchi dell'arancione, uno per episodio (tratto continuo di energia alta dalla stessa parte):
+//   above = primo giorno in cui, col prezzo SOPRA il percorso, l'energia comincia a scendere (stato 4)
+//   below = lo stesso col prezzo SOTTO il percorso (stato 2): il panico comincia a scaricarsi
+function v2PeakIndices(states) {
+    const out = { above: [], below: [] };
+    let side = 0, marked = false;
+    for (let i = 0; i < states.length; i++) {
+        const st = states[i];
+        const cur = (st === 3 || st === 4) ? 1 : ((st === 1 || st === 2) ? -1 : 0);
+        if (cur !== side) { side = cur; marked = false; }
+        if (!marked && st === 4) { out.above.push(i); marked = true; }
+        if (!marked && st === 2) { out.below.push(i); marked = true; }
+    }
+    return out;
+}
+
+// linee guida verticali sui picchi, dentro il pannello Frozen
+function getV2PeakShapes() {
+    const data = window.LAST_ANALYSIS_DATA;
+    const states = data?.frozen_v2?.state;
+    const showFrozen = document.getElementById('show-frozen')?.checked ?? true;
+    if (!v2ZonesVisible() || !showFrozen || !states || !states.length) return [];
+    const peaks = v2PeakIndices(states);
+    const mk = (i, color) => ({
+        type: 'line', xref: 'x', yref: 'y6 domain',
+        x0: data.dates[i], x1: data.dates[i], y0: 0, y1: 1,
+        line: { color, width: 1.2, dash: 'dot' }, layer: 'below'
+    });
+    return [...peaks.above.map(i => mk(i, 'rgba(255, 45, 85, 0.7)')),
+            ...peaks.below.map(i => mk(i, 'rgba(0, 255, 136, 0.7)'))];
+}
+
 function getV2ZoneTraces(data, showFrozen, showPrice) {
     const states = data?.frozen_v2?.state;
     if (!v2ZonesVisible() || !states || !states.length) return [];
     const traces = [];
 
-    // ▼ massimo dell'arancione con il prezzo sopra il percorso: un solo segno per episodio
-    // (tratto continuo di stati 3-4), sul primo giorno in cui l'energia comincia a scendere.
-    // È lo stesso evento che fa uscire la V2 Risalita.
+    // ▼ / ▲ sui picchi dell'arancione (uno per episodio). Il ▼ è l'evento che fa uscire la V2 Risalita.
     if (showFrozen && data.frozen?.dates?.length) {
         const potByDate = {};
         data.frozen.dates.forEach((d, i) => { potByDate[d] = data.frozen.z_potential[i]; });
-        const xs = [], ys = [];
-        let marked = false;
-        for (let i = 0; i < states.length; i++) {
-            if (states[i] !== 3 && states[i] !== 4) { marked = false; continue; }
-            if (states[i] === 4 && !marked && potByDate[data.dates[i]] !== undefined) {
-                xs.push(data.dates[i]);
-                ys.push(potByDate[data.dates[i]]);
-                marked = true;
-            }
-        }
-        if (xs.length) {
+        const peaks = v2PeakIndices(states);
+        const mk = (idxs, name, symbol, color, hover) => {
+            const pts = idxs.filter(i => potByDate[data.dates[i]] !== undefined);
+            if (!pts.length) return;
             traces.push({
-                x: xs, y: ys,
-                name: '▼ Massimo arancione (prezzo sopra il percorso)',
-                type: 'scatter', mode: 'markers',
-                marker: { symbol: 'triangle-down', size: 9, color: '#ff4466', line: { color: '#1a1d2a', width: 1 } },
-                hovertemplate: '%{x}<br>massimo dell\'arancione: la salita è matura<extra></extra>',
+                x: pts.map(i => data.dates[i]), y: pts.map(i => potByDate[data.dates[i]]),
+                name, type: 'scatter', mode: 'markers',
+                marker: { symbol, size: 15, color, line: { color: '#ffffff', width: 1.5 } },
+                hovertemplate: `%{x}<br>${hover}<extra></extra>`,
                 xaxis: 'x', yaxis: 'y6'
             });
-        }
+        };
+        mk(peaks.above, '▼ Picco dell\'arancione sopra il percorso (salita matura)', 'triangle-down', '#ff2d55',
+            'picco dell\'arancione sopra il percorso: la salita è matura');
+        mk(peaks.below, '▲ Picco dell\'arancione sotto il percorso (il panico si scarica)', 'triangle-up', '#00ff88',
+            'picco dell\'arancione sotto il percorso: il panico comincia a scaricarsi');
     }
 
     // voci di legenda per le fasce (le fasce vere sono shapes del layout)
@@ -3353,6 +3453,8 @@ function getTradeMarkerShapes() {
         trades = cachedData.frozen_v2_strategy?.trades || [];
     } else if (strategy === 'FROZEN_V2R') {
         trades = cachedData.frozen_v2_rise_strategy?.trades || [];
+    } else if (strategy === 'FROZEN_DIR') {
+        trades = cachedData.frozen_dir_strategy?.trades || [];
     }
 
     const shapes = [];

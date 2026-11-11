@@ -182,6 +182,35 @@ def signed_energy(pot_raw, displacement, scale=1.0):
     return out
 
 
+def direction_positions(displacement):
+    """
+    DIREZIONE — dentro finché l'arancione col segno è sopra lo zero, cioè
+    finché lo scostamento d = F − x_f è positivo (prezzo recente sopra il
+    percorso). È il segnale che nel pannello "Direzione" compare come
+    attraversamento dello zero; lì la curva è disegnata 9 barre indietro, ma
+    il cambio di segno si conosce solo nel giorno vero, 9-10 barre dopo la
+    svolta dell'oracolo.
+
+    Misura (611 titoli, 2021→11/2026, senza costi): ROI mediano +18% contro
+    +77% del compra-e-tieni, 38% di operazioni vinte, timing −2.6 / −3.2
+    %/anno. Gli stessi segnali presi 9 barre prima (non eseguibile)
+    darebbero timing +36 / +34 %/anno: il valore sta tutto in quelle 9 barre.
+    Serve a VEDERE dove arrivano davvero i segnali, non come strategia.
+    """
+    return [1 if (d is not None and d == d and d > 0) else 0 for d in displacement]
+
+
+def backtest_direction(dates, prices, displacement, execution_lag=1, cost_pct=0.0,
+                       initial_capital=1000.0, start_date=None, end_date=None):
+    """Backtest della regola Direzione col motore unificato (esecuzione t+1)."""
+    pseudo_slope = [p - 0.5 for p in direction_positions(displacement)]
+    return backtest_stable(dates, prices, pseudo_slope, mode="LONG",
+                           entry_th=0.4, exit_th=0.0,
+                           execution_lag=execution_lag, cost_pct=cost_pct,
+                           initial_capital=initial_capital,
+                           start_date=start_date, end_date=end_date)
+
+
 def _v2_series(pot_raw, displacement, entry_z, rise_bars, zwin, min_periods):
     """Per barra: energia sopra la media (bool), scostamento d (None se manca),
     energia in aumento rispetto a `rise_bars` barre prima (bool). Stesso

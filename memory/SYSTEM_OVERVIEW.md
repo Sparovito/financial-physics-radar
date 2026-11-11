@@ -354,8 +354,14 @@ Formula: `EMA(prices, span=alpha/10)` → `diff()` → `EMA(14)`. Puramente back
     ultime 9 barre (fascia grigia) non sono ancora misurabili. Il segno
     dell'arancione coincide con la direzione dell'oracolo nell'82% dei giorni,
     ma quasi mai nelle 10 barre dopo una svolta (`research/frozen_vs_energy.py`).
+    ATTENZIONE: nel pannello la curva arancione attraversa lo zero 9 barre
+    PRIMA del giorno in cui lo si viene a sapere. I triangoli ▲/▼ sulla linea
+    dello zero segnano il giorno vero; il tratto bianco è l'attesa. Comprare e
+    vendere sui triangoli è la strategia "Direzione"
+    (`stable_strategy.direction_positions`): rende meno del compra-e-tieni
+    (timing −2.6 / −3.2 %/anno); sulle barre disegnate renderebbe +36 %/anno.
 -   **Grafico `/analyze`, pannello P/L e riquadro risultati**: LIVE (oracolo),
-    FROZEN, V2, V2 Risalita. SUM e STABLE sono stati tolti da lì su richiesta
+    FROZEN, V2, V2 Risalita, Direzione. SUM e STABLE sono stati tolti da lì su richiesta
     (restano nello scanner, nel selettore dei trade e in "Vedi Operazioni").
 -   **Scansione giornaliera (dashboard)**: `POST /scan-daily-orange` →
     `stable_scanner.orange_daily_scan`, sola lettura. Sostituisce nella UI

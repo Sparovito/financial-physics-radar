@@ -36,7 +36,8 @@ import pandas as pd
 from logic import (ActionPath, backtest_strategy, kalman_frozen_series, causal_lowpass)
 from stable_strategy import (backtest_stable, backtest_potential_discharge, backtest_combo,
                              backtest_frozen_v2, backtest_frozen_v2_rise, frozen_v2_states,
-                             signed_energy, ORANGE_LAG_BARS, POTENTIAL_ALPHA, POTENTIAL_BETA)
+                             signed_energy, backtest_direction, ORANGE_LAG_BARS,
+                             POTENTIAL_ALPHA, POTENTIAL_BETA)
 
 WARMUP_DAYS = 560          # giorni di calendario scaricati prima dell'inizio periodo
 MIN_BARS = 160
@@ -259,6 +260,8 @@ def v2_chart_block(px, start_date=None, end_date=None):
     """Quello che serve al grafico di /analyze:
     - state: lo stato dell'arancione per barra (0-4, vedi frozen_v2_states);
     - v2, rise: i backtest di Frozen V2 e V2 Risalita sulle date del grafico;
+    - dir: il backtest della regola Direzione (dentro finché l'arancione col
+      segno è sopra lo zero), in tempo reale;
     - direction: le due energie CON IL SEGNO (sopra lo zero = salita, sotto =
       discesa) nella stessa scala, per il pannello "Direzione":
         orange  potenziale causale × segno dello scostamento (non ridisegnato)
@@ -279,6 +282,7 @@ def v2_chart_block(px, start_date=None, end_date=None):
         "state": frozen_v2_states(pot, disp),
         "v2": backtest_frozen_v2(dates, prices, pot, disp, **kw),
         "rise": backtest_frozen_v2_rise(dates, prices, pot, disp, **kw),
+        "dir": backtest_direction(dates, prices, disp, **kw),
         "direction": {
             "orange": signed_energy(pot, disp, scale=scale),
             "oracle": oracle,

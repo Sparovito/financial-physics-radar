@@ -208,6 +208,22 @@ def main():
     fb = v2_chart_block(fall)["direction"]
     assert fb["oracle"][300] < 0 and fb["orange"][300] < 0, "in discesa entrambe sotto lo zero"
 
+    # --- 11. strategia DIREZIONE: dentro finché l'arancione è sopra lo zero (in tempo reale) ---
+    from stable_strategy import direction_positions, backtest_direction
+    dd = [float("nan")] * 5 + [-1.0] * 5 + [2.0] * 10 + [0.0] + [-3.0] * 9 + [1.0] * 10
+    pp = direction_positions(dd)
+    assert pp == [0] * 10 + [1] * 10 + [0] * 10 + [1] * 10, "1 solo con scostamento positivo; NaN e zero = fuori"
+    dts3 = _dates(40)
+    prs3 = [100.0 + i for i in range(40)]
+    rdir = backtest_direction(dts3, prs3, dd)
+    assert rdir["trades"][0]["entry_date"] == dts3[11], "compra alla chiusura successiva al cambio di segno"
+    assert rdir["trades"][0]["exit_date"] == dts3[21], "vende alla chiusura successiva al cambio di segno"
+    assert rdir["trades"][1]["entry_date"] == dts3[31] and rdir["trades"][1]["exit_date"] == "OPEN"
+    assert "dir" in blk and len(blk["dir"]["trade_pnl_curve"]) == len(dts) and blk["dir"]["stats"]["total_trades"] >= 1
+    closed = [(x["entry_date"], x["exit_date"]) for x in blk_cut["dir"]["trades"] if x["exit_date"] != "OPEN"]
+    full_tr = [(x["entry_date"], x["exit_date"]) for x in blk["dir"]["trades"]]
+    assert closed and all(c in full_tr for c in closed), "le operazioni passate non cambiano quando arrivano nuovi dati"
+
     print("OK test_frozen_v2_rise — stati 0-4, V2 Risalita causale ed eseguita a t+1, direzione blu/arancione | scanner: frozen2 %+.1f%% (espos. %.0f%%), frozen2r %+.1f%% (espos. %.0f%%)"
           % (r["strategies"]["frozen2"]["roi"], r["strategies"]["frozen2"]["expo"], s2r["roi"], s2r["expo"]))
 

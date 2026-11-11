@@ -716,7 +716,7 @@ def analyze_stock(req: AnalysisRequest):
         # --- STRATEGIE 6-7: FROZEN V2 e V2 RISALITA + stato dell'arancione ---
         # Potenziale coi parametri validati (non l'alpha scelto a schermo): gli
         # stessi numeri dello Scanner Strategie. Causale: il passato non cambia.
-        frozen_v2_block = {"state": [], "v2": None, "rise": None, "direction": None}
+        frozen_v2_block = {"state": [], "v2": None, "rise": None, "dir": None, "direction": None}
         try:
             from strategy_scan import v2_chart_block
             frozen_v2_block = v2_chart_block(px, start_date=req.start_date, end_date=req.end_date)
@@ -783,6 +783,7 @@ def analyze_stock(req: AnalysisRequest):
             "stable_strategy": backtest_result_stable,            # [NEW] Stable Indicators
             "frozen_v2_strategy": frozen_v2_block["v2"],          # Frozen V2 (energia alta + prezzo sotto il percorso)
             "frozen_v2_rise_strategy": frozen_v2_block["rise"],   # V2 Risalita (tiene la risalita, esce al massimo arancione)
+            "frozen_dir_strategy": frozen_v2_block.get("dir"),    # Direzione: dentro finché l'arancione col segno è > 0 (tempo reale)
             "frozen_v2": {                                        # allineato a "dates"
                 "state": frozen_v2_block["state"],                # stato dell'arancione per barra (0-4)
                 "direction": frozen_v2_block["direction"],        # blu (oracolo) e arancione col segno, pannello Direzione
