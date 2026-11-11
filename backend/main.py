@@ -723,6 +723,24 @@ def analyze_stock(req: AnalysisRequest):
         except Exception as e:
             print(f"⚠️ Frozen V2 non calcolata: {e}")
 
+        # --- STRATEGIA 8: SISTEMA (secondo principio) — vale per tutti i titoli allo stesso modo ---
+        # Dentro il titolo solo nei periodi in cui lo squilibrio collettivo ha cominciato a rientrare.
+        system_block = {"strategy": None, "hold": [], "state": {"state": "non disponibile"}}
+        try:
+            import system_state
+            from storage import get_storage
+            an_sys = system_state.cached_analysis(get_storage())
+            if req.end_date:
+                an_sys = an_sys[an_sys.index <= pd.Timestamp(req.end_date)]
+            system_block = {
+                "strategy": system_state.backtest_system(dates_historical, price_real, an_sys,
+                                                         start_date=req.start_date, end_date=req.end_date),
+                "hold": system_state.hold_positions(dates_historical, an_sys),
+                "state": system_state.current_state(an_sys),
+            }
+        except Exception as e:
+            print(f"⚠️ Stato del sistema non calcolato: {e}")
+
         # Dati Futuri (Proiezione)
         # Nota: future_idx potrebbe contenere timestamp o interi, convertiamo
         try:
@@ -784,6 +802,8 @@ def analyze_stock(req: AnalysisRequest):
             "frozen_v2_strategy": frozen_v2_block["v2"],          # Frozen V2 (energia alta + prezzo sotto il percorso)
             "frozen_v2_rise_strategy": frozen_v2_block["rise"],   # V2 Risalita (tiene la risalita, esce al massimo arancione)
             "frozen_dir_strategy": frozen_v2_block.get("dir"),    # Direzione: dentro finché l'arancione col segno è > 0 (tempo reale)
+            "system_strategy": system_block["strategy"],          # Sistema (secondo principio): dentro nei periodi di rientro collettivo
+            "system": {"hold": system_block["hold"], "state": system_block["state"]},  # tenuta per barra (0/1) e stato di oggi
             "frozen_v2": {                                        # allineato a "dates"
                 "state": frozen_v2_block["state"],                # stato dell'arancione per barra (0-4)
                 "direction": frozen_v2_block["direction"],        # blu (oracolo) e arancione col segno, pannello Direzione
@@ -1495,16 +1515,88 @@ def scan_strategies(req: StrategyScanRequest):
 
     prices, errors = fetch_prices_cached(req.tickers, warm_start, fetch,
                                          max_workers=max(1, min(req.max_workers, 12)))
+    an_sys = None
+    try:
+        import system_state
+        from storage import get_storage
+        an_sys = system_state.cached_analysis(get_storage())
+    except Exception as e:
+        print(f"⚠️ Stato del sistema non disponibile per lo scanner: {e}")
     results = {}
     for ticker, px in prices.items():
         try:
             results[ticker] = scan_one(px, start_date=start, end_date=req.end_date,
-                                       alpha=req.alpha, beta=req.beta)
+                                       alpha=req.alpha, beta=req.beta, system=an_sys)
         except Exception as e:
             errors[ticker] = str(e)
     weekly = aggregate_weekly(results)     # toglie 'weekly' dai singoli titoli (risposta leggera)
     return {"status": "ok", "results": results, "errors": errors, "weekly": weekly,
             "count_ok": len(results), "count_err": len(errors)}
+
+# --- STATO DEL SISTEMA (secondo principio) ---
+def _fetch_universe(tickers, start):
+    from strategy_scan import fetch_prices_cached
+    prices, _ = fetch_prices_cached(list(tickers), start, lambda t, since: MarketData(t, start_date=since).fetch(),
+                                    max_workers=8)
+    return prices
+
+
+@app.get("/system-state")
+def get_system_state():
+    """Stato del sistema oggi, ultimi episodi e ultimi 400 giorni di X. Sola lettura."""
+    import system_state
+    from storage import get_storage
+    an = system_state.cached_analysis(get_storage())
+    sig = an.index[an["signal"]]
+    episodes, last_pos = [], None
+    for d in sig:
+        pos = an.index.get_loc(d)
+        if last_pos is None or pos - last_pos > system_state.HOLD:
+            episodes.append({"start": str(d.date()), "end": str(d.date())})
+        else:
+            episodes[-1]["end"] = str(d.date())
+        last_pos = pos
+    tail = an.iloc[-400:]
+    return {
+        "status": "ok",
+        "state": system_state.current_state(an),
+        "episodes": episodes[-15:],
+        "history": {
+            "dates": [d.strftime("%Y-%m-%d") for d in tail.index],
+            "X": [round(float(v), 3) for v in tail["X"]],
+            "percentile": [None if v != v else round(float(v) * 100, 1) for v in tail["pct"]],
+            "hold": [int(v) for v in tail["hold"]],
+        },
+        "rule": {"touch_percentile": system_state.TOUCH * 100, "memory": system_state.MEMORY,
+                 "turn": system_state.TURN, "hold": system_state.HOLD, "window": system_state.PCT_WINDOW},
+    }
+
+
+@app.post("/system-state/refresh", dependencies=AUTH)
+def refresh_system_state():
+    """Scarica i prezzi dell'universo e aggiunge alla storia i giorni mancanti (non la barra di oggi)."""
+    import system_state
+    from storage import get_storage
+    from tickers_loader import load_tickers
+    info = system_state.refresh(_fetch_universe, sorted(load_tickers()), get_storage(), complete_only=True)
+    return {"status": "ok", **info, "state": system_state.current_state(system_state.cached_analysis(get_storage()))}
+
+
+def scheduled_system_state_job():
+    """Ogni sera, a mercati USA chiusi: aggiorna la storia dello stato del sistema."""
+    try:
+        import system_state
+        from storage import get_storage
+        from tickers_loader import load_tickers
+        info = system_state.refresh(_fetch_universe, sorted(load_tickers()), get_storage(), complete_only=False)
+        print(f"🌡️ Stato del sistema aggiornato: {info}", flush=True)
+    except Exception as e:
+        print(f"❌ Aggiornamento dello stato del sistema fallito: {e}", flush=True)
+
+
+scheduler.add_job(scheduled_system_state_job, CronTrigger(hour=22, minute=50, timezone="Europe/Rome"),
+                  id="system_state_refresh", replace_existing=True)
+
 
 @app.post("/scan-daily-orange")
 def scan_daily_orange(req: DailyScanRequest):

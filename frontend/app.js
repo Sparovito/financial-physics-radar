@@ -473,6 +473,8 @@ function renderCharts(data) {
     let v2RiseStats = null;
     let traceDirStrat = null;
     let dirStats = null;
+    let traceSysStrat = null;
+    let sysStats = null;
 
     if (showBacktest) {
         // 1. Live Strategy (Green)
@@ -547,6 +549,20 @@ function renderCharts(data) {
                 yaxis: 'y5'
             };
             dirStats = data.frozen_dir_strategy.stats;
+        }
+        // 6. Sistema (verde acqua): dentro solo quando lo squilibrio collettivo ha cominciato a rientrare
+        if (data.system_strategy && data.system_strategy.trade_pnl_curve) {
+            traceSysStrat = {
+                x: data.dates,
+                y: data.system_strategy.trade_pnl_curve,
+                name: `🌡️ Sistema (Avg: ${data.system_strategy.stats.avg_trade_pct}%)`,
+                type: 'scatter',
+                mode: 'lines',
+                line: { color: '#2dd4bf', width: 2.5 },
+                xaxis: 'x',
+                yaxis: 'y5'
+            };
+            sysStats = data.system_strategy.stats;
         }
         // SUM e STABLE non si disegnano più qui (richiesta utente 11/2026): restano
         // nello Scanner Strategie, nel selettore dei trade e in "Vedi Operazioni".
@@ -789,6 +805,7 @@ function renderCharts(data) {
     if (traceV2Strat) traces.push(traceV2Strat);
     if (traceV2RiseStrat) traces.push(traceV2RiseStrat);
     if (traceDirStrat) traces.push(traceDirStrat);
+    if (traceSysStrat) traces.push(traceSysStrat);
 
     // Pannello Direzione (al posto di Kinetic Z; le vecchie curve solo se mancano i dati nuovi)
     if (showKineticZ) {
@@ -909,6 +926,25 @@ function renderCharts(data) {
                 </div>`;
         }
 
+        if (sysStats) {
+            html += `
+                <div style="color: #2dd4bf; margin-top: 4px; border-top: 1px dashed #333; padding-top: 4px;">
+                    <strong title="Secondo principio: dentro il titolo solo quando lo squilibrio di tutto il mercato ha cominciato a rientrare (spostamento medio dei titoli nel 5% più basso dei 5 anni precedenti e in risalita), fino a 21 sedute dopo. Stesse date per tutti i titoli. Candidata, non validata fuori campione.">🌡️ Sistema:</strong>
+                    Trades: ${sysStats.total_trades} |
+                    Win: ${sysStats.win_rate}% |
+                    Return: ${sysStats.total_return}%
+                </div>`;
+        }
+        const sysState = data.system?.state;
+        if (sysState && sysState.state && sysState.state !== 'non disponibile') {
+            const stColor = { 'equilibrio': '#888', 'squilibrio in aumento': '#ffb347', 'rientro iniziato': '#2dd4bf', 'in tenuta': '#2dd4bf' }[sysState.state] || '#888';
+            const extra = sysState.state === 'in tenuta' ? ` (ancora ${sysState.sessions_left} sedute)` : '';
+            html += `
+                <div style="color: ${stColor}; font-size: 0.85em;" title="Stato di tutto il mercato al ${sysState.date}: spostamento medio dei titoli ${sysState.X} sigma, ${sysState.percentile}° percentile dei 5 anni precedenti, ${sysState.tickers} titoli. Ultimo segnale: ${sysState.last_signal || 'nessuno'}.">
+                    🌡️ Mercato al ${sysState.date}: <strong>${sysState.state}</strong>${extra}
+                </div>`;
+        }
+
         statsDiv.innerHTML = html || 'No Stats Available';
     }
 
@@ -920,6 +956,7 @@ function renderCharts(data) {
     window.TRADES_V2 = (data.frozen_v2_strategy && data.frozen_v2_strategy.trades) ? data.frozen_v2_strategy.trades : [];
     window.TRADES_V2R = (data.frozen_v2_rise_strategy && data.frozen_v2_rise_strategy.trades) ? data.frozen_v2_rise_strategy.trades : [];
     window.TRADES_DIR = (data.frozen_dir_strategy && data.frozen_dir_strategy.trades) ? data.frozen_dir_strategy.trades : [];
+    window.TRADES_SYS = (data.system_strategy && data.system_strategy.trades) ? data.system_strategy.trades : [];
 
     if (window.TRADES_LIVE.length > 0 || window.TRADES_FROZEN.length > 0 || window.TRADES_SUM.length > 0 || window.TRADES_STABLE.length > 0) {
         const btnTrades = document.getElementById('btn-view-trades');
@@ -956,7 +993,8 @@ function switchTradesView(mode) {
         { btn: btnStable, mode: 'STABLE', color: '#aa44ff', textColor: '#fff' },
         { btn: document.getElementById('btn-trades-v2'), mode: 'FROZEN_V2', color: '#ffd166', textColor: '#000' },
         { btn: document.getElementById('btn-trades-v2r'), mode: 'FROZEN_V2R', color: '#ff7ab8', textColor: '#000' },
-        { btn: document.getElementById('btn-trades-dir'), mode: 'FROZEN_DIR', color: '#4da6ff', textColor: '#000' }
+        { btn: document.getElementById('btn-trades-dir'), mode: 'FROZEN_DIR', color: '#4da6ff', textColor: '#000' },
+        { btn: document.getElementById('btn-trades-sys'), mode: 'SYSTEM', color: '#2dd4bf', textColor: '#000' }
     ];
 
     buttons.forEach(item => {
@@ -988,7 +1026,7 @@ function openTradesModal() {
 }
 
 // Global storage for ORIGINAL trades (baseline - saved once, never overwritten)
-window.ORIGINAL_TRADES = window.ORIGINAL_TRADES || { LIVE: null, FROZEN: null, SUM: null, STABLE: null, FROZEN_V2: null, FROZEN_V2R: null, FROZEN_DIR: null };
+window.ORIGINAL_TRADES = window.ORIGINAL_TRADES || { LIVE: null, FROZEN: null, SUM: null, STABLE: null, FROZEN_V2: null, FROZEN_V2R: null, FROZEN_DIR: null, SYSTEM: null };
 
 function renderTradesList() {
     const listDiv = document.getElementById('trades-list');
@@ -1008,6 +1046,8 @@ function renderTradesList() {
         trades = window.TRADES_V2R;
     } else if (viewMode === 'FROZEN_DIR') {
         trades = window.TRADES_DIR;
+    } else if (viewMode === 'SYSTEM') {
+        trades = window.TRADES_SYS;
     } else {
         trades = [];
     }
@@ -1190,7 +1230,7 @@ async function verifyTradeIntegrity() {
 
     const ticker = tickerEl.value.toUpperCase();
     const strategy = window.CURRENT_TRADES_VIEW || 'FROZEN';
-    if (strategy === 'FROZEN_V2' || strategy === 'FROZEN_V2R' || strategy === 'FROZEN_DIR') {
+    if (strategy === 'FROZEN_V2' || strategy === 'FROZEN_V2R' || strategy === 'FROZEN_DIR' || strategy === 'SYSTEM') {
         // V2 e V2 Risalita usano solo serie causali (filtro di Kalman in avanti): il passato
         // non viene mai ridisegnato, quindi non c'è niente da verificare (lo garantiscono i test).
         alert('La verifica serve alle strategie che possono essere ridisegnate. V2, V2 Risalita e Direzione usano solo dati passati: le operazioni non cambiano quando arrivano nuovi prezzi.');
@@ -2232,9 +2272,9 @@ function closeScannerModal() {
 //  Stato in memoria (SCAN_ROWS) e UNA funzione di resa: filtri,
 //  ordinamento, riga delle medie e spunte restano coerenti.
 // ============================================================
-const SCAN_STRATS = ['live', 'frozen', 'frozen2', 'frozen2r', 'sum', 'stable', 'orange', 'combo'];
-const SCAN_LABELS = { live: 'Oracolo', frozen: 'Frozen', frozen2: 'Frozen V2', frozen2r: 'V2 Risalita', sum: 'SUM', stable: 'Stable', orange: 'Arancione', combo: 'Combo' };
-const SCAN_COLORS = { live: '#6a8f7a', frozen: '#ff9900', frozen2: '#ffd166', frozen2r: '#ff7ab8', sum: '#ff6666', stable: '#aa44ff', orange: '#ffb347', combo: '#00e5ff' };
+const SCAN_STRATS = ['live', 'frozen', 'frozen2', 'frozen2r', 'system', 'sum', 'stable', 'orange', 'combo'];
+const SCAN_LABELS = { live: 'Oracolo', frozen: 'Frozen', frozen2: 'Frozen V2', frozen2r: 'V2 Risalita', system: 'Sistema', sum: 'SUM', stable: 'Stable', orange: 'Arancione', combo: 'Combo' };
+const SCAN_COLORS = { live: '#6a8f7a', frozen: '#ff9900', frozen2: '#ffd166', frozen2r: '#ff7ab8', system: '#2dd4bf', sum: '#ff6666', stable: '#aa44ff', orange: '#ffb347', combo: '#00e5ff' };
 const SCAN_BATCH_SIZE = 20;
 let SCAN_ROWS = [];                 // [{ticker, bh, trend, strategies:{...}}]
 let SCAN_ERRORS = {};               // {ticker: motivo}
@@ -2298,7 +2338,7 @@ async function startBulkScan() {
     SCAN_WEEKLY = {};
     SCAN_UNCHECKED = new Set();
     SCAN_STOP_SIGNAL = false;
-    window.SCAN_TRADES = { LIVE: [], FROZEN: [], FROZEN_V2: [], FROZEN_V2R: [], SUM: [], STABLE: [], ARANCIONE: [], COMBO: [] };
+    window.SCAN_TRADES = { LIVE: [], FROZEN: [], FROZEN_V2: [], FROZEN_V2R: [], SYSTEM: [], SUM: [], STABLE: [], ARANCIONE: [], COMBO: [] };
     window.ALL_SCAN_TRADES_LIVE = window.SCAN_TRADES.LIVE;
     window.ALL_SCAN_TRADES_FROZEN = window.SCAN_TRADES.FROZEN;
     window.ALL_SCAN_TRADES = window.SCAN_TRADES.COMBO;
@@ -2316,7 +2356,7 @@ async function startBulkScan() {
     // il selettore "x1/x4/x6" diventa il numero di richieste a batch in parallelo (max 3:
     // ogni batch scarica già più titoli insieme lato server)
     const concurrency = Math.max(1, Math.min(3, parseInt(document.getElementById('scan-parallel').value) || 2));
-    const tradeKey = { live: 'LIVE', frozen: 'FROZEN', frozen2: 'FROZEN_V2', frozen2r: 'FROZEN_V2R', sum: 'SUM', stable: 'STABLE', orange: 'ARANCIONE', combo: 'COMBO' };
+    const tradeKey = { live: 'LIVE', frozen: 'FROZEN', frozen2: 'FROZEN_V2', frozen2r: 'FROZEN_V2R', system: 'SYSTEM', sum: 'SUM', stable: 'STABLE', orange: 'ARANCIONE', combo: 'COMBO' };
 
     const batches = [];
     for (let i = 0; i < tickersToScan.length; i += SCAN_BATCH_SIZE) {
@@ -2459,7 +2499,7 @@ function renderScanTable() {
             </td>
         </tr>`;
     } else if (SCAN_ROWS.length > 0) {
-        html = '<tr><td colspan="13" style="padding:15px; color:#888; text-align:center;">Nessun risultato con questo filtro</td></tr>';
+        html = '<tr><td colspan="14" style="padding:15px; color:#888; text-align:center;">Nessun risultato con questo filtro</td></tr>';
     }
     tbody.innerHTML = html;
     renderScanSignificance();
@@ -3118,7 +3158,7 @@ function getAnnotationShapes() {
     // Trade marker shapes
     const tradeShapes = getTradeMarkerShapes();
 
-    return [...getV2ZoneShapes(), ...getV2PeakShapes(), ...manualShapes, ...tradeShapes];
+    return [...getV2ZoneShapes(), ...getV2PeakShapes(), ...getSystemHoldShapes(), ...manualShapes, ...tradeShapes];
 }
 
 // --- PANNELLO DIREZIONE: blu (oracolo) e arancione sovrapposti, con il segno ---
@@ -3191,6 +3231,23 @@ function getDirectionSignalTraces(data, series) {
             xaxis: 'x', yaxis: 'y9'
         }
     ];
+}
+
+// --- SISTEMA (secondo principio): striscia verde acqua in cima al grafico nei giorni in cui
+// lo squilibrio di tutto il mercato è in rientro (data.system.hold, uguale per ogni titolo) ---
+function getSystemHoldShapes() {
+    const data = window.LAST_ANALYSIS_DATA;
+    const hold = data?.system?.hold;
+    if (!v2ZonesVisible() || !hold || !hold.length || !data.dates) return [];
+    const last = data.dates.length - 1;
+    return v2StateRuns(hold)
+        .filter(r => r.state === 1)
+        .map(r => ({
+            type: 'rect', xref: 'x', yref: 'paper',
+            x0: data.dates[r.from], x1: data.dates[Math.min(r.to + 1, last)],
+            y0: 0.985, y1: 1.0,
+            fillcolor: 'rgba(45, 212, 191, 0.95)', line: { width: 0 }, layer: 'above'
+        }));
 }
 
 // --- ZONE V2: stato dell'arancione (causale, non viene ridisegnato) ---
@@ -3300,6 +3357,13 @@ function getV2ZoneTraces(data, showFrozen, showPrice) {
 
     // voci di legenda per le fasce (le fasce vere sono shapes del layout)
     const yref = showPrice ? 'y' : (showFrozen ? 'y6' : null);
+    if (yref && data.system?.hold?.some(v => v === 1)) {
+        traces.push({
+            x: [null], y: [null], name: '▬ Sistema in rientro (striscia in alto: secondo principio)',
+            type: 'scatter', mode: 'markers', marker: { symbol: 'square', size: 12, color: '#2dd4bf' },
+            hoverinfo: 'skip', xaxis: 'x', yaxis: yref
+        });
+    }
     if (yref) {
         [[1, '🟩 Zona V2 in carica (sotto il percorso, energia in aumento)'],
          [2, '▫️ Zona V2 in scarica (sotto il percorso, energia in calo)']].forEach(([st, label]) => {
@@ -3424,6 +3488,8 @@ function getTradeMarkerShapes() {
         trades = cachedData.frozen_v2_rise_strategy?.trades || [];
     } else if (strategy === 'FROZEN_DIR') {
         trades = cachedData.frozen_dir_strategy?.trades || [];
+    } else if (strategy === 'SYSTEM') {
+        trades = cachedData.system_strategy?.trades || [];
     }
 
     const shapes = [];

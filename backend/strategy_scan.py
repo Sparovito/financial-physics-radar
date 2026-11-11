@@ -138,8 +138,10 @@ def _slim(trades):
              "pnl_pct": t.get("pnl_pct")} for t in trades]
 
 
-def scan_one(px, start_date, end_date=None, alpha=200.0, beta=1.0, entry_z=2.0, horizon=21):
-    """px: serie di chiusure CON la storia di warmup prima di start_date."""
+def scan_one(px, start_date, end_date=None, alpha=200.0, beta=1.0, entry_z=2.0, horizon=21, system=None):
+    """px: serie di chiusure CON la storia di warmup prima di start_date.
+    system: analisi dello stato del sistema (system_state.analyse); se presente aggiunge la
+    strategia "system": dentro il titolo solo nei periodi di tenuta del sistema."""
     if end_date:
         px = px[px.index <= pd.Timestamp(end_date)]
     if len(px) < MIN_BARS:
@@ -222,6 +224,13 @@ def scan_one(px, start_date, end_date=None, alpha=200.0, beta=1.0, entry_z=2.0, 
     # --- V2 RISALITA: entra con la V2, tiene la risalita, esce al massimo dell'arancione ---
     res = backtest_frozen_v2_rise(dates, prices, pot, disp, execution_lag=1, cost_pct=0.0, **kw)
     put("frozen2r", res, expo=res["stats"]["exposure_pct"])
+
+    # --- SISTEMA (secondo principio): dentro solo quando lo squilibrio collettivo ha cominciato a rientrare ---
+    if system is not None:
+        from system_state import backtest_system
+        sys_an = system[system.index <= pd.Timestamp(end_date)] if end_date else system
+        res = backtest_system(dates, prices, sys_an, execution_lag=1, cost_pct=0.0, **kw)
+        put("system", res, expo=res["stats"]["exposure_pct"])
 
     return {
         "bh": round(bh, 2), "trend": trend, "n_bars": hi - lo + 1,

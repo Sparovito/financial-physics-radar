@@ -20,9 +20,11 @@ import pickle
 
 START = sys.argv[1] if len(sys.argv) > 1 else "2023-01-01"
 END = sys.argv[2] if len(sys.argv) > 2 else None
-STRATS = ["live", "frozen", "sum", "stable", "orange", "combo", "frozen2", "frozen2r"]
+import system_state
+SYSTEM_AN = system_state.analyse(system_state.read_history_csv(system_state.SEED_PATH))
+STRATS = ["live", "frozen", "sum", "stable", "orange", "combo", "frozen2", "frozen2r", "system"]
 LABEL = {"live": "Oracolo", "frozen": "Frozen", "sum": "SUM", "stable": "Stable",
-         "orange": "Arancione", "combo": "Combo", "frozen2": "Frozen V2", "frozen2r": "V2 Risalita"}
+         "orange": "Arancione", "combo": "Combo", "frozen2": "Frozen V2", "frozen2r": "V2 Risalita", "system": "Sistema"}
 
 
 def spearman(a, b):
@@ -33,7 +35,7 @@ def run(prices, start, end):
     out, errors = {}, {}
     for t, px in prices.items():
         try:
-            out[t] = scan_one(px, start_date=start, end_date=end)
+            out[t] = scan_one(px, start_date=start, end_date=end, system=SYSTEM_AN)
         except Exception as e:
             errors[t] = str(e)
     return out, errors
@@ -119,7 +121,7 @@ def main():
 
     # ---------- peso dei titoli estremi ----------
     print("\n--- Quanto pesa una manciata di titoli sulla media del ROI ---")
-    for s in ("live", "stable", "combo", "frozen2", "frozen2r"):
+    for s in ("live", "stable", "combo", "frozen2", "frozen2r", "system"):
         roi = sorted(((r["strategies"][s]["roi"], t) for t, r in full.items()), reverse=True)
         tot = sum(v for v, _ in roi)
         top = roi[:10]

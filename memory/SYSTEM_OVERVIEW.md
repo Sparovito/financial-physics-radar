@@ -363,8 +363,30 @@ Formula: `EMA(prices, span=alpha/10)` → `diff()` → `EMA(14)`. Puramente back
     (`stable_strategy.direction_positions`): rende meno del compra-e-tieni
     (timing −1.7 / −3.6 %/anno). Dove l'arancione non combacia col blu, la
     differenza è la parte che dipende dai prezzi futuri.
+-   **Stato del sistema / strategia "Sistema"** (`backend/system_state.py`, secondo
+    principio): X = media tra i titoli dello scostamento dal percorso, in sigma
+    (la parte ordinata dell'energia; il resto è calore e in un indice si
+    compensa). Segnale "rientro iniziato": X nel 5% più basso dei 5 anni
+    precedenti nelle ultime 10 sedute E più alto di 5 sedute fa; tenuta fino a
+    21 sedute dopo l'ultimo segnale. Le date sono le stesse per tutti i
+    titoli: è una scelta di tempo sul mercato, non del titolo.
+    -   Storia: seme `backend/data/system_history.csv` (dal 2004) + coda nello
+        storage (`system_history`), aggiornata ogni sera alle 22:50 Rome dal
+        job `system_state_refresh`; a mano con `POST /system-state/refresh`;
+        lettura con `GET /system-state`. Per rigenerare il seme:
+        `research/build_system_history.py` (serve la storia lunga dei prezzi).
+    -   Nel sito: striscia verde acqua in cima al grafico, curva P/L, riga nel
+        riquadro con lo stato di oggi, selettore dei trade, colonna "Sistema"
+        nello scanner.
+    -   Misura a vent'anni (`research/second_law.py`): base 50% → 100% su SPY
+        rende +0.7 / +1.5 / +2.5 %/anno più della stessa esposizione fissa nei
+        tre periodi, con ribasso massimo più basso dell'indice; meno del solo
+        indice negli anni di rialzo. La condizione "più alto di 5 sedute fa" è
+        stata aggiunta a posteriori (il "primo tocco" falliva nel 2008):
+        candidata, non validata fuori campione. L'indicatore "quota V2 ≥ 30%"
+        NON regge fuori dal 2021-26.
 -   **Grafico `/analyze`, pannello P/L e riquadro risultati**: LIVE (oracolo),
-    FROZEN, V2, V2 Risalita, Direzione. SUM e STABLE sono stati tolti da lì su richiesta
+    FROZEN, V2, V2 Risalita, Direzione, Sistema. SUM e STABLE sono stati tolti da lì su richiesta
     (restano nello scanner, nel selettore dei trade e in "Vedi Operazioni").
 -   **Scansione giornaliera (dashboard)**: `POST /scan-daily-orange` →
     `stable_scanner.orange_daily_scan`, sola lettura. Sostituisce nella UI
